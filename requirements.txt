@@ -1,0 +1,7 @@
+pymupdf
+pdfplumber
+faiss-cpu
+dashscope
+langgraph
+langchain-core
+python-dotenv
