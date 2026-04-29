@@ -38,9 +38,13 @@ class PipelineState(TypedDict, total=False):
     status: str
     error: str | None
     output_dir: str
+    chunk_size: int
+    chunk_overlap: int
 
 
 STORE_DIR = "faiss_index"
+DEFAULT_CHUNK_SIZE = 1200
+DEFAULT_CHUNK_OVERLAP = 200
 
 
 def coordinator_node(state: PipelineState) -> PipelineState:
@@ -55,6 +59,8 @@ def coordinator_node(state: PipelineState) -> PipelineState:
         "table_retries": state.get("table_retries", 0),
         "image_retries": state.get("image_retries", 0),
         "output_dir": state.get("output_dir", STORE_DIR),
+        "chunk_size": state.get("chunk_size", DEFAULT_CHUNK_SIZE),
+        "chunk_overlap": state.get("chunk_overlap", DEFAULT_CHUNK_OVERLAP),
     }
 
 
@@ -183,7 +189,14 @@ def store_node(state: PipelineState) -> PipelineState:
         result = state.get(result_key)
         verdict = state.get(verdict_key)
         if result and verdict and verdict.get("passed"):
-            store.add(state["paper_id"], worker_type, result["content"], result["metadata"])
+            store.add_chunks(
+                paper_id=state["paper_id"],
+                worker_type=worker_type,
+                content=result["content"],
+                metadata=result["metadata"],
+                chunk_size=state.get("chunk_size", DEFAULT_CHUNK_SIZE),
+                chunk_overlap=state.get("chunk_overlap", DEFAULT_CHUNK_OVERLAP),
+            )
 
     store.save(state["output_dir"])
     return {**state, "status": "done"}
