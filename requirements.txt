@@ -5,3 +5,4 @@ dashscope
 langgraph
 langchain-core
 python-dotenv
+numpy
