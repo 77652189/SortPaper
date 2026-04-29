@@ -18,6 +18,8 @@ FAISS_INDEX_PATH = Path("faiss_index")
 CHUNK_SIZE = 1200
 # Chunk 重叠
 CHUNK_OVERLAP = 200
+# 各分支最大重试次数
+MAX_RETRIES = 3
 
 
 def build_paper_id(pdf_path: Path) -> str:
@@ -58,10 +60,12 @@ def run() -> None:
                 "output_dir": str(FAISS_INDEX_PATH),
                 "chunk_size": CHUNK_SIZE,
                 "chunk_overlap": CHUNK_OVERLAP,
+                "max_retries": MAX_RETRIES,
             }
         )
         results[state["status"]] = results.get(state["status"], 0) + 1
-        print(f"  -> {state['status']}")
+        summary = state.get("summary") or {}
+        print(f"  -> {state['status']} | stored: {summary.get('stored_types', [])} | {summary.get('notes', '')}")
 
     print(f"\nDone: {results}")
 
