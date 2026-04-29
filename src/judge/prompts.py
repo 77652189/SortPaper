@@ -25,20 +25,20 @@ PDF路径: {pdf_path}
 最终状态: {status}
 """
 
-TEXT_JUDGE_PROMPT = """你是论文PDF解析质检员。请评估下面的文字解析结果是否合格。重点检查：
+TEXT_JUDGE_PROMPT = """你是论文PDF解析质检员。下面是同一 section（章节）内所有文字段落的拼接内容，请评估该 section 的解析质量是否合格。重点检查：
 1. 双栏论文是否按正确阅读顺序重建，没有左右栏交错。
 2. 文字是否完整，没有明显缺段、乱码或重复块。
 3. 标题、段落、列表是否基本可读。
 
 返回严格 JSON，不要输出额外文字：
-{
-  \"passed\": true 或 false,
-  \"score\": 0 到 1 的浮点数,
-  \"feedback\": \"给解析器的简短改进建议\"
-}
+{{
+  "passed": true 或 false,
+  "score": 0 到 1 的浮点数,
+  "feedback": "给解析器的简短改进建议"
+}}
 
 PDF路径: {pdf_path}
-解析内容:
+Section内容:
 {content}
 """
 

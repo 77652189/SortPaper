@@ -39,11 +39,23 @@ class LLMJudge:
 
         prompt_template = PROMPTS[worker_type]
         prompt = prompt_template.format(pdf_path=pdf_path, content=content or "")
-        response = Generation.call(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}],
-            result_format="message",
-        )
+
+        try:
+            response = Generation.call(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                result_format="message",
+            )
+        except Exception as e:
+            return JudgeVerdict(passed=False, score=0.0, feedback=f"API call failed: {e}")
+
+        # 检查 API 错误响应
+        if hasattr(response, "code") and response.code != 200:
+            error_msg = getattr(response, "message", "Unknown API error")
+            return JudgeVerdict(passed=False, score=0.0, feedback=f"API error {response.code}: {error_msg}")
+
+        if not hasattr(response, "output") or not response.output:
+            return JudgeVerdict(passed=False, score=0.0, feedback="Empty API response (no output)")
 
         try:
             message = response.output.choices[0].message.content
@@ -84,11 +96,38 @@ class LLMJudge:
             image_retries=image_retries,
             status=status,
         )
-        response = Generation.call(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}],
-            result_format="message",
-        )
+        try:
+            response = Generation.call(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                result_format="message",
+            )
+        except Exception as e:
+            return SummaryReport(
+                status=status,
+                modules={},
+                stored_types=[],
+                notes=f"summary API call failed: {e}",
+            )
+
+        # 检查 API 错误响应
+        if hasattr(response, "code") and response.code != 200:
+            error_msg = getattr(response, "message", "Unknown API error")
+            return SummaryReport(
+                status=status,
+                modules={},
+                stored_types=[],
+                notes=f"summary API error {response.code}: {error_msg}",
+            )
+
+        if not hasattr(response, "output") or not response.output:
+            return SummaryReport(
+                status=status,
+                modules={},
+                stored_types=[],
+                notes="summary API returned empty response",
+            )
+
         try:
             message = response.output.choices[0].message.content
             payload = self._extract_payload(message)
@@ -103,7 +142,7 @@ class LLMJudge:
                 status=status,
                 modules={},
                 stored_types=[],
-                notes="summary generation failed",
+                notes="summary response parse failed",
             )
 
     @staticmethod

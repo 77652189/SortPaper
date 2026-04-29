@@ -14,8 +14,22 @@ class FAISSStore:
 
         self.dimension = dimension
         self.model = model
-        self.index = faiss.IndexFlatL2(dimension)
+        self.index: faiss.IndexFlatL2 | None = None  # 懒创建，实际维度由首次 embed 确定
         self.records: list[dict[str, Any]] = []
+
+    def _ensure_index(self, actual_dim: int) -> None:
+        """确保 index 已创建，且维度匹配。"""
+        import faiss
+
+        if self.index is not None:
+            if self.dimension != actual_dim:
+                raise ValueError(
+                    f"Embedding 维度不匹配：索引维度={self.dimension}, "
+                    f"当前向量维度={actual_dim}。请检查 model 配置。"
+                )
+            return
+        self.dimension = actual_dim
+        self.index = faiss.IndexFlatL2(actual_dim)
 
     def embed(self, text: str) -> list[float]:
         from dashscope import TextEmbedding
@@ -27,6 +41,11 @@ class FAISSStore:
         vector = embeddings[0].get("embedding")
         if not vector:
             raise ValueError("Embedding payload missing vector")
+
+        # 确保 index 已创建，且维度匹配
+        actual_dim = len(vector)
+        self._ensure_index(actual_dim)
+
         return [float(value) for value in vector]
 
     def add(self, paper_id: str, worker_type: str, content: str, metadata: dict[str, Any]) -> None:

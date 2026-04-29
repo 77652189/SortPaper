@@ -14,12 +14,6 @@ load_dotenv()
 DATA_DIR = Path("data")
 # Faiss索引目录
 FAISS_INDEX_PATH = Path("faiss_index")
-# Chunk 参数
-CHUNK_SIZE = 1200
-# Chunk 重叠
-CHUNK_OVERLAP = 200
-# 各分支最大重试次数
-MAX_RETRIES = 3
 
 
 def build_paper_id(pdf_path: Path) -> str:
@@ -38,11 +32,8 @@ def build_paper_id(pdf_path: Path) -> str:
 
 
 def run() -> None:
-    # 构建图
     graph = build_graph()
-    # 获取数据目录下的所有pdf文件
     pdf_files = sorted(DATA_DIR.glob("*.pdf"))
-    # 结果
     results = {"done": 0, "failed": 0}
 
     for pdf_path in pdf_files:
@@ -50,7 +41,6 @@ def run() -> None:
         print(f"Processing {paper_id}...")
         state = graph.invoke(
             {
-
                 "pdf_path": str(pdf_path),
                 "paper_id": paper_id,
                 "text_retries": 0,
@@ -58,14 +48,17 @@ def run() -> None:
                 "image_retries": 0,
                 "status": "processing",
                 "output_dir": str(FAISS_INDEX_PATH),
-                "chunk_size": CHUNK_SIZE,
-                "chunk_overlap": CHUNK_OVERLAP,
-                "max_retries": MAX_RETRIES,
             }
         )
         results[state["status"]] = results.get(state["status"], 0) + 1
-        summary = state.get("summary") or {}
-        print(f"  -> {state['status']} | stored: {summary.get('stored_types', [])} | {summary.get('notes', '')}")
+        # 合并三个 verdicts
+        all_verdicts = []
+        all_verdicts.extend(state.get("text_verdicts", []))
+        all_verdicts.extend(state.get("table_verdicts", []))
+        all_verdicts.extend(state.get("image_verdicts", []))
+        passed = sum(1 for v in all_verdicts if v["passed"])
+        failed = sum(1 for v in all_verdicts if not v["passed"])
+        print(f"  -> {state['status']} | passed: {passed} | failed: {failed}")
 
     print(f"\nDone: {results}")
 

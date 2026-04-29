@@ -1,48 +1,87 @@
+"""
+表格解析器：使用 pdfplumber 提取表格，包装为 LayoutChunk。
+每个表格作为一个 chunk，携带 bbox 坐标和 Markdown 内容。
+"""
+
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-
-@dataclass
-class ParseResult:
-    content: str
-    metadata: dict[str, Any]
+from src.parsers.layout_chunk import LayoutChunk, infer_column
 
 
 class TableParser:
     def __init__(self, pdf_path: str | Path) -> None:
         self.pdf_path = str(pdf_path)
 
-    def parse(self, feedback: str | None = None) -> ParseResult:
+    def parse(self, feedback: str | None = None) -> list[LayoutChunk]:
+        """
+        提取 PDF 所有表格，返回 LayoutChunk 列表。
+        使用 page.find_tables() 获取真实 bbox，避免坐标解析错误。
+        """
         import pdfplumber
 
-        markdown_tables: list[str] = []
-        table_count = 0
         settings = self._table_settings(feedback)
+        chunks: list[LayoutChunk] = []
 
         with pdfplumber.open(self.pdf_path) as pdf:
             for page_index, page in enumerate(pdf.pages, start=1):
-                tables = page.extract_tables(table_settings=settings)
-                for table_index, table in enumerate(tables, start=1):
-                    if not table or len(table) < 2:
+                page_width = float(page.width) if page.width else 0
+                found_tables = page.find_tables(table_settings=settings)
+
+                for table_index, table_obj in enumerate(found_tables):
+                    rows = table_obj.extract()
+                    if not rows or len(rows) < 2:
                         continue
-                    normalized = self._normalize_table(table)
+
+                    normalized = self._normalize_table(rows)
                     if not normalized or len(normalized[0]) < 2:
                         continue
-                    markdown = self._to_markdown(normalized)
-                    markdown_tables.append(f"## Page {page_index} Table {table_index}\n{markdown}")
-                    table_count += 1
 
-        return ParseResult(
-            content="\n\n".join(markdown_tables),
-            metadata={
-                "table_count": table_count,
-                "parser": "pdfplumber",
-                "feedback_used": bool(feedback),
-            },
-        )
+                    # 使用 find_tables() 返回对象的真实 bbox
+                    bbox_raw = table_obj.bbox  # (x0, top, x1, bottom) in pdfplumber coords
+                    bbox = (
+                        float(bbox_raw[0]),
+                        float(bbox_raw[1]),
+                        float(bbox_raw[2]),
+                        float(bbox_raw[3]),
+                    )
+                    markdown = self._to_markdown(normalized)
+                    column = infer_column(page_width, bbox[0], bbox[2])
+
+                    chunks.append(
+                        LayoutChunk(
+                            content_type="table",
+                            raw_content=markdown,
+                            page=page_index,
+                            bbox=bbox,
+                            column=column,
+                            order_in_page=table_index,
+                            metadata={
+                                "parser": "pdfplumber",
+                                "rows": len(normalized),
+                                "cols": len(normalized[0]),
+                                "table_index": table_index,
+                            },
+                        )
+                    )
+
+        return chunks
+
+    @staticmethod
+    def _table_settings(feedback: str | None) -> dict[str, Any]:
+        """根据反馈调整 pdfplumber 参数。"""
+        settings: dict[str, Any] = {
+            "vertical_strategy": "lines",
+            "horizontal_strategy": "lines",
+            "snap_tolerance": 3,
+            "join_tolerance": 3,
+        }
+        if feedback:
+            settings["snap_tolerance"] = 5
+            settings["join_tolerance"] = 5
+        return settings
 
     @staticmethod
     def _normalize_table(table: list[list[str | None]]) -> list[list[str]]:
@@ -66,15 +105,3 @@ class TableParser:
         rows = [header, separator, *table[1:]]
         return "\n".join("| " + " | ".join(row) + " |" for row in rows)
 
-    @staticmethod
-    def _table_settings(feedback: str | None) -> dict[str, Any]:
-        settings: dict[str, Any] = {
-            "vertical_strategy": "lines",
-            "horizontal_strategy": "lines",
-            "snap_tolerance": 3,
-            "join_tolerance": 3,
-        }
-        if feedback:
-            settings["snap_tolerance"] = 5
-            settings["join_tolerance"] = 5
-        return settings
