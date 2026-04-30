@@ -22,14 +22,12 @@ ContentType = Literal["text", "table", "image"]
 def infer_column(page_width: float, x0: float, x1: float | None = None) -> int:
     """推断 bbox 属于左栏(0) / 右栏(1) / 通栏(2)。
 
-    - page_width <= 400：单栏版式，直接返回通栏
     - x1 provided 且 (x1-x0) > 60% page_width：跨栏元素，返回通栏
-    - 否则按 x0 与中线比较
+    - 否则按 x0 与中线比较（左栏 < 中线，右栏 >= 中线）
+    - 单栏版式：所有元素宽度都会 > 60% page_width，自动被归为通栏(2)
     """
-    if page_width <= 400:
-        return 2
     if x1 is not None and (x1 - x0) > 0.6 * page_width:
-        return 2
+        return 2  # 跨栏元素
     x_mid = page_width / 2
     return 0 if x0 < x_mid else 1
 
@@ -64,7 +62,7 @@ class LayoutChunk:
             x0, y0, x1, y1 = self.bbox
             self.chunk_id = (
                 f"{self.content_type}_p{self.page}_"
-                f"col{self.column}_y{int(y0)}_x{int(x0)}"
+                f"col{self.column}_y{y0:.1f}_x{x0:.1f}"
             )
 
     def to_dict(self) -> dict[str, Any]:
@@ -228,23 +226,42 @@ class LayoutDeduplicator:
     @staticmethod
     def _content_similarity(text1: str, text2: str) -> float:
         """
-        简单的内容相似度计算：基于字符集合的 Jaccard 相似度。
+        内容相似度计算：根据文本长度自适应选择方法。
 
-        适用于检测同一内容的轻微变体（如 pdfplumber 输出 vs PyMuPDF 输出）。
-        实际生产可用 embedding cosine similarity 替代。
+        - 短文本（词数 < 10）：使用字符级 Jaccard，对短文本更鲁棒
+        - 长文本（词数 >= 10）：使用词级 Jaccard
         """
         if not text1 or not text2:
             return 0.0
 
-        # 归一化：转小写，去空格
-        norm1 = set(text1.lower().split())
-        norm2 = set(text2.lower().split())
+        # 归一化：转小写
+        norm1 = text1.lower()
+        norm2 = text2.lower()
 
-        if not norm1 or not norm2:
+        words1 = norm1.split()
+        words2 = norm2.split()
+
+        # 短文本：使用字符级 Jaccard（更鲁棒）
+        if len(words1) < 10 or len(words2) < 10:
+            def _char_set(s: str, n: int = 3) -> set[str]:
+                """生成字符 n-gram 集合"""
+                s = f" {s} "  # 填充以捕获边界
+                if len(s) < n + 2:
+                    return set(s.strip())  # 极短文本直接用字符集合
+                return set(s[i:i + n] for i in range(len(s) - n))
+
+            set1 = _char_set(norm1)
+            set2 = _char_set(norm2)
+        else:
+            # 长文本：使用词级 Jaccard
+            set1 = set(words1)
+            set2 = set(words2)
+
+        if not set1 or not set2:
             return 0.0
 
-        intersection = len(norm1 & norm2)
-        union = len(norm1 | norm2)
+        intersection = len(set1 & set2)
+        union = len(set1 | set2)
 
         return intersection / union if union > 0 else 0.0
 
@@ -255,7 +272,10 @@ class LayoutDeduplicator:
 class LayoutMerger:
     """
     合并三个 Worker 返回的 LayoutChunk 列表，
-    按 page → column → y0 → x0 排序，重建原始阅读顺序。
+    按 page → y0 → 栏优先级 → x0 排序，重建原始阅读顺序。
+
+    栏优先级：通栏(2)在页面顶部时排最前，在页面底部时排最后；
+              左栏(0)和右栏(1)按正常顺序排序。
     """
 
     @staticmethod
@@ -269,16 +289,49 @@ class LayoutMerger:
         # 1. 去重
         deduped = LayoutDeduplicator.deduplicate(chunks)
 
-        # 2. 按 page → column → y0 → x0 排序
-        sorted_chunks = sorted(
-            deduped,
-            key=lambda c: (c.page, c.column, c.bbox[1], c.bbox[0]),
-        )
+        # 2. 按页面分组处理
+        by_page: dict[int, list[LayoutChunk]] = {}
+        for c in deduped:
+            by_page.setdefault(c.page, []).append(c)
+
+        result: list[LayoutChunk] = []
+        for page in sorted(by_page.keys()):
+            page_chunks = by_page[page]
+
+            # 计算该页双栏元素的 y 范围（用于判断通栏位置）
+            twin_col = [c for c in page_chunks if c.column in (0, 1)]
+            if twin_col:
+                min_y = min(c.bbox[1] for c in twin_col)
+                max_y = max(c.bbox[3] for c in twin_col)
+            else:
+                min_y = max_y = None
+
+            # 排序键：(y0, 栏优先级, x0)
+            # 栏优先级：顶部通栏→0，左栏→1，右栏→2，底部通栏→3
+            def _sort_key(c: LayoutChunk):
+                y0 = c.bbox[1]
+                if c.column == 2:  # 通栏
+                    if min_y is None:
+                        priority = 0  # 该页只有通栏，排最前
+                    elif y0 < min_y:
+                        priority = 0  # 顶部通栏，排最前
+                    elif c.bbox[3] > max_y:
+                        priority = 3  # 底部通栏，排最后
+                    else:
+                        priority = 1  # 中间通栏（罕见），排左栏后
+                else:
+                    # 左栏→1, 右栏→2（与通栏优先级统一）
+                    priority = 1 if c.column == 0 else 2
+
+                return (y0, priority, c.bbox[0])
+
+            page_chunks.sort(key=_sort_key)
+            result.extend(page_chunks)
 
         # 3. 重新分配 order_in_page（跨页清零）和全局 global_order
         last_page = -1
         counter = 0
-        for g_idx, chunk in enumerate(sorted_chunks):
+        for g_idx, chunk in enumerate(result):
             if chunk.page != last_page:
                 last_page = chunk.page
                 counter = 0
@@ -286,9 +339,4 @@ class LayoutMerger:
             chunk.global_order = g_idx
             counter += 1
 
-        return sorted_chunks
-
-    @staticmethod
-    def build_chunk_id(chunk: LayoutChunk) -> str:
-        """生成稳定 chunk ID：跨重试时同位置的 chunk 共享同一 ID。"""
-        return chunk.chunk_id
+        return result

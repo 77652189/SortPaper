@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from typing import Any
 
 from src.judge.prompts import IMAGE_JUDGE_PROMPT, SUMMARY_PROMPT, TABLE_JUDGE_PROMPT, TEXT_JUDGE_PROMPT
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -47,6 +50,7 @@ class LLMJudge:
                 result_format="message",
             )
         except Exception as e:
+            logger.exception("LLMJudge API call failed | type=%s", worker_type)
             return JudgeVerdict(passed=False, score=0.0, feedback=f"API call failed: {e}")
 
         # 检查 API 错误响应
@@ -65,14 +69,15 @@ class LLMJudge:
             feedback = str(payload.get("feedback", ""))
             return JudgeVerdict(passed=passed, score=score, feedback=feedback)
         except Exception:
+            logger.exception("LLMJudge response parse failed | type=%s", worker_type)
             return JudgeVerdict(passed=False, score=0.0, feedback="judge response parse error")
 
     def summarize(
         self,
         pdf_path: str,
-        text_verdict: dict[str, Any] | None,
-        table_verdict: dict[str, Any] | None,
-        image_verdict: dict[str, Any] | None,
+        text_verdict: JudgeVerdict | None,
+        table_verdict: JudgeVerdict | None,
+        image_verdict: JudgeVerdict | None,
         text_retries: int,
         table_retries: int,
         image_retries: int,
@@ -80,8 +85,10 @@ class LLMJudge:
     ) -> SummaryReport:
         from dashscope import Generation
 
-        def _v(verdict: dict[str, Any] | None, key: str, default: Any) -> Any:
-            return (verdict or {}).get(key, default)
+        def _v(v: JudgeVerdict | None, key: str, default: Any) -> Any:
+            if v is None:
+                return default
+            return getattr(v, key, default)
 
         prompt = SUMMARY_PROMPT.format(
             pdf_path=pdf_path,
@@ -151,8 +158,20 @@ class LLMJudge:
             text = "".join(part.get("text", "") for part in message if isinstance(part, dict))
         else:
             text = str(message)
+
+        # 先尝试直接解析（LLM 严格返回 JSON 的情况）
+        try:
+            return json.loads(text.strip())
+        except json.JSONDecodeError:
+            pass
+
+        # fallback：提取第一个完整 JSON 对象
         start = text.find("{")
         end = text.rfind("}")
-        if start == -1 or end == -1 or end < start:
-            raise ValueError("No JSON object found")
-        return json.loads(text[start : end + 1])
+        if start == -1 or end == -1 or end <= start:
+            raise ValueError(f"No JSON object found in LLM response: {text[:200]!r}")
+        candidate = text[start : end + 1]
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Failed to parse JSON from LLM response: {exc}") from exc

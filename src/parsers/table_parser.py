@@ -28,6 +28,7 @@ class TableParser:
         with pdfplumber.open(self.pdf_path) as pdf:
             for page_index, page in enumerate(pdf.pages, start=1):
                 page_width = float(page.width) if page.width else 0
+                page_height = float(page.height) if page.height else 0
                 found_tables = page.find_tables(table_settings=settings)
 
                 for table_index, table_obj in enumerate(found_tables):
@@ -40,12 +41,15 @@ class TableParser:
                         continue
 
                     # 使用 find_tables() 返回对象的真实 bbox
+                    # pdfplumber 坐标系：左上角为原点 (x0, top, x1, bottom)
+                    # PyMuPDF 坐标系：左下角为原点
+                    # 转换：y_bottom = page_height - y_top
                     bbox_raw = table_obj.bbox  # (x0, top, x1, bottom) in pdfplumber coords
                     bbox = (
-                        float(bbox_raw[0]),
-                        float(bbox_raw[1]),
-                        float(bbox_raw[2]),
-                        float(bbox_raw[3]),
+                        float(bbox_raw[0]),                     # x0 (相同)
+                        page_height - float(bbox_raw[3]),      # y0 = page_height - bottom
+                        float(bbox_raw[2]),                     # x1 (相同)
+                        page_height - float(bbox_raw[1]),      # y1 = page_height - top
                     )
                     markdown = self._to_markdown(normalized)
                     column = infer_column(page_width, bbox[0], bbox[2])

@@ -6,15 +6,20 @@
 from __future__ import annotations
 
 import base64
+import logging
 from pathlib import Path
 from typing import Any
 
 from src.parsers.layout_chunk import LayoutChunk, infer_column
 
+logger = logging.getLogger(__name__)
+
 # 图片面积阈值（PDF 坐标系，单位 pt²）：小于此值的图片跳过 VL 调用
 _MIN_AREA_PT2 = 5000
 # 像素面积阈值：宽×高小于此值的图片跳过 VL 调用
 _MIN_PIXEL_AREA = 10000
+# 图注查找范围（pt）：图片底部往下此范围内查找图注，默认 80pt
+_CAPTION_SEARCH_RANGE = 80
 
 
 class VisionParser:
@@ -64,7 +69,10 @@ class VisionParser:
                         continue
 
                     caption = self._find_caption(bbox, text_blocks)
-                    description = self._describe_image(image_bytes, caption, feedback)
+                    img_ext = extracted.get("ext", "png")
+                    description = self._describe_image(image_bytes, img_ext, caption, feedback)
+                    if not description:
+                        continue
 
                     # 将图注原文追加到 raw_content，便于精确检索
                     raw_content = f"{description}\n\n【图注】{caption}" if caption else description
@@ -91,13 +99,14 @@ class VisionParser:
         return chunks
 
     def _describe_image(
-        self, image_bytes: bytes, caption: str, feedback: str | None
+        self, image_bytes: bytes, ext: str, caption: str, feedback: str | None
     ) -> str:
-        """调用 Qwen-VL 生成图片描述。"""
+        """调用 Qwen-VL 生成图片描述。失败时记录日志并返回空字符串。"""
         from dashscope import MultiModalConversation
 
+        mime = f"image/{ext.lower()}" if ext else "image/png"
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
-        prompt = "描述此生物论文图片的关键内容，并结合图注总结可检索信息。"
+        prompt = "描述此论文图片的关键内容，并结合图注总结可检索信息。"
         if caption:
             prompt += f" 图注：{caption}"
         if feedback:
@@ -110,22 +119,23 @@ class VisionParser:
                     {
                         "role": "user",
                         "content": [
-                            {"image": f"data:image/png;base64,{image_b64}"},
+                            {"image": f"data:{mime};base64,{image_b64}"},
                             {"text": prompt},
                         ],
                     }
                 ],
             )
-        except Exception as e:
-            return f"[VL 调用失败: {e}]"
+        except Exception:
+            logger.exception("Qwen-VL call failed")
+            return ""
 
-        # 检查 API 错误响应
         if hasattr(response, "code") and response.code != 200:
-            error_msg = getattr(response, "message", "Unknown API error")
-            return f"[VL API 错误 {response.code}: {error_msg}]"
+            logger.error("Qwen-VL API error %s: %s", response.code, getattr(response, "message", ""))
+            return ""
 
         if not hasattr(response, "output") or not response.output:
-            return "[VL 返回空响应]"
+            logger.error("Qwen-VL returned empty output")
+            return ""
 
         try:
             content = response.output.choices[0].message.content
@@ -134,8 +144,9 @@ class VisionParser:
                     part.get("text", "") for part in content if isinstance(part, dict)
                 ).strip()
             return str(content).strip()
-        except Exception as e:
-            return f"[VL 响应解析失败: {e}]"
+        except Exception:
+            logger.exception("Qwen-VL response parse failed")
+            return ""
 
     @staticmethod
     def _normalize_bbox(bbox: Any) -> tuple[float, float, float, float] | None:
@@ -168,7 +179,7 @@ class VisionParser:
             horizontal_overlap = min(x1, float(bx1)) - max(x0, float(bx0))
             if horizontal_overlap <= 0:
                 continue
-            if float(by0) >= y1 and float(by0) - y1 <= 120:
+            if float(by0) >= y1 and float(by0) - y1 <= _CAPTION_SEARCH_RANGE:
                 candidates.append((float(by0) - y1, cleaned))
 
         candidates.sort(key=lambda item: item[0])

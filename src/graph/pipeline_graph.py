@@ -30,7 +30,8 @@ Pipeline 工作流图：基于 LayoutChunk 的并行解析 → 独立 Judge → 
 from __future__ import annotations
 
 import logging
-from typing import Any, Literal, TypedDict
+import operator
+from typing import Any, Literal, TypedDict, Annotated
 
 from langgraph.graph import END, START, StateGraph
 
@@ -66,6 +67,9 @@ class PipelineState(TypedDict, total=False):
     status: str
     error: str | None
     output_dir: str
+    # 三条路线是否已完成 judge（用于 fan-in 同步）
+    # Annotated + operator.or_：并发写入时做集合并集（自动去重，不会累积）
+    routes_done: Annotated[set[str], operator.or_]
 
 
 # ─── 常量 ──────────────────────────────────────────────────────────────────────
@@ -78,11 +82,11 @@ MAX_RETRIES = 3
 # ─── 辅助函数 ──────────────────────────────────────────────────────────────────
 
 
-def _failed_ids(verdicts: list[JudgeVerdict]) -> set[str]:
+def _failed_ids(verdicts: list[dict]) -> set[str]:
     return {v["chunk_id"] for v in verdicts if not v["passed"] and v["chunk_id"]}
 
 
-def _build_feedback(verdicts: list[JudgeVerdict]) -> str:
+def _build_feedback(verdicts: list[dict]) -> str:
     parts = [f"[{v['chunk_id']}] {v['feedback']}" for v in verdicts if not v["passed"] and v["chunk_id"]]
     return "\n".join(parts) if parts else ""
 
@@ -128,6 +132,7 @@ def coordinator_node(state: PipelineState) -> PipelineState:
         "table_verdicts": state.get("table_verdicts", []),
         "image_verdicts": state.get("image_verdicts", []),
         "merged_chunks": [],
+        "routes_done": set(),
     }
 
 
@@ -214,16 +219,46 @@ def image_worker_node(state: PipelineState) -> PipelineState:
 
 
 def _is_section_heading(text: str) -> bool:
-    """启发式判断是否为 section 标题：全大写 / 以数字+点开头 / 长度较短。"""
+    """启发式判断是否为 section 标题。
+
+    支持中英文论文的常见标题格式：
+    - 数字+点编号： "1. Introduction", "2.3 Methods"
+    - 中文数字编号： "一、引言", "1.1 相关工作"
+    - 全大写英文标题（不含句号，较短）
+    - 纯中文短行（无异议号结尾，长度 < 50）
+    """
     stripped = text.strip()
     if not stripped:
         return False
-    # 数字+点开头，如 "1. Introduction" 或 "2.3 Methods"
-    if stripped[:1].isdigit() and len(stripped) < 80:
+    if len(stripped) > 100:
+        return False
+
+    # 1. 数字+点开头（中英文均可能）
+    if stripped[:1].isdigit():
         return True
-    # 全大写且不超过60字符
-    if stripped.upper() == stripped and len(stripped) < 60 and stripped.isalpha() is False:
-        return stripped.replace(" ", "").isupper() and len(stripped) < 60
+
+    # 2. 中文数字编号开头：一、二、三、 or （一）（二）
+    import re
+    if re.match(r"^[一二三四五六七八九十]+[、．.]", stripped):
+        return True
+    if re.match(r"^（[一二三四五六七八九十]+）", stripped):
+        return True
+
+    # 3. 全大写英文标题（不含句号，且不全是数字/符号）
+    if stripped.isascii() and stripped.upper() == stripped and not stripped.replace(" ", "").replace("-", "").isdigit():
+        # 排除纯数字/纯符号，要求含有字母
+        has_letter = any(c.isalpha() for c in stripped)
+        return has_letter and len(stripped) < 60
+
+    # 4. 纯中文短行（无异议号/逗号结尾，可能是标题）
+    #    排除明显是正文的特征：含句号、逗号较多、或以"的"结尾
+    if re.search(r"[\u4e00-\u9fff]", stripped):
+        # 含中文
+        if stripped[-1] not in "。，、；：！？":
+            # 不以标点结尾，可能是标题
+            if "。" not in stripped and len(stripped) < 50:
+                return True
+
     return False
 
 
@@ -244,11 +279,12 @@ def _group_by_section(chunks: list[LayoutChunk]) -> list[list[LayoutChunk]]:
 
 def judge_text_node(state: PipelineState) -> PipelineState:
     chunks = state.get("text_chunks", [])
+
     if not chunks:
-        return {**state, "text_verdicts": []}
+        return {**state, "text_verdicts": [], "routes_done": {"text"}}
 
     judge = LLMJudge()
-    verdicts: list[JudgeVerdict] = []
+    verdicts: list[dict] = []
 
     # Section 级别判断：同 section 内所有 chunks 拼接后一起送 judge，verdict 广播给 section 内所有 chunk
     sections = _group_by_section(chunks)
@@ -256,35 +292,52 @@ def judge_text_node(state: PipelineState) -> PipelineState:
         combined = "\n\n".join(c.raw_content for c in section_chunks)
         v = judge.judge("text", combined, state["pdf_path"])
         for chunk in section_chunks:
-            verdicts.append({"chunk_id": chunk.chunk_id, "passed": v.passed, "score": v.score, "feedback": v.feedback})
+            verdicts.append({
+                "chunk_id": chunk.chunk_id,
+                "passed": v.passed,
+                "score": v.score,
+                "feedback": v.feedback,
+            })
 
-    return {**state, "text_verdicts": verdicts}
+    return {**state, "text_verdicts": verdicts, "routes_done": {"text"}}
 
 
 def judge_table_node(state: PipelineState) -> PipelineState:
     chunks = state.get("table_chunks", [])
+
     if not chunks:
-        return {**state, "table_verdicts": [{"chunk_id": "", "passed": True, "score": 1.0, "feedback": "no tables"}]}
+        return {**state, "table_verdicts": [{"chunk_id": "", "passed": True, "score": 1.0, "feedback": "no tables"}], "routes_done": {"table"}}
 
     judge = LLMJudge()
-    verdicts: list[JudgeVerdict] = []
+    verdicts: list[dict] = []
     for chunk in chunks:
         v = judge.judge(chunk.content_type, chunk.raw_content, state["pdf_path"])
-        verdicts.append({"chunk_id": chunk.chunk_id, "passed": v.passed, "score": v.score, "feedback": v.feedback})
-    return {**state, "table_verdicts": verdicts}
+        verdicts.append({
+            "chunk_id": chunk.chunk_id,
+            "passed": v.passed,
+            "score": v.score,
+            "feedback": v.feedback,
+        })
+    return {**state, "table_verdicts": verdicts, "routes_done": {"table"}}
 
 
 def judge_image_node(state: PipelineState) -> PipelineState:
     chunks = state.get("image_chunks", [])
+
     if not chunks:
-        return {**state, "image_verdicts": [{"chunk_id": "", "passed": True, "score": 1.0, "feedback": "no images"}]}
+        return {**state, "image_verdicts": [{"chunk_id": "", "passed": True, "score": 1.0, "feedback": "no images"}], "routes_done": {"image"}}
 
     judge = LLMJudge()
-    verdicts: list[JudgeVerdict] = []
+    verdicts: list[dict] = []
     for chunk in chunks:
         v = judge.judge(chunk.content_type, chunk.raw_content, state["pdf_path"])
-        verdicts.append({"chunk_id": chunk.chunk_id, "passed": v.passed, "score": v.score, "feedback": v.feedback})
-    return {**state, "image_verdicts": verdicts}
+        verdicts.append({
+            "chunk_id": chunk.chunk_id,
+            "passed": v.passed,
+            "score": v.score,
+            "feedback": v.feedback,
+        })
+    return {**state, "image_verdicts": verdicts, "routes_done": {"image"}}
 
 
 # ─── 重试路由（各路线独立）────────────────────────────────────────────────────
@@ -340,27 +393,25 @@ def merge_chunks_node(state: PipelineState) -> PipelineState:
 # ─── 最终路由 ──────────────────────────────────────────────────────────────────
 
 
-def final_route(state: PipelineState) -> Literal["store", "finalize_failed", "text_worker", "table_worker", "image_worker"]:
+def final_route(state: PipelineState) -> Literal["store", "finalize_failed", "merge_chunks"]:
     """
-    三条路线全部 pass → store；任意路线重试耗尽 → finalize_failed。
+    merge_chunks 汇聚后的终结路由。
+    先检查三条路线是否都已完成 judge（通过 routes_done 判断），
+    避免在未完成时就触发 store/finalize_failed。
     """
+    done = state.get("routes_done", set())
+    required = {"text", "table", "image"}
+    if not required.issubset(done):
+        # 还有路线没完成，重新入队等待（LangGraph recursion_limit 防止无限循环）
+        return "merge_chunks"
+
     text_failed = any(not v["passed"] for v in state.get("text_verdicts", []))
     table_failed = any(not v["passed"] for v in state.get("table_verdicts", []))
     image_failed = any(not v["passed"] for v in state.get("image_verdicts", []))
 
-    any_failed = text_failed or table_failed or image_failed
-    if not any_failed:
-        return "store"
-
-    # 有失败 → 检查是否还能重试
-    if text_failed and state.get("text_retries", 0) < MAX_RETRIES:
-        return "text_worker"
-    if table_failed and state.get("table_retries", 0) < MAX_RETRIES:
-        return "table_worker"
-    if image_failed and state.get("image_retries", 0) < MAX_RETRIES:
-        return "image_worker"
-
-    return "finalize_failed"
+    if text_failed or table_failed or image_failed:
+        return "finalize_failed"
+    return "store"
 
 
 # ─── Store 节点 ────────────────────────────────────────────────────────────────
@@ -386,12 +437,10 @@ def store_node(state: PipelineState) -> PipelineState:
     for v in state.get("image_verdicts", []):
         verdicts_map[v["chunk_id"]] = v
 
-    all_chunks: list[LayoutChunk] = []
-    all_chunks.extend(state.get("text_chunks", []))
-    all_chunks.extend(state.get("table_chunks", []))
-    all_chunks.extend(state.get("image_chunks", []))
+    # 直接遍历 merged_chunks（已按阅读顺序排序），而非重新聚合
+    merged: list[LayoutChunk] = state.get("merged_chunks", [])
 
-    for chunk in all_chunks:
+    for chunk in merged:
         v = verdicts_map.get(chunk.chunk_id)
         if v and v["passed"]:
             store.add(
