@@ -31,9 +31,20 @@ class FAISSStore:
         self.index = faiss.IndexFlatL2(actual_dim)
 
     def embed(self, text: str) -> list[float]:
+        import time
         from dashscope import TextEmbedding
 
-        response = TextEmbedding.call(model=self.model, input=text)
+        last_exc: Exception | None = None
+        for attempt in range(3):
+            try:
+                response = TextEmbedding.call(model=self.model, input=text)
+                break
+            except Exception as exc:
+                last_exc = exc
+                if attempt < 2:
+                    time.sleep(2 ** attempt)  # 1s, 2s
+                    continue
+                raise RuntimeError(f"Embedding failed after 3 attempts: {exc}") from exc
         # 统一解析 DashScope 响应，兼容 object 和 dict 两种格式
         output = response.output
         if isinstance(output, dict):

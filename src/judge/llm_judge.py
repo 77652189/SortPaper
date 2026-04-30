@@ -54,9 +54,12 @@ class LLMJudge:
             return JudgeVerdict(passed=False, score=0.0, feedback=f"API call failed: {e}")
 
         # 检查 API 错误响应
-        if hasattr(response, "code") and response.code != 200:
+        # DashScope 成功时 response.code 为空字符串，真正的 HTTP 状态在 response.status_code
+        status = getattr(response, "status_code", None)
+        if status is not None and status != 200:
             error_msg = getattr(response, "message", "Unknown API error")
-            return JudgeVerdict(passed=False, score=0.0, feedback=f"API error {response.code}: {error_msg}")
+            code = getattr(response, "code", "")
+            return JudgeVerdict(passed=False, score=0.0, feedback=f"API error {code}: {error_msg}")
 
         if not hasattr(response, "output") or not response.output:
             return JudgeVerdict(passed=False, score=0.0, feedback="Empty API response (no output)")
@@ -118,13 +121,16 @@ class LLMJudge:
             )
 
         # 检查 API 错误响应
-        if hasattr(response, "code") and response.code != 200:
+        # DashScope 成功时 response.code 为空字符串，真正的 HTTP 状态在 response.status_code
+        http_status = getattr(response, "status_code", None)
+        if http_status is not None and http_status != 200:
             error_msg = getattr(response, "message", "Unknown API error")
+            code = getattr(response, "code", "")
             return SummaryReport(
                 status=status,
                 modules={},
                 stored_types=[],
-                notes=f"summary API error {response.code}: {error_msg}",
+                notes=f"summary API error {code}: {error_msg}",
             )
 
         if not hasattr(response, "output") or not response.output:

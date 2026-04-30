@@ -139,7 +139,7 @@ def coordinator_node(state: PipelineState) -> PipelineState:
 # ─── Worker 节点（并行）─────────────────────────────────────────────────────────
 
 
-def text_worker_node(state: PipelineState) -> PipelineState:
+def text_worker_node(state: PipelineState) -> dict:
     failed_ids = _failed_ids(state.get("text_verdicts", []))
     feedback = _build_feedback(state.get("text_verdicts", [])) if failed_ids else None
     retries = state.get("text_retries", 0)
@@ -158,14 +158,14 @@ def text_worker_node(state: PipelineState) -> PipelineState:
     for chunk in new_chunks:
         existing[chunk.chunk_id] = chunk
 
+    # 只返回本节点实际修改的字段，避免并行 fan-out 时的写冲突
     return {
-        **state,
         "text_retries": retries + 1 if failed_ids else retries,
         "text_chunks": list(existing.values()),
     }
 
 
-def table_worker_node(state: PipelineState) -> PipelineState:
+def table_worker_node(state: PipelineState) -> dict:
     failed_ids = _failed_ids(state.get("table_verdicts", []))
     feedback = _build_feedback(state.get("table_verdicts", [])) if failed_ids else None
     retries = state.get("table_retries", 0)
@@ -184,13 +184,12 @@ def table_worker_node(state: PipelineState) -> PipelineState:
         existing[chunk.chunk_id] = chunk
 
     return {
-        **state,
         "table_retries": retries + 1 if failed_ids else retries,
         "table_chunks": list(existing.values()),
     }
 
 
-def image_worker_node(state: PipelineState) -> PipelineState:
+def image_worker_node(state: PipelineState) -> dict:
     failed_ids = _failed_ids(state.get("image_verdicts", []))
     feedback = _build_feedback(state.get("image_verdicts", [])) if failed_ids else None
     retries = state.get("image_retries", 0)
@@ -209,7 +208,6 @@ def image_worker_node(state: PipelineState) -> PipelineState:
         existing[chunk.chunk_id] = chunk
 
     return {
-        **state,
         "image_retries": retries + 1 if failed_ids else retries,
         "image_chunks": list(existing.values()),
     }
@@ -277,11 +275,11 @@ def _group_by_section(chunks: list[LayoutChunk]) -> list[list[LayoutChunk]]:
     return groups if groups else [chunks]
 
 
-def judge_text_node(state: PipelineState) -> PipelineState:
+def judge_text_node(state: PipelineState) -> dict:
     chunks = state.get("text_chunks", [])
 
     if not chunks:
-        return {**state, "text_verdicts": [], "routes_done": {"text"}}
+        return {"text_verdicts": [], "routes_done": {"text"}}
 
     judge = LLMJudge()
     verdicts: list[dict] = []
@@ -299,14 +297,14 @@ def judge_text_node(state: PipelineState) -> PipelineState:
                 "feedback": v.feedback,
             })
 
-    return {**state, "text_verdicts": verdicts, "routes_done": {"text"}}
+    return {"text_verdicts": verdicts, "routes_done": {"text"}}
 
 
-def judge_table_node(state: PipelineState) -> PipelineState:
+def judge_table_node(state: PipelineState) -> dict:
     chunks = state.get("table_chunks", [])
 
     if not chunks:
-        return {**state, "table_verdicts": [{"chunk_id": "", "passed": True, "score": 1.0, "feedback": "no tables"}], "routes_done": {"table"}}
+        return {"table_verdicts": [{"chunk_id": "", "passed": True, "score": 1.0, "feedback": "no tables"}], "routes_done": {"table"}}
 
     judge = LLMJudge()
     verdicts: list[dict] = []
@@ -318,14 +316,14 @@ def judge_table_node(state: PipelineState) -> PipelineState:
             "score": v.score,
             "feedback": v.feedback,
         })
-    return {**state, "table_verdicts": verdicts, "routes_done": {"table"}}
+    return {"table_verdicts": verdicts, "routes_done": {"table"}}
 
 
-def judge_image_node(state: PipelineState) -> PipelineState:
+def judge_image_node(state: PipelineState) -> dict:
     chunks = state.get("image_chunks", [])
 
     if not chunks:
-        return {**state, "image_verdicts": [{"chunk_id": "", "passed": True, "score": 1.0, "feedback": "no images"}], "routes_done": {"image"}}
+        return {"image_verdicts": [{"chunk_id": "", "passed": True, "score": 1.0, "feedback": "no images"}], "routes_done": {"image"}}
 
     judge = LLMJudge()
     verdicts: list[dict] = []
@@ -337,7 +335,7 @@ def judge_image_node(state: PipelineState) -> PipelineState:
             "score": v.score,
             "feedback": v.feedback,
         })
-    return {**state, "image_verdicts": verdicts, "routes_done": {"image"}}
+    return {"image_verdicts": verdicts, "routes_done": {"image"}}
 
 
 # ─── 重试路由（各路线独立）────────────────────────────────────────────────────
@@ -387,31 +385,46 @@ def merge_chunks_node(state: PipelineState) -> PipelineState:
             "next": merged[i + 1].raw_content[:100] if i < len(merged) - 1 else "",
         }
 
-    return {**state, "merged_chunks": merged}
+    return {"merged_chunks": merged}
 
 
 # ─── 最终路由 ──────────────────────────────────────────────────────────────────
 
 
-def final_route(state: PipelineState) -> Literal["store", "finalize_failed", "merge_chunks"]:
+def final_route(state: PipelineState) -> Literal["store", "merge_chunks"]:
     """
     merge_chunks 汇聚后的终结路由。
-    先检查三条路线是否都已完成 judge（通过 routes_done 判断），
-    避免在未完成时就触发 store/finalize_failed。
+
+    降级存储策略：无论是否有失败 chunk，retries 耗尽后都走 store_node。
+    store_node 只存通过的 chunk；有失败时状态置为 "partial"，无失败时为 "done"。
+
+    注意：routes_done 使用 operator.or_ 只能累加，第一轮完成后永远是满集，
+    因此 fan-in 门控只在第一轮有效。retry 轮次的同步依赖 retry 耗尽检查。
     """
     done = state.get("routes_done", set())
     required = {"text", "table", "image"}
     if not required.issubset(done):
-        # 还有路线没完成，重新入队等待（LangGraph recursion_limit 防止无限循环）
+        # 第一轮尚未全部完成，继续等待
         return "merge_chunks"
 
     text_failed = any(not v["passed"] for v in state.get("text_verdicts", []))
     table_failed = any(not v["passed"] for v in state.get("table_verdicts", []))
     image_failed = any(not v["passed"] for v in state.get("image_verdicts", []))
 
-    if text_failed or table_failed or image_failed:
-        return "finalize_failed"
-    return "store"
+    if not (text_failed or table_failed or image_failed):
+        return "store"
+
+    # 有失败：检查各失败路线的 retry 是否耗尽
+    text_exhausted  = not text_failed  or state.get("text_retries",  0) >= MAX_RETRIES
+    table_exhausted = not table_failed or state.get("table_retries", 0) >= MAX_RETRIES
+    image_exhausted = not image_failed or state.get("image_retries", 0) >= MAX_RETRIES
+
+    if text_exhausted and table_exhausted and image_exhausted:
+        # retries 全部耗尽 → 降级存储：存通过的部分，记录哪些失败
+        return "store"
+
+    # retry 仍在进行，继续在 merge_chunks 轮询等待
+    return "merge_chunks"
 
 
 # ─── Store 节点 ────────────────────────────────────────────────────────────────
@@ -461,18 +474,25 @@ def store_node(state: PipelineState) -> PipelineState:
             )
 
     store.save(out_dir)
-    return {**state, "status": "done"}
 
-
-def finalize_failed_node(state: PipelineState) -> PipelineState:
-    logger.error(
-        "Parse failed after max retries | paper=%s | text_retries=%d | table_retries=%d | image_retries=%d",
-        state.get("paper_id", "?"),
-        state.get("text_retries", 0),
-        state.get("table_retries", 0),
-        state.get("image_retries", 0),
+    # 降级存储：检查是否有失败 chunk，有则记录 warning 并置 partial 状态
+    all_verdicts = (
+        state.get("text_verdicts", [])
+        + state.get("table_verdicts", [])
+        + state.get("image_verdicts", [])
     )
-    return {**state, "status": "failed"}
+    failed = [v for v in all_verdicts if not v.get("passed") and v.get("chunk_id")]
+    if failed:
+        logger.warning(
+            "Stored with partial failures | paper=%s | stored=%d | failed=%d | failed_ids=%s",
+            state.get("paper_id", "?"),
+            store.index.ntotal if store.index else 0,
+            len(failed),
+            [v["chunk_id"] for v in failed],
+        )
+        return {"status": "partial"}
+
+    return {"status": "done"}
 
 
 # ─── 图构建 ────────────────────────────────────────────────────────────────────
@@ -491,7 +511,6 @@ def build_graph():
     graph.add_node("judge_image", judge_image_node)
     graph.add_node("merge_chunks", merge_chunks_node)
     graph.add_node("store", store_node)
-    graph.add_node("finalize_failed", finalize_failed_node)
 
     # 启动
     graph.add_edge(START, "coordinator")
@@ -511,12 +530,10 @@ def build_graph():
     graph.add_conditional_edges("judge_table", retry_table)
     graph.add_conditional_edges("judge_image", retry_image)
 
-    # Fan-in：三路线全部 pass 后汇聚到 merge_chunks
-    # 然后由最终路由决定：全部 pass -> store；重试耗尽 -> finalize_failed
+    # Fan-in → 最终路由：全部通过 → store；retry 耗尽（含部分失败）→ store（降级存储）
     graph.add_conditional_edges("merge_chunks", final_route)
 
-    # 终结节点
+    # store 永远是终结节点（status=done 或 partial）
     graph.add_edge("store", END)
-    graph.add_edge("finalize_failed", END)
 
     return graph.compile()

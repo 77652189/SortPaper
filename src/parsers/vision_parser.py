@@ -129,8 +129,10 @@ class VisionParser:
             logger.exception("Qwen-VL call failed")
             return ""
 
-        if hasattr(response, "code") and response.code != 200:
-            logger.error("Qwen-VL API error %s: %s", response.code, getattr(response, "message", ""))
+        # DashScope 成功时 response.code 为空字符串，真正的 HTTP 状态在 response.status_code
+        http_status = getattr(response, "status_code", None)
+        if http_status is not None and http_status != 200:
+            logger.error("Qwen-VL API error %s: %s", getattr(response, "code", ""), getattr(response, "message", ""))
             return ""
 
         if not hasattr(response, "output") or not response.output:
