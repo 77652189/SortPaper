@@ -11,15 +11,11 @@ from pathlib import Path
 from typing import Any
 
 from src.parsers.layout_chunk import LayoutChunk, infer_column
+from src.parsers.config import VISION as CFG
 
 logger = logging.getLogger(__name__)
 
-# 图片面积阈值（PDF 坐标系，单位 pt²）：小于此值的图片跳过 VL 调用
-_MIN_AREA_PT2 = 5000
-# 像素面积阈值：宽×高小于此值的图片跳过 VL 调用
-_MIN_PIXEL_AREA = 10000
-# 图注查找范围（pt）：图片底部往下此范围内查找图注，默认 80pt
-_CAPTION_SEARCH_RANGE = 80
+# （面积/图注阈值已移至 src/parsers/config.py VisionParserConfig）
 
 
 class VisionParser:
@@ -54,7 +50,7 @@ class VisionParser:
 
                     # 前置粗筛：PDF 坐标面积过小则跳过
                     x0, y0, x1, y1 = bbox
-                    if (x1 - x0) * (y1 - y0) < _MIN_AREA_PT2:
+                    if (x1 - x0) * (y1 - y0) < CFG.MIN_AREA_PT2:
                         continue
 
                     extracted = doc.extract_image(xref)
@@ -65,7 +61,7 @@ class VisionParser:
                     # 像素面积粗筛
                     img_w = extracted.get("width", 0)
                     img_h = extracted.get("height", 0)
-                    if img_w * img_h < _MIN_PIXEL_AREA:
+                    if img_w * img_h < CFG.MIN_PIXEL_AREA:
                         continue
 
                     caption = self._find_caption(bbox, text_blocks)
@@ -106,7 +102,7 @@ class VisionParser:
 
         mime = f"image/{ext.lower()}" if ext else "image/png"
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
-        prompt = "描述此论文图片的关键内容，并结合图注总结可检索信息。"
+        prompt = CFG.VL_PROMPT
         if caption:
             prompt += f" 图注：{caption}"
         if feedback:
@@ -181,8 +177,8 @@ class VisionParser:
             horizontal_overlap = min(x1, float(bx1)) - max(x0, float(bx0))
             if horizontal_overlap <= 0:
                 continue
-            if float(by0) >= y1 and float(by0) - y1 <= _CAPTION_SEARCH_RANGE:
+            if float(by0) >= y1 and float(by0) - y1 <= CFG.CAPTION_SEARCH_RANGE:
                 candidates.append((float(by0) - y1, cleaned))
 
         candidates.sort(key=lambda item: item[0])
-        return " ".join(text for _dist, text in candidates[:2]).strip()
+        return " ".join(text for _dist, text in candidates[:CFG.CAPTION_CANDIDATES_MAX]).strip()

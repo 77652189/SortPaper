@@ -50,11 +50,12 @@ def verdict_badge(passed: bool) -> str:
 
 @st.cache_data(show_spinner=False)
 def run_preview(pdf_bytes: bytes) -> dict:
-    """Quick preview: only parsers, no LLM calls."""
+    """Quick preview: parsers + LayoutMerger.merge, no LLM calls."""
     import sys
     sys.path.insert(0, ".")
     from src.parsers.pymupdf_parser import PyMuPDFParser
     from src.parsers.table_parser import TableParser
+    from src.parsers.layout_chunk import LayoutMerger
 
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
         tmp.write(pdf_bytes)
@@ -63,6 +64,13 @@ def run_preview(pdf_bytes: bytes) -> dict:
     try:
         text_chunks = PyMuPDFParser(tmp_path).parse()
         table_chunks = TableParser(tmp_path).parse()
+
+        # 合并后再返回，预览模式也能看到 header 合并效果
+        print(f"[preview] before merge: {len(text_chunks)} text + {len(table_chunks)} table = {len(text_chunks + table_chunks)} total")
+        for c in (text_chunks + table_chunks)[:5]:
+            print(f"  p{c.page} col{c.column} y{c.bbox[1]:.1f}-{c.bbox[3]:.1f} | {c.raw_content[:50]}")
+        merged_chunks = LayoutMerger.merge(text_chunks + table_chunks)
+        print(f"[preview] after merge: {len(merged_chunks)} chunks")
 
         # image metadata only (no VisionParser — avoids API cost)
         import fitz  # type: ignore
@@ -89,6 +97,7 @@ def run_preview(pdf_bytes: bytes) -> dict:
     return {
         "text_chunks": [_chunk_to_dict(c) for c in text_chunks],
         "table_chunks": [_chunk_to_dict(c) for c in table_chunks],
+        "merged_chunks": [_chunk_to_dict(c) for c in merged_chunks],
         "images": images,
         "verdicts": {},
         "mode": "preview",
@@ -191,9 +200,169 @@ def faiss_search(query: str, paper_id: str, top_k: int = 5) -> list[dict]:
     return results
 
 
-# ─── 渲染组件 ──────────────────────────────────────────────────────────────────
+# ─── PDF 重建 ──────────────────────────────────────────────────────────────────
 
 
+def render_reconstruction_tab(result: dict) -> None:
+    """Chunk 重建可视化：空白画布上按 bbox 排列 chunk，每个框显示 global_order + 内容摘要。"""
+    import fitz
+    import textwrap
+    from PIL import Image, ImageDraw, ImageFont
+
+    merged = result.get("merged_chunks", [])
+    if not merged:
+        st.info("无 chunk 数据，无法重建")
+        return
+
+    color_mode = st.radio(
+        "着色方式",
+        ["按内容类型", "按栏位"],
+        horizontal=True,
+    )
+
+    type_colors = {
+        "text":  ("#2196F3", "#BBDEFB"),
+        "table": ("#FF9800", "#FFE0B2"),
+        "image": ("#4CAF50", "#C8E6C9"),
+    }
+    column_colors = {
+        0: ("#1565C0", "#BBDEFB"),
+        1: ("#C62828", "#FFCDD2"),
+        2: ("#7B1FA2", "#E1BEE7"),
+    }
+
+    def get_color(chunk: dict) -> tuple[str, str]:
+        if color_mode == "按内容类型":
+            return type_colors.get(chunk.get("content_type", "text"), ("#888", "#ddd"))
+        col = chunk.get("column", 0)
+        return column_colors.get(col, ("#888", "#ddd"))
+
+    pdf_file = st.session_state.get("_pdf_bytes")
+    if not pdf_file:
+        st.warning("PDF 文件数据丢失，请重新上传")
+        return
+
+    try:
+        doc = fitz.open(stream=pdf_file, filetype="pdf")
+        page_count = len(doc)
+        pages = sorted(set(c["page"] for c in merged if 1 <= c["page"] <= page_count))
+        if "recon_page" not in st.session_state:
+            st.session_state.recon_page = pages[0]
+        page_num = st.select_slider("选择页面", options=pages, key="recon_page")
+        page_num = max(1, min(page_num, page_count))
+        pw, ph = float(doc[page_num - 1].rect.width), float(doc[page_num - 1].rect.height)
+        doc.close()
+    except Exception as e:
+        st.error(f"页面加载失败：{e}")
+        return
+
+    # 高分辨率画布（2x 缩放，保证字体清晰）
+    scale = min(1560 / pw, 1800 / ph)
+    canvas_w, canvas_h = int(pw * scale), int(ph * scale)
+    img = Image.new("RGB", (canvas_w, canvas_h), (248, 249, 250))
+    draw = ImageDraw.Draw(img)
+
+    try:
+        font = ImageFont.truetype("segoeui.ttf", 14)
+        font_small = ImageFont.truetype("segoeui.ttf", 11)
+    except OSError:
+        font = ImageFont.load_default()
+        font_small = font
+
+    page_chunks = [c for c in merged if c["page"] == page_num]
+    page_chunks.sort(key=lambda c: c.get("bbox", (0, 0, 0, 0))[1] if c.get("bbox") else 0)
+
+    for chunk in page_chunks:
+        bbox = chunk.get("bbox")
+        if not bbox:
+            continue
+        x0, y0, x1, y1 = bbox
+        px0, py0 = x0 * scale, y0 * scale
+        px1, py1 = x1 * scale, y1 * scale
+        box_w, box_h = px1 - px0, py1 - py0
+
+        if box_w < 8 or box_h < 8:
+            continue
+
+        outline, fill = get_color(chunk)
+        draw.rectangle([px0, py0, px1, py1], outline=outline, fill=fill + "30", width=2)
+
+        # global_order 标签（深底白字）
+        g_order = chunk.get("global_order", chunk.get("order_in_page", 0))
+        label = str(g_order)
+        tb = draw.textbbox((0, 0), label, font=font)
+        tw, th = tb[2] - tb[0], tb[3] - tb[1]
+        draw.rectangle([px0 + 2, py0 + 2, px0 + tw + 8, py0 + th + 6], fill=outline, width=0)
+        draw.text((px0 + 5, py0 + 4), label, fill="white", font=font)
+
+        # 内容摘要（多行自适应，尽量填满框的可用空间）
+        content = chunk.get("raw_content", "").strip()
+        ctype = chunk.get("content_type", "text")
+        type_tag = {"text": "T", "table": "TBL", "image": "IMG"}.get(ctype, "?")
+
+        if not content:
+            # 无内容：只显示类型标签
+            tag_text = f"[{type_tag}] (empty)"
+            tbx = draw.textbbox((0, 0), tag_text, font=font_small)
+            tw2, th2 = tbx[2] - tbx[0], tbx[3] - tbx[1]
+            if box_h > th + th2 + 12:
+                draw.text((px0 + 5, py0 + th + 10), tag_text, fill="#888", font=font_small)
+            continue
+
+        # 计算框内可用宽度 → 每行可容纳字符数
+        text_area_left = px0 + 5
+        text_area_width = box_w - 12
+        avg_char_w = font_small.getlength("ABCDEFGH") / 8
+        if avg_char_w > 0:
+            chars_per_line = max(10, int(text_area_width / avg_char_w))
+        else:
+            chars_per_line = 60
+
+        # 计算可用高度 → 可容纳行数（在 order 标签下方）
+        lh = font_small.size + 4  # 行高
+        available_h = box_h - th - 14  # th = order 标签高度
+        max_lines = max(1, int(available_h / lh))
+
+        # 多行换行，限制行数
+        lines = textwrap.wrap(content, width=chars_per_line)
+        display_lines = lines[:max_lines]
+
+        if max_lines >= 2 and len(display_lines) >= 1:
+            # 第一行带 [T] 标签，后续行继续显示内容
+            lines_with_tag = [f"[{type_tag}] {display_lines[0]}"] + display_lines[1:]
+            for i, line in enumerate(lines_with_tag):
+                draw.text((text_area_left, py0 + th + 6 + i * lh), line, fill="#333", font=font_small)
+        elif max_lines >= 1 and len(display_lines) >= 1:
+            # 只能显示一行，带 [T] 标签
+            line_text = f"[{type_tag}] {display_lines[0]}"
+            tbx = draw.textbbox((0, 0), line_text, font=font_small)
+            tw2, th2 = tbx[2] - tbx[0], tbx[3] - tbx[1]
+            if box_h <= th + th2 + 10:
+                # 框太小，只显示 [T]
+                draw.text((text_area_left, py0 + th + 6), f"[{type_tag}]", fill="#555", font=font_small)
+            else:
+                draw.text((text_area_left, py0 + th + 6), line_text, fill="#333", font=font_small)
+
+    st.image(img, use_container_width=True)
+
+    # 图例
+    if color_mode == "按内容类型":
+        c1, c2, c3 = st.columns(3)
+        for col, (ctype, (clr, _)) in zip([c1, c2, c3], type_colors.items()):
+            col.markdown(
+                f"<span style='display:inline-block;width:14px;height:14px;"                f"background:{clr};border-radius:3px;margin-right:6px;'></span>{ctype}",
+                unsafe_allow_html=True,
+            )
+    else:
+        c1, c2, c3 = st.columns(3)
+        labels = {0: "左栏", 1: "右栏", 2: "通栏"}
+        for col, (col_id, (clr, _)) in zip([c1, c2, c3], column_colors.items()):
+            col.markdown(
+                f"<span style='display:inline-block;width:14px;height:14px;"                f"background:{clr};border-radius:3px;margin-right:6px;'></span>{labels[col_id]}",
+                unsafe_allow_html=True,
+            )
+
+    st.caption(f"共 {len(page_chunks)} 个 chunks | 页面 {page_num}")
 def render_chunk_card(chunk: dict, verdict: dict | None = None, index: int = 0) -> None:
     ctype = chunk.get("content_type", "text")
     badge = type_badge(ctype)
@@ -416,6 +585,7 @@ def main() -> None:
         st.session_state.current_paper = paper_id
 
     if parse_clicked and pdf_bytes:
+        st.session_state._pdf_bytes = pdf_bytes  # 供 PDF 重建使用
         mode_key = "preview" if mode == "快速预览" else "pipeline"
         with st.spinner(f"解析中（{mode}）…"):
             try:
@@ -452,13 +622,15 @@ def main() -> None:
     # 结果展示
     verdicts = result.get("verdicts", {})
 
-    tabs = st.tabs(["📊 概览", "📝 文本块", "🖼️ 图片", "📋 表格", "🔍 语义检索"])
+    tabs = st.tabs(["📊 概览", "📝 文本块", "🖼️ 图片", "📋 表格", "📐 PDF 重建", "🔍 语义检索"])
 
     with tabs[0]:
         render_overview(result)
 
     with tabs[1]:
-        render_text_tab(result.get("text_chunks", []), verdicts)
+        # 预览模式展示 merged_chunks（含 header 合并），流水线模式展示原始 text_chunks
+        chunks_to_show = result.get("merged_chunks") if result.get("mode") == "preview" else result.get("text_chunks", [])
+        render_text_tab(chunks_to_show, verdicts)
 
     with tabs[2]:
         render_image_tab(result)
@@ -467,6 +639,9 @@ def main() -> None:
         render_table_tab(result.get("table_chunks", []), verdicts)
 
     with tabs[4]:
+        render_reconstruction_tab(result)
+
+    with tabs[5]:
         if paper_id:
             render_search_tab(paper_id)
         else:

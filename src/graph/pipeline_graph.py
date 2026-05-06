@@ -167,7 +167,6 @@ def text_worker_node(state: PipelineState) -> dict:
 
 def table_worker_node(state: PipelineState) -> dict:
     failed_ids = _failed_ids(state.get("table_verdicts", []))
-    feedback = _build_feedback(state.get("table_verdicts", [])) if failed_ids else None
     retries = state.get("table_retries", 0)
 
     if failed_ids:
@@ -176,8 +175,11 @@ def table_worker_node(state: PipelineState) -> dict:
             retries + 1, MAX_RETRIES, state.get("paper_id", "?"), list(failed_ids),
         )
 
+    # 每次 retry 切换解析策略，避免原地重跑
+    strategy = ["all", "camelot_only", "pymupdf_only"][min(retries, 2)]
+
     parser = TableParser(state["pdf_path"])
-    new_chunks: list[LayoutChunk] = parser.parse(feedback=feedback)
+    new_chunks: list[LayoutChunk] = parser.parse(strategy=strategy)
 
     existing = {c.chunk_id: c for c in state.get("table_chunks", []) if c.chunk_id not in failed_ids}
     for chunk in new_chunks:
