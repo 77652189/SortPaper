@@ -353,8 +353,8 @@ def store_parsed_chunks(result: dict) -> dict:
         v = verdicts.get(chunk.get("chunk_id", ""))
         if v and v.get("passed"):
             context = chunk_contexts.get(chunk.get("chunk_id", ""), "")
-            content = chunk.get("raw_content", "")
-            content_with_context = f"{context}\n\n{content}" if context else content
+            raw_content = chunk.get("raw_content", "")
+            display_content = f"{context}\n\n{raw_content}" if context else raw_content
 
             metadata = {
                 "page": chunk.get("page"),
@@ -375,12 +375,14 @@ def store_parsed_chunks(result: dict) -> dict:
                 "target_products": quality.get("target_products", []),
                 "organisms": quality.get("organisms", []),
                 "classify_reason": quality.get("classify_reason", ""),
+                "context": context,  # 存入 payload 供展示，不参与向量化
             }
             try:
                 store.add(
                     paper_id=paper_id,
                     worker_type=chunk.get("content_type", "text"),
-                    content=content_with_context,
+                    content=display_content,         # payload 里的完整内容
+                    embed_content=raw_content,       # 向量化只用原始英文
                     metadata=metadata,
                 )
                 stored += 1

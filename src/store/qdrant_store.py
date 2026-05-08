@@ -162,12 +162,19 @@ class QdrantStore:
         worker_type: str,
         content: str,
         metadata: dict[str, Any],
+        embed_content: str | None = None,
     ) -> None:
-        """添加一个 chunk 到 Qdrant（同时写入 dense + sparse 向量）。"""
-        if not content.strip():
+        """添加一个 chunk 到 Qdrant（同时写入 dense + sparse 向量）。
+
+        Args:
+            content: 存入 payload 的完整文本（可含 context prefix）
+            embed_content: 用于向量化的文本。若为 None，用 content
+        """
+        text_to_embed = embed_content if embed_content is not None else content
+        if not text_to_embed.strip():
             return
 
-        dense_vec, sparse_dict = self.embed(content)
+        dense_vec, sparse_dict = self.embed(text_to_embed)
         actual_dim = len(dense_vec)
 
         # 检查 collection 维度是否匹配

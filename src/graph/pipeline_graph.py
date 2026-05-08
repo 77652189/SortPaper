@@ -581,9 +581,9 @@ def store_node(state: PipelineState) -> PipelineState:
     for chunk in merged:
         v = verdicts_map.get(chunk.chunk_id)
         if v and v["passed"]:
-            # 拼接上下文后一起向量化
             context = chunk_contexts.get(chunk.chunk_id, "")
-            content_with_context = f"{context}\n\n{chunk.raw_content}" if context else chunk.raw_content
+            raw = chunk.raw_content
+            display = f"{context}\n\n{raw}" if context else raw
 
             metadata = {
                 **chunk.metadata,
@@ -611,7 +611,8 @@ def store_node(state: PipelineState) -> PipelineState:
             store.add(
                 paper_id=state["paper_id"],
                 worker_type=chunk.content_type,
-                content=content_with_context,
+                content=display,
+                embed_content=raw,
                 metadata=metadata,
             )
 
