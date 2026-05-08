@@ -212,15 +212,16 @@ def run_preview(pdf_bytes: bytes) -> dict:
     }
 
 
-def run_pipeline(pdf_bytes: bytes, paper_id: str) -> dict:
+def run_pipeline(pdf_bytes: bytes, paper_id: str, filename: str = "") -> dict:
     """Parse pipeline: parsers + judge + merge（quality 和 store 由 Streamlit 按钮手动触发）。"""
     import sys
     sys.path.insert(0, ".")
     from src.graph.pipeline_graph import build_graph
 
-    # 保存 PDF 副本供后续质量评估使用
+    # 保存 PDF 副本供后续质量评估使用（用原始文件名，不用 hash）
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    persistent_pdf = RESULTS_DIR / f"{paper_id}.pdf"
+    safe_name = (filename or paper_id).replace("/", "_").replace("\\", "_")
+    persistent_pdf = RESULTS_DIR / f"{safe_name}.pdf"
     persistent_pdf.write_bytes(pdf_bytes)
 
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
@@ -1261,7 +1262,7 @@ def main() -> None:
                 )
                 with st.spinner("解析中（LLM Judge · VisionParser）…"):
                     with ThreadPoolExecutor(max_workers=1) as pool:
-                        fut = pool.submit(run_pipeline, pdf_bytes, paper_id)
+                        fut = pool.submit(run_pipeline, pdf_bytes, paper_id, filename)
                         try:
                             result = fut.result(timeout=PIPELINE_TIMEOUT)
                         except FutureTimeoutError:
