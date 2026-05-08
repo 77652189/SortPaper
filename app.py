@@ -371,7 +371,7 @@ def store_parsed_chunks(result: dict) -> dict:
                 "order_in_page": chunk.get("order_in_page"),
                 "global_order": chunk.get("global_order"),
                 "chunk_id": chunk.get("chunk_id"),
-                "content_type": content_type,
+                "content_type": chunk.get("content_type", "text"),
                 "score": v.get("score"),
                 "category": quality.get("category"),
                 "classify_status": quality.get("classify_status"),
