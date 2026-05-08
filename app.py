@@ -302,6 +302,14 @@ def run_pipeline(pdf_bytes: bytes, paper_id: str, filename: str = "") -> dict:
 
     merged = final.get("merged_chunks", [])
 
+    # 表/图：LLM 生成一句英文描述前缀（提升检索召回率）
+    for chunk in merged:
+        if chunk.content_type in ("table", "image"):
+            desc = _generate_chunk_description(chunk.content_type, chunk.raw_content)
+            if desc:
+                # 前置到 raw_content 开头，Streamlit 和 Qdrant 都能看到
+                chunk.raw_content = f"{desc}\n\n{chunk.raw_content}"
+
     return {
         "paper_id": paper_id,
         "_pdf_path": str(persistent_pdf),
@@ -354,15 +362,7 @@ def store_parsed_chunks(result: dict) -> dict:
         if v and v.get("passed"):
             context = chunk_contexts.get(chunk.get("chunk_id", ""), "")
             raw_content = chunk.get("raw_content", "")
-            content_type = chunk.get("content_type", "text")
             display_content = f"{context}\n\n{raw_content}" if context else raw_content
-
-            # 嵌入内容预处理：表/图用 LLM 生成一句英文描述做前缀
-            embed_content = raw_content
-            if content_type in ("table", "image"):
-                desc = _generate_chunk_description(content_type, raw_content)
-                if desc:
-                    embed_content = f"{desc}\n\n{raw_content}"
 
             metadata = {
                 "page": chunk.get("page"),
@@ -388,9 +388,9 @@ def store_parsed_chunks(result: dict) -> dict:
             try:
                 store.add(
                     paper_id=paper_id,
-                    worker_type=content_type,
-                    content=display_content,
-                    embed_content=embed_content,
+                    worker_type=chunk.get("content_type", "text"),
+                    content=display_content,     # payload 展示（含中文 context）
+                    embed_content=raw_content,   # 向量化（英文 + LLM 前缀）
                     metadata=metadata,
                 )
                 stored += 1
