@@ -357,12 +357,12 @@ def store_parsed_chunks(result: dict) -> dict:
             content_type = chunk.get("content_type", "text")
             display_content = f"{context}\n\n{raw_content}" if context else raw_content
 
-            # 嵌入内容预处理：表格加表头前缀提升检索精度
+            # 嵌入内容预处理：表/图用 LLM 生成一句英文描述做前缀
             embed_content = raw_content
-            if content_type == "table":
-                header_prefix = _table_header_prefix(raw_content)
-                if header_prefix:
-                    embed_content = f"{header_prefix}\n\n{raw_content}"
+            if content_type in ("table", "image"):
+                desc = _generate_chunk_description(content_type, raw_content)
+                if desc:
+                    embed_content = f"{desc}\n\n{raw_content}"
 
             metadata = {
                 "page": chunk.get("page"),
@@ -402,19 +402,38 @@ def store_parsed_chunks(result: dict) -> dict:
     return {"stored": stored, "failed": failed}
 
 
-def _table_header_prefix(markdown_table: str) -> str:
-    """从 Markdown 表中提取表头，生成嵌入用描述前缀。
+def _generate_chunk_description(content_type: str, raw_content: str) -> str:
+    """用 DeepSeek 为表格/图片生成一句英文描述（用于嵌入前缀）。
 
-    示例: "| Product | Key enzymes | Yield |"
-        → "Table: Product, Key enzymes, Yield"
+    table → 描述表中数据的内容和维度
+    image → 描述图中的关键信息
     """
-    lines = markdown_table.strip().split("\n")
-    # 跳过可能的前置上下文行，找第一行含 | 的
-    for line in lines:
-        if "|" in line:
-            header = line.strip("| ").replace("|", ",").strip()
-            return f"Table: {header}"
-    return ""
+    import os
+    from openai import OpenAI
+
+    client = OpenAI(
+        api_key=os.getenv("DEEPSEEK_API_KEY"),
+        base_url="https://api.deepseek.com",
+    )
+    
+    type_label = "table" if content_type == "table" else "figure/image"
+    prompt = (
+        f"Write ONE short English sentence summarizing what this {type_label} is about. "
+        f"Focus on key concepts, entities, and data dimensions. Be specific.\n\n"
+        f"Content:\n{raw_content[:2000]}"
+    )
+
+    try:
+        resp = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=80,
+            temperature=0.3,
+        )
+        return resp.choices[0].message.content.strip()
+    except Exception as e:
+        logger.warning("生成 %s 描述失败: %s", content_type, e)
+        return ""
 
 
 def evaluate_parsed_chunks(result: dict) -> dict:
