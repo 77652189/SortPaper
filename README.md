@@ -155,8 +155,3 @@ SortPaper/
 Made with ❤️ &nbsp;·&nbsp; [GitHub Issues](https://github.com/77652189/SortPaper/issues)
 
 </div>
-
-
-
-
-
