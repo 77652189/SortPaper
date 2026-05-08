@@ -46,15 +46,12 @@ class TableParser:
     def __init__(self, pdf_path: str | Path) -> None:
         self.pdf_path = str(pdf_path)
 
-    def parse(self, feedback: str | None = None, strategy: str = "all") -> list[LayoutChunk]:
+    def parse(self, feedback: str | None = None, strategy: str = "all",
+              camelot_pages: list[int] | None = None) -> list[LayoutChunk]:
         """
         提取 PDF 所有表格，返回 LayoutChunk 列表。
 
-        支持多种策略，每次 retry 可以切换不同的解析方式：
-        - "all" (默认): 依次尝试 pdfplumber → PyMuPDF → camelot（原逻辑）
-        - "pdfplumber_only": 只用 pdfplumber
-        - "pymupdf_only": 只用 PyMuPDF（含 camelot 后备）
-        - "camelot_only": 只用 camelot stream
+        camelot_pages: 限制 camelot 扫描的页码（1-indexed），默认全文档。
         """
         all_chunks: list[LayoutChunk] = []
 
@@ -71,7 +68,7 @@ class TableParser:
             return chunks
 
         if strategy == "camelot_only":
-            chunks = self._parse_with_camelot()
+            chunks = self._parse_with_camelot(pages=camelot_pages)
             if len(chunks) > 1:
                 chunks = self._deduplicate_chunks(chunks)
             return chunks
@@ -85,7 +82,7 @@ class TableParser:
 
         if len(all_chunks) < CFG.CAMELOT_TRIGGER_THRESHOLD:
             logger.info("前两个解析器检测到表格较少，尝试 camelot")
-            camelot_chunks = self._parse_with_camelot()
+            camelot_chunks = self._parse_with_camelot(pages=camelot_pages)
             all_chunks.extend(camelot_chunks)
 
         if len(all_chunks) > 1:
@@ -257,10 +254,10 @@ class TableParser:
 
         return chunks
 
-    def _parse_with_camelot(self) -> list[LayoutChunk]:
+    def _parse_with_camelot(self, pages: list[int] | None = None) -> list[LayoutChunk]:
         """
         使用 camelot 提取表格（后备方案）。
-        camelot 的 stream 模式专门处理无边框表格，对学术论文表格效果更好。
+        pages: 指定页码列表（1-indexed），默认全文档。
         """
         try:
             import camelot
@@ -269,9 +266,10 @@ class TableParser:
             return []
 
         chunks: list[LayoutChunk] = []
+        pages_str = ",".join(str(p) for p in pages) if pages else "all"
 
         try:
-            tables = camelot.read_pdf(self.pdf_path, pages="all", flavor="stream")
+            tables = camelot.read_pdf(self.pdf_path, pages=pages_str, flavor="stream")
         except Exception as e:
             logger.warning(f"camelot 提取失败: {e}")
             return []

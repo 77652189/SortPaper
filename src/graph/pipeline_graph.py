@@ -1,5 +1,5 @@
 """
-Pipeline 工作流图：基于 LayoutChunk 的并行解析 → 独立 Judge → 汇聚 → 存储流程。
+Pipeline 工作流图：基于 LayoutChunk 的并行解析 → 独立 Judge → 汇聚流程。
 
 并行 Fan-out/Fan-in 架构：
   coordinator
@@ -19,12 +19,9 @@ Pipeline 工作流图：基于 LayoutChunk 的并行解析 → 独立 Judge → 
       ├─────────────────────────────┴──────────────────────────────►│
       │                         (all pass)                        │
       ▼                                                            ▼
-  merge_chunks (重建阅读顺序) ───────────────────────────▶ store ──▶ END
-                                                              │
-                                                    (any fail + retry >= 3)
-                                                              │
-                                                              ▼
-                                                        finalize_failed
+  merge_chunks (重建阅读顺序) ───────────────────────▶ finalize ──▶ END
+
+quality_eval 和 store 已从图中移除，由 Streamlit 按钮手动触发。
 """
 
 from __future__ import annotations
@@ -36,8 +33,9 @@ from typing import Any, Literal, TypedDict, Annotated
 from langgraph.graph import END, START, StateGraph
 
 from src.judge.llm_judge import JudgeVerdict, LLMJudge
+from src.judge.paper_evaluator import PaperQualityEvaluator
 from src.parsers import LayoutChunk, LayoutMerger, PyMuPDFParser, TableParser, VisionParser
-from src.store.faiss_store import FAISSStore
+from src.store.qdrant_store import QdrantStore
 
 logger = logging.getLogger(__name__)
 
@@ -64,8 +62,13 @@ class PipelineState(TypedDict, total=False):
     image_retries: int
     # 合并后的统一 chunks
     merged_chunks: list[LayoutChunk]
+    # 论文质量评估结果
+    quality_result: dict
+    # 各 Worker 解析耗时（秒）—— 并行写时合并
+    worker_timing: Annotated[dict[str, float], lambda a, b: {k: max(a.get(k, 0), b.get(k, 0)) for k in set(a) | set(b)}]
     status: str
     error: str | None
+    auto_store: bool  # 是否自动入库（默认 True）
     output_dir: str
     # 三条路线是否已完成 judge（用于 fan-in 同步）
     # Annotated + operator.or_：并发写入时做集合并集（自动去重，不会累积）
@@ -76,7 +79,7 @@ class PipelineState(TypedDict, total=False):
 
 
 STORE_DIR = "faiss_index"
-MAX_RETRIES = 3
+MAX_RETRIES = 1  # 全局上限（text 路径实际 0 次，见 retry_text）
 
 
 # ─── 辅助函数 ──────────────────────────────────────────────────────────────────
@@ -84,6 +87,13 @@ MAX_RETRIES = 3
 
 def _failed_ids(verdicts: list[dict]) -> set[str]:
     return {v["chunk_id"] for v in verdicts if not v["passed"] and v["chunk_id"]}
+
+
+def _page_from_chunk_id(chunk_id: str) -> int | None:
+    """从 chunk_id 中提取页码（格式: table_p9_col2_y...）。"""
+    import re
+    m = re.search(r"_p(\d+)_", chunk_id)
+    return int(m.group(1)) if m else None
 
 
 def _build_feedback(verdicts: list[dict]) -> str:
@@ -125,6 +135,7 @@ def coordinator_node(state: PipelineState) -> PipelineState:
         "table_retries": state.get("table_retries", 0),
         "image_retries": state.get("image_retries", 0),
         "output_dir": state.get("output_dir", STORE_DIR),
+        "auto_store": state.get("auto_store", True),
         "text_chunks": state.get("text_chunks", []),
         "table_chunks": state.get("table_chunks", []),
         "image_chunks": state.get("image_chunks", []),
@@ -132,6 +143,8 @@ def coordinator_node(state: PipelineState) -> PipelineState:
         "table_verdicts": state.get("table_verdicts", []),
         "image_verdicts": state.get("image_verdicts", []),
         "merged_chunks": [],
+        "quality_result": {},
+        "worker_timing": state.get("worker_timing", {}),
         "routes_done": set(),
     }
 
@@ -140,6 +153,9 @@ def coordinator_node(state: PipelineState) -> PipelineState:
 
 
 def text_worker_node(state: PipelineState) -> dict:
+    import time
+    t0 = time.time()
+
     failed_ids = _failed_ids(state.get("text_verdicts", []))
     feedback = _build_feedback(state.get("text_verdicts", [])) if failed_ids else None
     retries = state.get("text_retries", 0)
@@ -151,10 +167,10 @@ def text_worker_node(state: PipelineState) -> dict:
         )
 
     parser = PyMuPDFParser(state["pdf_path"])
-    new_chunks: list[LayoutChunk] = parser.parse(feedback=feedback)
+    # 始终用 block 级解析；切换行级只会产生大量极短 chunk，judge 分数更低、失败更多
+    new_chunks: list[LayoutChunk] = parser.parse()
 
-    # 保留已 passed 的，更新失败的
-    existing = {c.chunk_id: c for c in state.get("text_chunks", []) if c.chunk_id not in failed_ids}
+    existing = {c.chunk_id: c for c in state.get("text_chunks", [])}
     for chunk in new_chunks:
         existing[chunk.chunk_id] = chunk
 
@@ -162,36 +178,99 @@ def text_worker_node(state: PipelineState) -> dict:
     return {
         "text_retries": retries + 1 if failed_ids else retries,
         "text_chunks": list(existing.values()),
+        "worker_timing": {"text": round(time.time() - t0, 1)},
     }
 
 
 def table_worker_node(state: PipelineState) -> dict:
-    failed_ids = _failed_ids(state.get("table_verdicts", []))
+    import time
+    t0 = time.time()
+
     retries = state.get("table_retries", 0)
+    prev_verdicts = state.get("table_verdicts", [])
 
-    if failed_ids:
-        logger.warning(
-            "table_worker retry %d/%d | paper=%s | failed=%s",
-            retries + 1, MAX_RETRIES, state.get("paper_id", "?"), list(failed_ids),
-        )
+    print(f"[debug] table_worker_node: retries={retries}", flush=True)
 
-    # 每次 retry 切换解析策略，避免原地重跑
-    strategy = ["all", "camelot_only", "pymupdf_only"][min(retries, 2)]
+    if not prev_verdicts:
+        # 首轮：无 verdicts → 全策略解析
+        parser = TableParser(state["pdf_path"])
+        new_chunks = parser.parse(strategy="all")
+        existing: dict[str, LayoutChunk] = {}
+        for chunk in new_chunks:
+            existing[chunk.chunk_id] = chunk
+        return {
+            "table_retries": 0,
+            "table_chunks": list(existing.values()),
+            "worker_timing": {"table": round(time.time() - t0, 1)},
+        }
 
-    parser = TableParser(state["pdf_path"])
-    new_chunks: list[LayoutChunk] = parser.parse(strategy=strategy)
+    # retry：根据 issue_type 针对性重试
+    failed_ids: set[str] = set()
+    false_positive_ids: set[str] = set()
+    retry_pages: dict[str, set[int]] = {"camelot": set(), "pymupdf": set()}
 
-    existing = {c.chunk_id: c for c in state.get("table_chunks", []) if c.chunk_id not in failed_ids}
-    for chunk in new_chunks:
-        existing[chunk.chunk_id] = chunk
+    print(f"[debug] table_worker retry | verdicts={len(prev_verdicts)}", flush=True)
+    for v in prev_verdicts:
+        cid = v.get("chunk_id", "")
+        if v.get("passed") or not cid:
+            continue
+        issue = v.get("issue_type", "")
+        print(f"[debug]   failed chunk: {cid} | issue_type={issue!r}", flush=True)
+        failed_ids.add(cid)
+        if issue == "false_positive":
+            false_positive_ids.add(cid)
+            print(f"[debug]   -> false_positive: discarding, skip retry", flush=True)
+        elif issue == "structure_error":
+            page = _page_from_chunk_id(cid)
+            if page:
+                retry_pages["camelot"].add(page)
+                print(f"[debug]   -> structure_error: camelot page {page}", flush=True)
+        elif issue == "missing_content":
+            page = _page_from_chunk_id(cid)
+            if page:
+                retry_pages["pymupdf"].add(page)
+                print(f"[debug]   -> missing_content: pymupdf page {page}", flush=True)
+
+    logger.warning(
+        "table_worker retry %d/%d | paper=%s | false_positive=%d | camelot_pages=%s | pymupdf_pages=%s",
+        retries + 1, MAX_RETRIES, state.get("paper_id", "?"),
+        len(false_positive_ids), sorted(retry_pages["camelot"]), sorted(retry_pages["pymupdf"]),
+    )
+
+    # 保留非失败 chunk
+    existing = {c.chunk_id: c for c in state.get("table_chunks", [])
+                if c.chunk_id not in failed_ids}
+
+    # camelot retry：只扫失败 chunk 所在页
+    if retry_pages["camelot"]:
+        print(f"[debug] calling camelot on pages {sorted(retry_pages['camelot'])}", flush=True)
+        parser = TableParser(state["pdf_path"])
+        camelot_pages = sorted(retry_pages["camelot"])
+        retry_chunks = parser.parse(strategy="camelot_only", camelot_pages=camelot_pages)
+        for chunk in retry_chunks:
+            existing[chunk.chunk_id] = chunk
+
+    # pymupdf retry：同样只扫相关页
+    if retry_pages["pymupdf"]:
+        print(f"[debug] calling pymupdf_only", flush=True)
+        parser = TableParser(state["pdf_path"])
+        retry_chunks = parser.parse(strategy="pymupdf_only")
+        for chunk in retry_chunks:
+            existing[chunk.chunk_id] = chunk
+
+    print(f"[debug] retry result: keeping {len(existing)} chunks (discarded {len(failed_ids) - len(existing)} failed)", flush=True)
 
     return {
         "table_retries": retries + 1 if failed_ids else retries,
         "table_chunks": list(existing.values()),
+        "worker_timing": {"table": round(time.time() - t0, 1)},
     }
 
 
 def image_worker_node(state: PipelineState) -> dict:
+    import time
+    t0 = time.time()
+
     failed_ids = _failed_ids(state.get("image_verdicts", []))
     feedback = _build_feedback(state.get("image_verdicts", [])) if failed_ids else None
     retries = state.get("image_retries", 0)
@@ -203,15 +282,23 @@ def image_worker_node(state: PipelineState) -> dict:
         )
 
     parser = VisionParser(state["pdf_path"])
-    new_chunks: list[LayoutChunk] = parser.parse(feedback=feedback)
+    new_chunks, vis_timing = parser.parse(feedback=feedback)
 
-    existing = {c.chunk_id: c for c in state.get("image_chunks", []) if c.chunk_id not in failed_ids}
+    if failed_ids:
+        existing: dict[str, LayoutChunk] = {}
+    else:
+        existing = {c.chunk_id: c for c in state.get("image_chunks", [])}
     for chunk in new_chunks:
         existing[chunk.chunk_id] = chunk
 
     return {
         "image_retries": retries + 1 if failed_ids else retries,
         "image_chunks": list(existing.values()),
+        "worker_timing": {
+            "image": round(time.time() - t0, 1),
+            "image_extract": vis_timing.get("extract", 0),
+            "image_describe": vis_timing.get("describe", 0),
+        },
     }
 
 
@@ -262,11 +349,36 @@ def _is_section_heading(text: str) -> bool:
     return False
 
 
+def _is_noise(text: str) -> bool:
+    """判断是否为噪音文本（页码、页眉、过短碎片等），跳过 judge。"""
+    stripped = text.strip()
+    if not stripped:
+        return True
+    # 过短（低于 40 字符的碎片几乎都是页眉/页码/参考文献行，直接跳过 judge）
+    if len(stripped) < 40:
+        return True
+    # 纯数字/符号
+    if not any(c.isalpha() or '\u4e00' <= c <= '\u9fff' for c in stripped):
+        return True
+    # 常见页眉/页脚模式
+    upper = stripped.upper().strip()
+    if upper in ("REFERENCES", "ACKNOWLEDGEMENTS", "ACKNOWLEDGMENTS", "FUNDING"):
+        return False  # 参考文献/致谢标题 → 保留
+    noise_starts = ("DOI:", "HTTP", "WWW.", "COPYRIGHT", "©", "VOL.", "NO.", "PP.", "ISSN")
+    if any(upper.startswith(p) for p in noise_starts):
+        return True
+    return False
+
+
 def _group_by_section(chunks: list[LayoutChunk]) -> list[list[LayoutChunk]]:
-    """按标题行将 text_chunks 切分为 section 组，每组为一个列表。"""
+    """按标题行将 text_chunks 切分为 section 组，每组为一个列表。
+    噪音 chunk 被过滤，不参与分组。"""
+    clean = [c for c in chunks if not _is_noise(c.raw_content)]
+    if not clean:
+        return []
     groups: list[list[LayoutChunk]] = []
     current: list[LayoutChunk] = []
-    for chunk in chunks:
+    for chunk in clean:
         if _is_section_heading(chunk.raw_content) and current:
             groups.append(current)
             current = [chunk]
@@ -274,7 +386,7 @@ def _group_by_section(chunks: list[LayoutChunk]) -> list[list[LayoutChunk]]:
             current.append(chunk)
     if current:
         groups.append(current)
-    return groups if groups else [chunks]
+    return groups if groups else [clean]
 
 
 def judge_text_node(state: PipelineState) -> dict:
@@ -286,12 +398,26 @@ def judge_text_node(state: PipelineState) -> dict:
     judge = LLMJudge()
     verdicts: list[dict] = []
 
-    # Section 级别判断：同 section 内所有 chunks 拼接后一起送 judge，verdict 广播给 section 内所有 chunk
+    # 噪音 chunk 直接被标记为跳过（不参与 judge，不计入 passed/failed）
+    noise_ids: set[str] = set()
+    for chunk in chunks:
+        if _is_noise(chunk.raw_content):
+            noise_ids.add(chunk.chunk_id)
+            verdicts.append({
+                "chunk_id": chunk.chunk_id,
+                "passed": True,
+                "score": 1.0,
+                "feedback": "noise — skipped",
+            })
+
+    # Section 级别判断：同 section 内所有非噪音 chunks 拼接后一起送 judge
     sections = _group_by_section(chunks)
     for section_chunks in sections:
         combined = "\n\n".join(c.raw_content for c in section_chunks)
         v = judge.judge("text", combined, state["pdf_path"])
         for chunk in section_chunks:
+            if chunk.chunk_id in noise_ids:
+                continue
             verdicts.append({
                 "chunk_id": chunk.chunk_id,
                 "passed": v.passed,
@@ -317,6 +443,7 @@ def judge_table_node(state: PipelineState) -> dict:
             "passed": v.passed,
             "score": v.score,
             "feedback": v.feedback,
+            "issue_type": v.issue_type,
         })
     return {"table_verdicts": verdicts, "routes_done": {"table"}}
 
@@ -344,9 +471,7 @@ def judge_image_node(state: PipelineState) -> dict:
 
 
 def retry_text(state: PipelineState) -> Literal["text_worker", "merge_chunks"]:
-    if (any(not v["passed"] for v in state.get("text_verdicts", []))
-            and state.get("text_retries", 0) < MAX_RETRIES):
-        return "text_worker"
+    # text 不复用反馈重试（line 级比 block 级更差），judge 只做质量门控
     return "merge_chunks"
 
 
@@ -390,59 +515,57 @@ def merge_chunks_node(state: PipelineState) -> PipelineState:
     return {"merged_chunks": merged}
 
 
+# ─── 质量评估节点 ──────────────────────────────────────────────────────────────
+
+
+def quality_eval_node(state: PipelineState) -> dict:
+    """论文质量评估（分类 → Map-Reduce → chunk 上下文 → 入库）"""
+    merged = state.get("merged_chunks", [])
+    pdf_path = state.get("pdf_path", "")
+
+    if not merged:
+        return {"quality_result": {"skip": True}}
+
+    from src.judge.paper_evaluator import PaperQualityEvaluator
+    evaluator = PaperQualityEvaluator()
+    result = evaluator.evaluate(merged, pdf_path)
+    return {"quality_result": result}
+
+
 # ─── 最终路由 ──────────────────────────────────────────────────────────────────
 
 
-def final_route(state: PipelineState) -> Literal["store", "merge_chunks"]:
-    """
-    merge_chunks 汇聚后的终结路由。
-
-    降级存储策略：无论是否有失败 chunk，retries 耗尽后都走 store_node。
-    store_node 只存通过的 chunk；有失败时状态置为 "partial"，无失败时为 "done"。
-
-    注意：routes_done 使用 operator.or_ 只能累加，第一轮完成后永远是满集，
-    因此 fan-in 门控只在第一轮有效。retry 轮次的同步依赖 retry 耗尽检查。
-    """
+def final_route(state: PipelineState) -> Literal["finalize", "merge_chunks"]:
+    """Fan-in 门控：等待三条路线全部完成后再结束。"""
     done = state.get("routes_done", set())
     required = {"text", "table", "image"}
     if not required.issubset(done):
-        # 第一轮尚未全部完成，继续等待
         return "merge_chunks"
+    return "finalize"
 
-    text_failed = any(not v["passed"] for v in state.get("text_verdicts", []))
-    table_failed = any(not v["passed"] for v in state.get("table_verdicts", []))
-    image_failed = any(not v["passed"] for v in state.get("image_verdicts", []))
 
-    if not (text_failed or table_failed or image_failed):
-        return "store"
-
-    # 有失败：检查各失败路线的 retry 是否耗尽
-    text_exhausted  = not text_failed  or state.get("text_retries",  0) >= MAX_RETRIES
-    table_exhausted = not table_failed or state.get("table_retries", 0) >= MAX_RETRIES
-    image_exhausted = not image_failed or state.get("image_retries", 0) >= MAX_RETRIES
-
-    if text_exhausted and table_exhausted and image_exhausted:
-        # retries 全部耗尽 → 降级存储：存通过的部分，记录哪些失败
-        return "store"
-
-    # retry 仍在进行，继续在 merge_chunks 轮询等待
-    return "merge_chunks"
+def finalize_node(state: PipelineState) -> PipelineState:
+    """清理由 pipeline 负责的最终状态标记。"""
+    return {"status": "done"}
 
 
 # ─── Store 节点 ────────────────────────────────────────────────────────────────
 
 
 def store_node(state: PipelineState) -> PipelineState:
-    store = FAISSStore()
-    out_dir = state.get("output_dir", STORE_DIR)
+    store = QdrantStore()
+    quality = state.get("quality_result", {})
 
-    from pathlib import Path
+    # 用户关闭自动入库
+    if not state.get("auto_store", True):
+        logger.info("auto_store=False，跳过入库 | paper=%s", state.get("paper_id", "?"))
+        return {"status": "pending_store"}
 
-    if Path(out_dir).exists():
-        try:
-            store.load(out_dir)
-        except Exception:
-            pass
+    # 分类为 other → 跳过入库
+    if quality.get("skip"):
+        logger.info("质量评估标记为跳过入库 | paper=%s | category=%s",
+                     state.get("paper_id", "?"), quality.get("category"))
+        return {"status": "skipped"}
 
     verdicts_map: dict[str, JudgeVerdict] = {}
     for v in state.get("text_verdicts", []):
@@ -452,30 +575,47 @@ def store_node(state: PipelineState) -> PipelineState:
     for v in state.get("image_verdicts", []):
         verdicts_map[v["chunk_id"]] = v
 
-    # 直接遍历 merged_chunks（已按阅读顺序排序），而非重新聚合
     merged: list[LayoutChunk] = state.get("merged_chunks", [])
+    chunk_contexts: dict[str, str] = quality.get("chunk_contexts", {})
 
     for chunk in merged:
         v = verdicts_map.get(chunk.chunk_id)
         if v and v["passed"]:
+            # 拼接上下文后一起向量化
+            context = chunk_contexts.get(chunk.chunk_id, "")
+            content_with_context = f"{context}\n\n{chunk.raw_content}" if context else chunk.raw_content
+
+            metadata = {
+                **chunk.metadata,
+                "page": chunk.page,
+                "bbox": chunk.bbox,
+                "column": chunk.column,
+                "order_in_page": chunk.order_in_page,
+                "global_order": chunk.global_order,
+                "chunk_id": chunk.chunk_id,
+                "content_type": chunk.content_type,
+                "score": v["score"],
+                # 质量评估元数据（用于 Qdrant 过滤）
+                "category": quality.get("category"),
+                "classify_status": quality.get("classify_status"),
+                "credibility": quality.get("credibility"),
+                "fermentation_relevance": quality.get("fermentation_relevance"),
+                "is_actionable": quality.get("is_actionable"),
+                "paper_title": quality.get("paper_title"),
+                "paper_summary": quality.get("paper_summary"),
+                "target_products": quality.get("target_products", []),
+                "organisms": quality.get("organisms", []),
+                "classify_reason": quality.get("classify_reason", ""),
+            }
+
             store.add(
                 paper_id=state["paper_id"],
                 worker_type=chunk.content_type,
-                content=chunk.raw_content,
-                metadata={
-                    **chunk.metadata,
-                    "page": chunk.page,
-                    "bbox": chunk.bbox,
-                    "column": chunk.column,
-                    "order_in_page": chunk.order_in_page,
-                    "global_order": chunk.global_order,
-                    "chunk_id": chunk.chunk_id,
-                    "content_type": chunk.content_type,
-                    "score": v["score"],
-                },
+                content=content_with_context,
+                metadata=metadata,
             )
 
-    store.save(out_dir)
+    store.save("")  # Qdrant 自动持久化
 
     # 降级存储：检查是否有失败 chunk，有则记录 warning 并置 partial 状态
     all_verdicts = (
@@ -488,11 +628,11 @@ def store_node(state: PipelineState) -> PipelineState:
         logger.warning(
             "Stored with partial failures | paper=%s | stored=%d | failed=%d | failed_ids=%s",
             state.get("paper_id", "?"),
-            store.index.ntotal if store.index else 0,
+            store.count,
             len(failed),
             [v["chunk_id"] for v in failed],
         )
-        return {"status": "partial"}
+        return {"status": "partial", "stored": store.count, "failed": len(failed)}
 
     return {"status": "done"}
 
@@ -503,7 +643,7 @@ def store_node(state: PipelineState) -> PipelineState:
 def build_graph():
     graph = StateGraph(PipelineState)
 
-    # 节点
+    # 节点（解析 + Judge + merge；quality 和 store 由 Streamlit 按钮手动触发）
     graph.add_node("coordinator", coordinator_node)
     graph.add_node("text_worker", text_worker_node)
     graph.add_node("table_worker", table_worker_node)
@@ -512,7 +652,7 @@ def build_graph():
     graph.add_node("judge_table", judge_table_node)
     graph.add_node("judge_image", judge_image_node)
     graph.add_node("merge_chunks", merge_chunks_node)
-    graph.add_node("store", store_node)
+    graph.add_node("finalize", finalize_node)
 
     # 启动
     graph.add_edge(START, "coordinator")
@@ -532,10 +672,8 @@ def build_graph():
     graph.add_conditional_edges("judge_table", retry_table)
     graph.add_conditional_edges("judge_image", retry_image)
 
-    # Fan-in → 最终路由：全部通过 → store；retry 耗尽（含部分失败）→ store（降级存储）
+    # Fan-in 门控 → 等待全部完成 → finalize
     graph.add_conditional_edges("merge_chunks", final_route)
-
-    # store 永远是终结节点（status=done 或 partial）
-    graph.add_edge("store", END)
+    graph.add_edge("finalize", END)
 
     return graph.compile()

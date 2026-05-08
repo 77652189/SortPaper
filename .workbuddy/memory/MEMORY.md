@@ -1,5 +1,8 @@
 # MEMORY.md - 项目长时记忆
 
+## 交互规则
+- **改代码前先确认**：先说明问题和方案，等用户同意再动手。信息不足时先问，不要自行假设。
+
 ## PaperSort 项目架构
 
 ### 当前设计（2026-04-29 重构）
@@ -16,6 +19,10 @@
 **Parser 改动**：
 - `PyMuPDFParser` → 返回 `list[LayoutChunk]`，每个 span/block 一个 chunk
 - `TableParser` → 返回 `list[LayoutChunk]`，每个表格一个 chunk，带 bbox
+  - 三阶段探测：pdfplumber → PyMuPDF find_tables() → camelot stream
+  - `_is_valid_table()` 过滤误检（页眉/参考文献/正文段落/稀疏表格等）
+  - `_to_markdown()` 自动识别表头行（`_find_header_row()`）
+  - `_merge_camelot_chunks()` 合并同一页面内被切割的表格
 - `VisionParser` → 返回 `list[LayoutChunk]`，每个图片一个 chunk，带 bbox
 
 **LayoutMerger** (`src/parsers/layout_chunk.py`)：
@@ -41,3 +48,19 @@
 3. **Retry 机制**：全局重试（MAX_RETRIES=3），failed chunks 带 feedback 重新解析，passed chunks 保留
 4. **Chunk ID 稳定性**：基于 title+page 生成，跨重试同位置 chunk 共享同一 ID
 5. **去重策略**：同一区域被多个 Parser 提取时，通过 IoU + 内容相似度判定重复，table > text > image 优先级保留
+
+### 配置化（2026-05-06）
+
+所有 parser 的硬编码参数统一收拢到 `src/parsers/config.py`，使用 `dataclass` 组织，每条参数带中文注释。
+
+配置文件结构：
+- `TableParserConfig` — 表格验证阈值、关键词列表、合并参数、去重 IoU 阈值
+- `LayoutConfig` — 去重/合并间距、页眉页脚比例、排序参数、章节标题集合
+- `VisionParserConfig` — 图片面积阈值、VL 提示词、图注查找范围
+- `PyMuPDFParserConfig` — 上标基线偏移比例
+
+各 parser 已通过 `from src.parsers.config import XXX as CFG` 引用配置：
+- `table_parser.py` → `TABLE_PARSER as CFG`
+- `layout_chunk.py` → `LAYOUT as CFG`
+- `vision_parser.py` → `VISION as CFG`
+- `pymupdf_parser.py` → `PYMUPDF as CFG`

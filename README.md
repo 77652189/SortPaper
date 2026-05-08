@@ -7,7 +7,9 @@
 [![Python](https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white)](https://python.org)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.5+-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io)
 [![LangGraph](https://img.shields.io/badge/LangGraph-pipeline-4A90D9)](https://github.com/langchain-ai/langgraph)
-[![DashScope](https://img.shields.io/badge/DashScope-qwen--max-FF6A00)](https://dashscope.aliyun.com)
+[![Qdrant](https://img.shields.io/badge/Qdrant-Hybrid--Search-5B21B6)](https://qdrant.tech)
+[![DashScope](https://img.shields.io/badge/DashScope-Embedding+Generate-FF6A00)](https://dashscope.aliyun.com)
+[![DeepSeek](https://img.shields.io/badge/DeepSeek-V4--flash-4D6BFE)](https://deepseek.com)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
 **Language:**
@@ -22,7 +24,7 @@
 
 ## Overview
 
-**SortPaper** is a local-first academic paper processing pipeline. It extracts structured content from PDF research papers (text, tables, images), evaluates each chunk with an LLM judge, embeds passing chunks into a FAISS vector store, and surfaces them through a Streamlit GUI for interactive browsing and semantic search.
+**SortPaper** is a local-first academic paper processing pipeline. It extracts structured content from PDF research papers (text, tables, images), evaluates each chunk with an LLM judge, classifies papers by quality, and stores passing chunks into a Qdrant vector database with Hybrid Search (Dense + Sparse + RRF) and optional Agent-based synthesis.
 
 ## ✨ Features
 
@@ -117,11 +119,34 @@ SortPaper/
 | Text parsing | PyMuPDF (fitz) |
 | Table parsing | pdfplumber |
 | Image captioning | Qwen-VL-Max (DashScope) |
-| LLM Judge | qwen-max (DashScope) |
-| Embedding | text-embedding-v3 (DashScope) |
-| Vector store | FAISS |
+| LLM Judge | DeepSeek V4-flash |
+| Vision | qwen-vl-plus (DashScope) |
+| Embedding | text-embedding-v3 (Dense + Sparse) |
+| Reranker | qwen3-rerank |
+| Vector store | Qdrant (Hybrid Search: Dense + Sparse + RRF) |
+| Agent | Qwen Function Calling |
 | Pipeline | LangGraph |
 | GUI | Streamlit |
+
+---
+
+## 🧠 AI Contributors
+
+> *A council of models, each bringing their unique brilliance to the pipeline.*
+
+| Model | Role | Contribution |
+|---|---|---|
+| 🐋 **DeepSeek V4-flash** | Chief Judge & Quality Evaluator | Evaluates chunk quality, classifies papers, performs Map-Reduce summarization |
+| 🧬 **text-embedding-v3** | Dual-Index Librarian | Generates dense + sparse vectors for Hybrid Search — captures both semantic meaning and precise terminology |
+| 🎯 **qwen3-rerank** | Senior Editor | Re-ranks retrieved chunks, ensuring the most relevant literature appears first |
+| 👁️ **qwen-vl-plus** | Visual Analyst | Describes figures, charts, and embedded images in papers |
+| 🧠 **Qwen (Generation)** | Synthesis Agent | Function-calling agent that autonomously searches, filters, and synthesizes cross-paper recommendations |
+| 🧭 **LangGraph** | Pipeline Orchestrator | Coordinates parallel parsing → judging → merging with retry logic |
+| 🤖 **DeepSeek V4 Pro** | Development Companion | Real-time code generation, architecture design, and iterative refinement via WorkBuddy |
+
+<div align="center">
+  <sub>🐋 DeepSeek · 🧬 DashScope · 🎯 Qwen · 👁️ qwen-vl · 🧠 Qwen-Agent · 🧭 LangGraph · 🤖 WorkBuddy</sub>
+</div>
 
 ---
 

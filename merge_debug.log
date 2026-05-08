@@ -1,0 +1,305 @@
+i=0 p1 col0 y0=40.6 y1=60.5 page_h=833 zone_ratio=0.35 in_zone=True content='Critical Reviews in Biotechnology'
+i=1 p1 col0 y0=134.3 y1=144.9 page_h=833 zone_ratio=0.35 in_zone=True content='ISSN: (Print) (Online) Journal homepage:'
+i=2 p1 col2 y0=167.3 y1=233.3 page_h=833 zone_ratio=0.35 in_zone=True content='Physiological effects, biosynthesis, and'
+  -> next: p1 col2 y0=258.1 y_gap=24.8 next_in_zone=True same_page=True
+  ✅ MERGING with next chunk
+  -> merged result: y0=167.3 y1=288.0
+i=4 p1 col2 y0=309.1 y1=359.6 page_h=833 zone_ratio=0.35 in_zone=False content='To cite this article: Yingying Zhu, Guoc'
+i=5 p1 col0 y0=366.1 y1=379.4 page_h=833 zone_ratio=0.35 in_zone=False content='To link to this article:  https://doi.or'
+i=6 p1 col0 y0=421.7 y1=433.5 page_h=833 zone_ratio=0.35 in_zone=False content='Published online: 04 Aug 2021.'
+i=7 p1 col0 y0=466.5 y1=478.4 page_h=833 zone_ratio=0.35 in_zone=False content='Submit your article to this journal'
+i=8 p1 col0 y0=507.5 y1=519.3 page_h=833 zone_ratio=0.35 in_zone=False content='Article views: 56'
+i=9 p1 col0 y0=552.3 y1=564.2 page_h=833 zone_ratio=0.35 in_zone=False content='View related articles'
+i=10 p1 col0 y0=595.2 y1=607.1 page_h=833 zone_ratio=0.35 in_zone=False content='View Crossmark data'
+i=11 p1 col0 y0=767.6 y1=790.4 page_h=833 zone_ratio=0.35 in_zone=False content='Full Terms & Conditions of access and us'
+i=12 p2 col0 y0=51.0 y1=67.5 page_h=792 zone_ratio=0.35 in_zone=True content='CRITICAL REVIEWS IN BIOTECHNOLOGY
+https:'
+i=13 p2 col0 y0=82.1 y1=92.1 page_h=792 zone_ratio=0.35 in_zone=True content='REVIEW ARTICLE'
+i=14 p2 col2 y0=103.0 y1=133.0 page_h=792 zone_ratio=0.35 in_zone=True content='Physiological effects, biosynthesis, and'
+  -> next: p2 col2 y0=143.1 y_gap=10.1 next_in_zone=True same_page=True
+  ✅ MERGING with next chunk
+  -> merged result: y0=103.0 y1=158.2
+i=16 p2 col2 y0=164.8 y1=225.8 page_h=792 zone_ratio=0.35 in_zone=True content='aState Key Laboratory of Food Science an'
+  -> next: p2 col2 y0=249.1 y_gap=23.3 next_in_zone=True same_page=True
+  ✅ MERGING with next chunk
+  -> merged result: y0=164.8 y1=407.2
+i=18 p2 col1 y0=249.3 y1=284.1 page_h=792 zone_ratio=0.35 in_zone=True content='ARTICLE HISTORY
+Received 15 January 2021'
+i=19 p2 col1 y0=294.3 y1=356.1 page_h=792 zone_ratio=0.35 in_zone=False content='KEYWORDS
+Human milk
+oligosaccharides; la'
+i=20 p2 col1 y0=450.6 y1=685.3 page_h=792 zone_ratio=0.35 in_zone=False content='30-sialyllactose (30-SL), 60-sialyllacto'
+i=21 p2 col0 y0=451.3 y1=462.3 page_h=792 zone_ratio=0.35 in_zone=False content='Introduction'
+i=22 p2 col0 y0=471.0 y1=685.3 page_h=792 zone_ratio=0.35 in_zone=False content='Human milk oligosaccharides (HMOs), incl'
+i=23 p2 col2 y0=700.1 y1=735.2 page_h=792 zone_ratio=0.35 in_zone=False content='CONTACT Sang Yup Lee
+leesy@kaist.ac.kr
+D'
+i=24 p2 col0 y0=738.6 y1=745.7 page_h=792 zone_ratio=0.35 in_zone=False content=' 2021 Informa UK Limited, trading as Ta'
+i=25 p3 col0 y0=27.1 y1=34.6 page_h=792 zone_ratio=0.35 in_zone=True content='2
+Y. ZHU ET AL.'
+i=26 p3 col0 y0=51.9 y1=61.6 page_h=792 zone_ratio=0.35 in_zone=True content='Table 1. Commercial infant formula with '
+i=27 p3 col2 y0=66.3 y1=74.3 page_h=792 zone_ratio=0.35 in_zone=True content='Company
+Brands
+HMOs components
+Country'
+  -> next: p3 col2 y0=76.8 y_gap=2.5 next_in_zone=True same_page=True
+  ✅ MERGING with next chunk
+  -> merged result: y0=66.3 y1=167.3
+i=29 p3 col0 y0=371.3 y1=381.1 page_h=792 zone_ratio=0.35 in_zone=False content='Figure 1. Structures of LNT, LNnT, and t'
+i=30 p3 col1 y0=396.0 y1=735.9 page_h=792 zone_ratio=0.35 in_zone=False content='account for more than 30% (w/w) of the t'
+i=31 p3 col0 y0=396.0 y1=735.9 page_h=792 zone_ratio=0.35 in_zone=False content='optimistic. Thus, more clinical trials o'
+i=32 p4 col1 y0=27.1 y1=34.6 page_h=792 zone_ratio=0.35 in_zone=True content='CRITICAL REVIEWS IN BIOTECHNOLOGY
+3'
+i=33 p4 col0 y0=52.1 y1=101.5 page_h=792 zone_ratio=0.35 in_zone=True content='the synthesis of LNT, LNnT, and their fu'
+i=34 p4 col1 y0=52.1 y1=399.1 page_h=792 zone_ratio=0.35 in_zone=True content='increased by 41.5% when fed with LNnT in'
+i=35 p4 col0 y0=123.2 y1=147.3 page_h=792 zone_ratio=0.35 in_zone=True content='Occurrence of LNT and LNnT in
+mammalian '
+i=36 p4 col0 y0=147.5 y1=170.0 page_h=792 zone_ratio=0.35 in_zone=True content='HMO在人的母乳中含量很高，但在畜牧动物源乳液中
+含量较低。'
+i=37 p4 col0 y0=155.8 y1=455.2 page_h=792 zone_ratio=0.35 in_zone=True content='HMOs are present in a concentration of 5'
+i=38 p4 col1 y0=432.3 y1=471.6 page_h=792 zone_ratio=0.35 in_zone=False content='免疫调节剂
+诱导免疫因子：增加免
+疫效应细胞的数量'
+i=39 p4 col1 y0=436.5 y1=447.0 page_h=792 zone_ratio=0.35 in_zone=False content='Immune modulators'
+i=40 p4 col1 y0=455.9 y1=546.9 page_h=792 zone_ratio=0.35 in_zone=False content='Several studies have reported that LNnT '
+i=41 p4 col0 y0=476.9 y1=487.9 page_h=792 zone_ratio=0.35 in_zone=False content='Physiological effects'
+i=42 p4 col0 y0=487.8 y1=514.8 page_h=792 zone_ratio=0.35 in_zone=False content='益生元效果
+益生元，不能直接被宿主直接消化吸收，
+是为益生菌提供“养料”的低聚糖'
+i=43 p4 col0 y0=496.3 y1=506.8 page_h=792 zone_ratio=0.35 in_zone=False content='Prebiotic effect'
+i=44 p4 col0 y0=515.7 y1=735.9 page_h=792 zone_ratio=0.35 in_zone=False content='HMOs are known to have several biologica'
+i=45 p4 col0 y0=550.0 y1=559.0 page_h=792 zone_ratio=0.35 in_zone=False content='双歧杆菌'
+i=46 p4 col1 y0=550.4 y1=735.9 page_h=792 zone_ratio=0.35 in_zone=False content='cells and that the increased population '
+i=47 p5 col0 y0=27.1 y1=34.6 page_h=792 zone_ratio=0.35 in_zone=True content='4
+Y. ZHU ET AL.'
+i=48 p5 col1 y0=48.8 y1=208.2 page_h=792 zone_ratio=0.35 in_zone=True content='oligosaccharide binding assay, the VP8 '
+i=49 p5 col0 y0=52.2 y1=62.7 page_h=792 zone_ratio=0.35 in_zone=True content='Preventing necrotizing enterocolitis'
+i=50 p5 col0 y0=71.5 y1=344.1 page_h=792 zone_ratio=0.35 in_zone=True content='Necrotizing enterocolitis is a serious i'
+i=51 p5 col1 y0=228.7 y1=237.7 page_h=792 zone_ratio=0.35 in_zone=True content='调节肠道细胞反应'
+i=52 p5 col1 y0=230.3 y1=240.8 page_h=792 zone_ratio=0.35 in_zone=True content='Modulators of intestinal cell responses'
+i=53 p5 col1 y0=249.7 y1=485.5 page_h=792 zone_ratio=0.35 in_zone=True content='It was reported that the oligosaccharide'
+i=54 p5 col0 y0=364.5 y1=376.5 page_h=792 zone_ratio=0.35 in_zone=False content='坏死性小肠结肠炎'
+i=55 p5 col0 y0=366.2 y1=376.7 page_h=792 zone_ratio=0.35 in_zone=False content='Antiadhesive antimicrobials'
+i=56 p5 col0 y0=385.6 y1=605.6 page_h=792 zone_ratio=0.35 in_zone=False content='HMOs can act as decoys toward pathogens '
+i=57 p5 col1 y0=507.2 y1=518.2 page_h=792 zone_ratio=0.35 in_zone=False content='Commercial importance'
+i=58 p5 col1 y0=526.9 y1=696.3 page_h=792 zone_ratio=0.35 in_zone=False content='Both LNT and LNnT have received GRAS sta'
+i=59 p5 col0 y0=627.7 y1=638.2 page_h=792 zone_ratio=0.35 in_zone=False content='Antiviral protection'
+i=60 p5 col0 y0=629.2 y1=641.2 page_h=792 zone_ratio=0.35 in_zone=False content='抗病毒'
+i=61 p5 col0 y0=647.1 y1=735.9 page_h=792 zone_ratio=0.35 in_zone=False content='HMOs have been evaluated for their promi'
+i=62 p5 col1 y0=699.3 y1=735.9 page_h=792 zone_ratio=0.35 in_zone=False content='Glycom
+A/S
+and
+Jennewein
+Biotechnologie
+'
+i=63 p6 col1 y0=27.1 y1=34.6 page_h=792 zone_ratio=0.35 in_zone=True content='CRITICAL REVIEWS IN BIOTECHNOLOGY
+5'
+i=64 p6 col1 y0=52.1 y1=140.6 page_h=792 zone_ratio=0.35 in_zone=True content='elaborate procedures for: protection, gl'
+i=65 p6 col0 y0=52.1 y1=245.1 page_h=792 zone_ratio=0.35 in_zone=True content='LNT is stable for up to 3 years under am'
+i=66 p6 col1 y0=162.7 y1=173.2 page_h=792 zone_ratio=0.35 in_zone=True content='Enzymatic production'
+i=67 p6 col1 y0=182.1 y1=283.7 page_h=792 zone_ratio=0.35 in_zone=True content='Lacto-N-triose II (LNT II) is the common'
+i=68 p6 col0 y0=248.2 y1=349.7 page_h=792 zone_ratio=0.35 in_zone=True content='formula contains 0.05, 0.013, 0.013, and'
+i=69 p6 col1 y0=296.9 y1=414.3 page_h=792 zone_ratio=0.35 in_zone=False content='Enzymatic production of LNT II
+Mammalian'
+i=70 p6 col0 y0=371.4 y1=382.4 page_h=792 zone_ratio=0.35 in_zone=False content='Biosynthesis'
+i=71 p6 col0 y0=391.2 y1=414.3 page_h=792 zone_ratio=0.35 in_zone=False content='LNT and LNnT have been conventionally pr'
+i=72 p6 col2 y0=676.7 y1=720.6 page_h=792 zone_ratio=0.35 in_zone=False content='Figure 2. Enzymatic synthesis of LNT II,'
+i=73 p7 col0 y0=27.1 y1=34.6 page_h=612 zone_ratio=0.35 in_zone=True content='6
+Y. ZHU ET AL.'
+i=74 p7 col0 y0=52.1 y1=735.9 page_h=612 zone_ratio=0.35 in_zone=True content='initiation and the elongation of poly N-'
+i=75 p7 col0 y0=53.0 y1=733.6 page_h=612 zone_ratio=0.35 in_zone=True content='Product
+Key enzyme
+Reaction strategy
+Don'
+i=76 p7 col1 y0=445.7 y1=481.7 page_h=612 zone_ratio=0.35 in_zone=False content='LNnT反向
+生成LNT 
+II的过程'
+i=77 p7 col0 y0=461.5 y1=473.5 page_h=612 zone_ratio=0.35 in_zone=False content='双裂双岐杆菌'
+i=78 p7 col0 y0=462.0 y1=733.6 page_h=612 zone_ratio=0.35 in_zone=False content='Table 2. Summary of the enzymatic synthe'
+i=79 p7 col0 y0=487.0 y1=499.0 page_h=612 zone_ratio=0.35 in_zone=False content='同化'
+i=80 p7 col0 y0=678.8 y1=733.6 page_h=612 zone_ratio=0.35 in_zone=False content='NR: not reported.'
+i=81 p8 col1 y0=27.1 y1=34.6 page_h=792 zone_ratio=0.35 in_zone=True content='CRITICAL REVIEWS IN BIOTECHNOLOGY
+7'
+i=82 p8 col2 y0=322.8 y1=475.6 page_h=792 zone_ratio=0.35 in_zone=False content='Figure 3. Engineered metabolic pathway f'
+i=83 p8 col1 y0=498.9 y1=735.9 page_h=792 zone_ratio=0.35 in_zone=False content='have hydrolysis and transglycosylation s'
+i=84 p8 col0 y0=498.9 y1=683.4 page_h=792 zone_ratio=0.35 in_zone=False content='lactose, with a yield of approximately 9'
+i=85 p8 col0 y0=696.7 y1=735.9 page_h=792 zone_ratio=0.35 in_zone=False content='Enzymatic production of LNT
+b-Galactosid'
+i=86 p9 col0 y0=27.1 y1=34.6 page_h=792 zone_ratio=0.35 in_zone=True content='8
+Y. ZHU ET AL.'
+i=87 p9 col0 y0=51.9 y1=61.6 page_h=792 zone_ratio=0.35 in_zone=True content='Table 3. Metabolic engineering synthesis'
+i=88 p9 col2 y0=66.3 y1=83.3 page_h=792 zone_ratio=0.35 in_zone=True content='Host strain
+Characteristics
+Key enzymes
+'
+  -> next: p9 col2 y0=87.3 y_gap=4.0 next_in_zone=True same_page=True
+  ✅ MERGING with next chunk
+  -> merged result: y0=66.3 y1=104.3
+i=90 p9 col0 y0=103.6 y1=131.3 page_h=792 zone_ratio=0.35 in_zone=True content='E. coli W3110 (fnrþ)
+Genes lgtA, wbgO, a'
+i=91 p9 col0 y0=105.3 y1=140.3 page_h=792 zone_ratio=0.35 in_zone=True content='LgtA from N.
+meningitidis and
+WbgO from '
+i=92 p9 col1 y0=105.3 y1=122.3 page_h=792 zone_ratio=0.35 in_zone=True content='Glc, Lac; shake-flask
+1.89 g/L of LNT II'
+i=93 p9 col1 y0=141.3 y1=158.3 page_h=792 zone_ratio=0.35 in_zone=True content='Gal, Lac; fed-batch
+12.72 g/L of LNT II '
+i=94 p9 col0 y0=141.3 y1=167.3 page_h=792 zone_ratio=0.35 in_zone=True content='E. coli LJ110
+Genes lgtA, wbgO, and lacY'
+i=95 p9 col0 y0=141.3 y1=176.3 page_h=792 zone_ratio=0.35 in_zone=True content='LgtA from N.
+meningitidis and
+WbgO from '
+i=96 p9 col0 y0=177.3 y1=194.3 page_h=792 zone_ratio=0.35 in_zone=True content='LgtA and LgtB from N.
+meningitidis
+Glc, '
+i=97 p9 col0 y0=177.3 y1=212.3 page_h=792 zone_ratio=0.35 in_zone=True content='B. subtilis 168
+Genes lgtA, lgtB, and la'
+i=98 p9 col0 y0=213.3 y1=230.3 page_h=792 zone_ratio=0.35 in_zone=True content='LgtA and LgtB from N.
+meningitidis
+Glc, '
+i=99 p9 col0 y0=213.3 y1=239.3 page_h=792 zone_ratio=0.35 in_zone=True content='B. subtilis BY24 (B.
+subtilis 168
+deriva'
+i=100 p9 col0 y0=213.3 y1=248.3 page_h=792 zone_ratio=0.35 in_zone=True content='Genes lgtA and lgtB were
+heterologously '
+i=101 p9 col0 y0=249.3 y1=275.3 page_h=792 zone_ratio=0.35 in_zone=True content='E. coli JM107
+Genes lgtA, lgtB, fucT, an'
+i=102 p9 col0 y0=249.3 y1=266.3 page_h=792 zone_ratio=0.35 in_zone=True content='FucT from H. pylori
+26695
+Glc, Lac; fed-'
+i=103 p9 col0 y0=276.3 y1=302.3 page_h=792 zone_ratio=0.35 in_zone=True content='E. coli JM107
+Genes lgtA, lgtB, futA, an'
+i=104 p9 col0 y0=276.3 y1=293.3 page_h=792 zone_ratio=0.35 in_zone=True content='FutA from H. pylori
+26695
+Glc, Lac; fed-'
+i=105 p9 col0 y0=303.3 y1=329.3 page_h=792 zone_ratio=0.35 in_zone=False content='E. coli JM107
+Genes lgtA, lgtB, futB, an'
+i=106 p9 col0 y0=303.3 y1=338.3 page_h=792 zone_ratio=0.35 in_zone=False content='FutB from H. pylori
+26695
+Glc, Lac; fed-'
+i=107 p9 col1 y0=303.3 y1=311.3 page_h=792 zone_ratio=0.35 in_zone=False content='[87]'
+i=108 p9 col0 y0=339.3 y1=365.3 page_h=792 zone_ratio=0.35 in_zone=False content='E. coli
+Genes lgtA, lgtB, futC, and rcsA'
+i=109 p9 col0 y0=339.3 y1=356.3 page_h=792 zone_ratio=0.35 in_zone=False content='FutC from H. pylori
+26695
+Glc, Lac; fed-'
+i=110 p9 col0 y0=366.3 y1=401.3 page_h=792 zone_ratio=0.35 in_zone=False content='E. coli LJ110
+Genes lgtA, wbgO, lacY, fk'
+i=111 p9 col0 y0=366.3 y1=374.3 page_h=792 zone_ratio=0.35 in_zone=False content='FutC from H. pylori
+Glc, Lac, Fuc; shake'
+i=112 p9 col0 y0=402.3 y1=437.3 page_h=792 zone_ratio=0.35 in_zone=False content='E. coli LJ110
+Genes lgtA, wbgO, lacY, fk'
+i=113 p9 col0 y0=402.3 y1=419.3 page_h=792 zone_ratio=0.35 in_zone=False content='FucT14 from H. pylori
+DSM 6709
+Glc, Lac,'
+i=114 p9 col1 y0=461.0 y1=550.7 page_h=792 zone_ratio=0.35 in_zone=False content='[78]. Using rational design and site-dir'
+i=115 p9 col0 y0=461.0 y1=735.9 page_h=792 zone_ratio=0.35 in_zone=False content='microorganisms, and that from Chromobact'
+i=116 p9 col1 y0=563.9 y1=735.9 page_h=792 zone_ratio=0.35 in_zone=False content='Enzymatic production of LNnT
+Certain b-g'
+i=117 p10 col1 y0=27.1 y1=34.6 page_h=792 zone_ratio=0.35 in_zone=True content='CRITICAL REVIEWS IN BIOTECHNOLOGY
+9'
+i=118 p10 col1 y0=52.1 y1=735.9 page_h=792 zone_ratio=0.35 in_zone=True content='II. The in vivo bioconversion ratio of L'
+i=119 p10 col0 y0=52.1 y1=181.1 page_h=792 zone_ratio=0.35 in_zone=True content='and 0.2% based on LNT II, respectively. '
+i=120 p10 col0 y0=203.2 y1=213.7 page_h=792 zone_ratio=0.35 in_zone=True content='Metabolic engineering synthesis'
+i=121 p10 col0 y0=222.6 y1=735.9 page_h=792 zone_ratio=0.35 in_zone=True content='Similar to enzymatic production, product'
+i=122 p11 col0 y0=27.1 y1=34.6 page_h=792 zone_ratio=0.35 in_zone=True content='10
+Y. ZHU ET AL.'
+i=123 p11 col1 y0=51.8 y1=497.9 page_h=792 zone_ratio=0.35 in_zone=True content='glycoside hydrolase family 95 (GH 95) an'
+i=124 p11 col0 y0=52.1 y1=75.4 page_h=792 zone_ratio=0.35 in_zone=True content='metabolically engineered strains could b'
+i=125 p11 col0 y0=97.1 y1=108.1 page_h=792 zone_ratio=0.35 in_zone=True content='Derivatization'
+i=126 p11 col0 y0=116.9 y1=379.5 page_h=792 zone_ratio=0.35 in_zone=True content='The backbone structures, LNT and LNnT, c'
+i=127 p11 col0 y0=401.6 y1=412.1 page_h=792 zone_ratio=0.35 in_zone=False content='Fucosylation'
+i=128 p11 col0 y0=421.0 y1=603.8 page_h=792 zone_ratio=0.35 in_zone=False content='Fucosylated HMOs are significant compone'
+i=129 p11 col1 y0=500.9 y1=735.9 page_h=792 zone_ratio=0.35 in_zone=False content='L-fucosidase to a more efficient a-1,3/4'
+i=130 p11 col0 y0=617.0 y1=735.9 page_h=792 zone_ratio=0.35 in_zone=False content='a-L-Fucosidases
+a-L-Fucosidase (EC 3.2.1'
+i=131 p12 col1 y0=27.1 y1=34.6 page_h=792 zone_ratio=0.35 in_zone=True content='CRITICAL REVIEWS IN BIOTECHNOLOGY
+11'
+i=132 p12 col0 y0=53.1 y1=733.7 page_h=792 zone_ratio=0.35 in_zone=True content='Product
+Key enzymes
+Reaction strategy
+Do'
+i=133 p12 col0 y0=54.0 y1=733.7 page_h=792 zone_ratio=0.35 in_zone=True content='LNFP I
+Fucosyltransferase I from human ('
+i=134 p12 col0 y0=335.0 y1=733.7 page_h=792 zone_ratio=0.35 in_zone=False content='Table 4. Summary on enzymatic synthesis '
+i=135 p13 col0 y0=27.1 y1=34.6 page_h=792 zone_ratio=0.35 in_zone=True content='12
+Y. ZHU ET AL.'
+i=136 p13 col2 y0=342.4 y1=506.1 page_h=792 zone_ratio=0.35 in_zone=False content='Figure 4. Engineered metabolic pathway f'
+i=137 p13 col1 y0=540.0 y1=619.4 page_h=792 zone_ratio=0.35 in_zone=False content='Fucosyltransferases
+Fucosyltransferase ('
+i=138 p13 col0 y0=542.3 y1=695.3 page_h=792 zone_ratio=0.35 in_zone=False content='semi-rational engineering approaches. A '
+i=139 p13 col1 y0=632.6 y1=712.1 page_h=792 zone_ratio=0.35 in_zone=False content='Enzymatic
+approach
+to
+fucosylation
+of
+LN'
+i=140 p14 col1 y0=27.1 y1=34.6 page_h=792 zone_ratio=0.35 in_zone=True content='CRITICAL REVIEWS IN BIOTECHNOLOGY
+13'
+i=141 p14 col1 y0=52.1 y1=207.7 page_h=792 zone_ratio=0.35 in_zone=True content='LNDFH II from 10 mM of LNT and 22 mM of '
+i=142 p14 col0 y0=52.1 y1=735.9 page_h=792 zone_ratio=0.35 in_zone=True content='LNDFH I from 1.7 mg of the above-produce'
+i=143 p14 col1 y0=220.9 y1=431.9 page_h=792 zone_ratio=0.35 in_zone=True content='Cell
+factory
+approach
+to
+fucosylation
+of'
+i=144 p14 col1 y0=435.2 y1=735.9 page_h=792 zone_ratio=0.35 in_zone=False content='L-fucokinase/L-fucose 1-phosphate guanyl'
+i=145 p15 col0 y0=27.1 y1=34.6 page_h=792 zone_ratio=0.35 in_zone=True content='14
+Y. ZHU ET AL.'
+i=146 p15 col1 y0=52.1 y1=618.1 page_h=792 zone_ratio=0.35 in_zone=True content='formation of four major types of glycosi'
+i=147 p15 col0 y0=52.1 y1=274.5 page_h=792 zone_ratio=0.35 in_zone=True content='accompanied by the production of a small'
+i=148 p15 col0 y0=296.6 y1=307.1 page_h=792 zone_ratio=0.35 in_zone=False content='Sialylation'
+i=149 p15 col0 y0=315.7 y1=445.4 page_h=792 zone_ratio=0.35 in_zone=False content='The sialylated HMOs constituted nearly 1'
+i=150 p15 col0 y0=458.7 y1=643.8 page_h=792 zone_ratio=0.35 in_zone=False content='Sialidase
+Sialidase mainly removes termi'
+i=151 p15 col1 y0=639.8 y1=650.8 page_h=792 zone_ratio=0.35 in_zone=False content='Perspectives'
+i=152 p15 col0 y0=657.0 y1=735.9 page_h=792 zone_ratio=0.35 in_zone=False content='Sialyltransferase
+Sialyltransferase cata'
+i=153 p15 col1 y0=659.6 y1=735.9 page_h=792 zone_ratio=0.35 in_zone=False content='HMOs have been receiving much attention '
+i=154 p16 col1 y0=27.1 y1=34.6 page_h=792 zone_ratio=0.35 in_zone=True content='CRITICAL REVIEWS IN BIOTECHNOLOGY
+15'
+i=155 p16 col1 y0=52.1 y1=194.6 page_h=792 zone_ratio=0.35 in_zone=True content='pathways. Once the rationally engineered'
+i=156 p16 col0 y0=52.1 y1=735.9 page_h=792 zone_ratio=0.35 in_zone=True content='their biological production through the '
+i=157 p16 col1 y0=216.3 y1=227.3 page_h=792 zone_ratio=0.35 in_zone=True content='Acknowledgements'
+i=158 p16 col1 y0=235.9 y1=278.6 page_h=792 zone_ratio=0.35 in_zone=True content='The authors thank the China Scholarship '
+i=159 p16 col1 y0=300.1 y1=311.1 page_h=792 zone_ratio=0.35 in_zone=False content='Disclosure statement'
+i=160 p16 col1 y0=319.1 y1=328.1 page_h=792 zone_ratio=0.35 in_zone=False content='No potential conflict of interest was re'
+i=161 p16 col1 y0=349.6 y1=360.6 page_h=792 zone_ratio=0.35 in_zone=False content='Funding'
+i=162 p16 col1 y0=368.6 y1=422.6 page_h=792 zone_ratio=0.35 in_zone=False content='This work was supported by the National '
+i=163 p16 col1 y0=456.0 y1=467.0 page_h=792 zone_ratio=0.35 in_zone=False content='References'
+i=164 p16 col1 y0=475.6 y1=735.7 page_h=792 zone_ratio=0.35 in_zone=False content='[1]
+Faijes M, Castejon-Vilatersana M, Va'
+i=165 p17 col0 y0=27.1 y1=34.6 page_h=792 zone_ratio=0.35 in_zone=True content='16
+Y. ZHU ET AL.'
+i=166 p17 col1 y0=52.2 y1=735.6 page_h=792 zone_ratio=0.35 in_zone=True content='[23]
+James
+K,
+Motherway
+MO,
+Bottacini
+F,'
+i=167 p17 col0 y0=52.2 y1=735.6 page_h=792 zone_ratio=0.35 in_zone=True content='[6]
+Ackerman DL, Doster RS, Weitkamp JH,'
+i=168 p18 col1 y0=27.1 y1=34.6 page_h=792 zone_ratio=0.35 in_zone=True content='CRITICAL REVIEWS IN BIOTECHNOLOGY
+17'
+i=169 p18 col1 y0=51.9 y1=735.7 page_h=792 zone_ratio=0.35 in_zone=True content='tetraose
+(Galb1!3GlcNAcb1!3Galb1!4Glc).
+'
+i=170 p18 col0 y0=52.2 y1=735.6 page_h=792 zone_ratio=0.35 in_zone=True content='[37]
+Shang J, Piskarev VE, Xia M, et al.'
+i=171 p19 col0 y0=27.1 y1=34.6 page_h=792 zone_ratio=0.35 in_zone=True content='18
+Y. ZHU ET AL.'
+i=172 p19 col0 y0=51.9 y1=735.6 page_h=792 zone_ratio=0.35 in_zone=True content='variants
+of
+the
+b-N-hexosaminidase
+from
+'
+i=173 p19 col1 y0=52.2 y1=735.6 page_h=792 zone_ratio=0.35 in_zone=True content='[81]
+Priem B, Gilbert M, Wakarchuk WW, e'
+i=174 p20 col1 y0=27.1 y1=34.6 page_h=792 zone_ratio=0.35 in_zone=True content='CRITICAL REVIEWS IN BIOTECHNOLOGY
+19'
+i=175 p20 col1 y0=51.9 y1=732.2 page_h=792 zone_ratio=0.35 in_zone=True content='glycoproteins using highly efficient 1,2'
+i=176 p20 col0 y0=52.2 y1=732.2 page_h=792 zone_ratio=0.35 in_zone=True content='[95]
+You J, Lin SJ, Jiang T. Origins and'

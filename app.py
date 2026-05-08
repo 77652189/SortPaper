@@ -10,6 +10,8 @@ import json
 import logging
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+from datetime import datetime
 from pathlib import Path
 
 import streamlit as st
@@ -29,8 +31,114 @@ st.set_page_config(
 # ─── 常量 ──────────────────────────────────────────────────────────────────────
 
 SAMPLE_DIR = Path("data/sample_papers")
-FAISS_DIR = Path("faiss_index")
+RESULTS_DIR = Path("data/results")
 LOGO = "📄"
+
+# ─── 保存/加载结果 ────────────────────────────────────────────────────────────
+
+
+def build_snapshot(
+    result: dict,
+    filename: str,
+) -> dict:
+    """构造保存快照 JSON。"""
+    quality = result.get("quality", {})
+    verdicts = result.get("verdicts", {})
+    chunks = result.get("merged_chunks", [])
+
+    text_n = sum(1 for c in chunks if c.get("content_type") == "text")
+    table_n = sum(1 for c in chunks if c.get("content_type") == "table")
+    image_n = sum(1 for c in chunks if c.get("content_type") == "image")
+    passed = sum(1 for v in verdicts.values() if v.get("passed"))
+    failed = sum(1 for v in verdicts.values() if not v.get("passed"))
+
+    return {
+        "filename": filename,
+        "paper_id": result.get("paper_id", ""),
+        "saved_at": datetime.now().isoformat(),
+        "quality": quality,
+        "verdicts": verdicts,
+        "chunks": chunks,
+        "stats": {
+            "total": len(chunks),
+            "text": text_n,
+            "table": table_n,
+            "image": image_n,
+            "passed": passed,
+            "failed": failed,
+            "status": result.get("status", "unknown"),
+        },
+    }
+
+
+def save_result(snapshot: dict, filename: str) -> str | None:
+    """保存到 data/results/{filename}.json。
+    文件已存在时返回 None（由 UI 处理覆盖确认）。
+    保存成功返回文件路径。"""
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    safe_name = filename.replace("/", "_").replace("\\", "_")
+    target = RESULTS_DIR / f"{safe_name}.json"
+    if target.exists():
+        return None  # 已存在
+    target.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
+    return str(target)
+
+
+def overwrite_result(snapshot: dict, filename: str) -> str:
+    """强制覆盖保存。"""
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    safe_name = filename.replace("/", "_").replace("\\", "_")
+    target = RESULTS_DIR / f"{safe_name}.json"
+    target.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
+    return str(target)
+
+
+def load_saved_list() -> list[dict]:
+    """列出所有已保存结果（仅元数据，不加载全量）。"""
+    if not RESULTS_DIR.exists():
+        return []
+    items: list[dict] = []
+    for f in sorted(RESULTS_DIR.glob("*.json"), reverse=True):
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            q = data.get("quality", {})
+            stt = data.get("stats", {})
+            items.append({
+                "file_stem": f.stem,
+                "filename": data.get("filename", f.stem),
+                "saved_at": data.get("saved_at", ""),
+                "paper_title": q.get("paper_title", "?"),
+                "category": q.get("category", "?"),
+                "credibility": q.get("credibility", 0),
+                "classify_status": q.get("classify_status", "?"),
+                "paper_summary": q.get("paper_summary", ""),
+                "total_chunks": stt.get("total", 0),
+                "passed": stt.get("passed", 0),
+                "failed": stt.get("failed", 0),
+                "target_products": q.get("target_products", []),
+                "organisms": q.get("organisms", []),
+            })
+        except Exception:
+            continue
+    return items
+
+
+def load_saved_detail(file_stem: str) -> dict | None:
+    """加载已保存文件的完整 JSON。"""
+    target = RESULTS_DIR / f"{file_stem}.json"
+    if not target.exists():
+        return None
+    return json.loads(target.read_text(encoding="utf-8"))
+
+
+def delete_saved(file_stem: str) -> bool:
+    """删除已保存结果，返回是否成功。"""
+    target = RESULTS_DIR / f"{file_stem}.json"
+    if target.exists():
+        target.unlink()
+        return True
+    return False
+
 
 # ─── 工具函数 ──────────────────────────────────────────────────────────────────
 
@@ -104,14 +212,16 @@ def run_preview(pdf_bytes: bytes) -> dict:
     }
 
 
-@st.cache_data(show_spinner=False)
 def run_pipeline(pdf_bytes: bytes, paper_id: str) -> dict:
-    """Full pipeline: parsers + judge + FAISS store."""
+    """Parse pipeline: parsers + judge + merge（quality 和 store 由 Streamlit 按钮手动触发）。"""
     import sys
     sys.path.insert(0, ".")
     from src.graph.pipeline_graph import build_graph
 
-    out_dir = str(FAISS_DIR / paper_id)
+    # 保存 PDF 副本供后续质量评估使用
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    persistent_pdf = RESULTS_DIR / f"{paper_id}.pdf"
+    persistent_pdf.write_bytes(pdf_bytes)
 
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
         tmp.write(pdf_bytes)
@@ -119,18 +229,64 @@ def run_pipeline(pdf_bytes: bytes, paper_id: str) -> dict:
 
     try:
         pipeline = build_graph()
-        final = pipeline.invoke(
-            {
-                "pdf_path": str(tmp_path),
-                "paper_id": paper_id,
-                "text_retries": 0,
-                "table_retries": 0,
-                "image_retries": 0,
-                "status": "processing",
-                "output_dir": out_dir,
-            },
-            config={"recursion_limit": 100},
-        )
+        initial = {
+            "pdf_path": str(tmp_path),
+            "paper_id": paper_id,
+            "text_retries": 0, "table_retries": 0, "image_retries": 0,
+            "status": "processing", "output_dir": "",
+        }
+
+        final: dict = dict(initial)
+        node_cnt: dict[str, int] = {}
+        for event in pipeline.stream(initial, config={"recursion_limit": 100},
+                                     stream_mode="updates"):
+            node_name, node_data = list(event.items())[0]
+            for k, v in node_data.items():
+                if isinstance(v, set):
+                    final[k] = final.get(k, set()) | v
+                elif isinstance(v, dict):
+                    final[k] = {**final.get(k, {}), **v}
+                else:
+                    final[k] = v
+
+            # 终端进度
+            node_cnt[node_name] = node_cnt.get(node_name, 0) + 1
+            cnt = node_cnt[node_name]
+            retry_tag = f" [retry {cnt-1}]" if cnt > 1 else ""
+            wt = node_data.get("worker_timing", {})
+            t = wt.get("text", wt.get("table", wt.get("image", 0))) if wt else 0
+
+            if node_name == "text_worker":
+                n = len(node_data.get("text_chunks", []))
+                print(f"  [text]   parsed {n} chunks ({t:.1f}s){retry_tag}", flush=True)
+            elif node_name == "table_worker":
+                n = len(node_data.get("table_chunks", []))
+                print(f"  [table]  parsed {n} tables ({t:.1f}s){retry_tag}", flush=True)
+            elif node_name == "image_worker":
+                n = len(node_data.get("image_chunks", []))
+                print(f"  [image]  described {n} images ({t:.1f}s){retry_tag}", flush=True)
+            elif node_name == "judge_text":
+                v = node_data.get("text_verdicts", [])
+                p = sum(1 for x in v if x.get("passed"))
+                print(f"  [judge]  text: {p}/{len(v)} passed{retry_tag}", flush=True)
+            elif node_name == "judge_table":
+                v = node_data.get("table_verdicts", [])
+                p = sum(1 for x in v if x.get("passed"))
+                types = {}
+                for x in v:
+                    it = x.get("issue_type", "?")
+                    types[it] = types.get(it, 0) + 1
+                print(f"  [judge]  table: {p}/{len(v)} passed{retry_tag} | issue_types: {types}", flush=True)
+            elif node_name == "judge_image":
+                v = node_data.get("image_verdicts", [])
+                p = sum(1 for x in v if x.get("passed"))
+                print(f"  [judge]  image: {p}/{len(v)} passed{retry_tag}", flush=True)
+            elif node_name == "merge_chunks":
+                n = len(node_data.get("merged_chunks", []))
+                print(f"  [merge]  {n} merged chunks", flush=True)
+            elif node_name == "finalize":
+                status = node_data.get("status", "done")
+                print(f"  [pipeline] {status}", flush=True)
     finally:
         tmp_path.unlink(missing_ok=True)
 
@@ -145,23 +301,116 @@ def run_pipeline(pdf_bytes: bytes, paper_id: str) -> dict:
 
     merged = final.get("merged_chunks", [])
 
-    # load records if FAISS was saved
-    records: list[dict] = []
-    records_path = Path(out_dir) / "records.json"
-    if records_path.exists():
-        records = json.loads(records_path.read_text(encoding="utf-8"))
-
     return {
+        "paper_id": paper_id,
+        "_pdf_path": str(persistent_pdf),
         "text_chunks": [_chunk_to_dict(c) for c in final.get("text_chunks", [])],
         "table_chunks": [_chunk_to_dict(c) for c in final.get("table_chunks", [])],
         "image_chunks": [_chunk_to_dict(c) for c in final.get("image_chunks", [])],
         "merged_chunks": [_chunk_to_dict(c) for c in merged],
         "verdicts": all_verdicts,
         "status": final.get("status", "unknown"),
-        "records": records,
-        "out_dir": out_dir,
+        "quality": {},
+        "worker_timing": final.get("worker_timing", {}),
         "mode": "pipeline",
     }
+
+
+def store_parsed_chunks(result: dict) -> dict:
+    """手动入库：将已解析的 pipeline 结果存入 Qdrant。
+
+    返回 {"stored": int, "failed": int, "duplicate": bool, ...}。
+    """
+    from src.store.qdrant_store import QdrantStore
+    from qdrant_client.http import models
+
+    store = QdrantStore()
+    quality = result.get("quality", {})
+    paper_id = result.get("paper_id", "?")
+    verdicts = result.get("verdicts", {})
+    merged = result.get("merged_chunks", [])
+    chunk_contexts = quality.get("chunk_contexts", {})
+
+    # ── 重复检测 ──
+    existing_count = store.client.count(
+        collection_name=store.collection,
+        count_filter=models.Filter(
+            must=[models.FieldCondition(key="paper_id", match=models.MatchValue(value=paper_id))]
+        ),
+    ).count
+    if existing_count > 0:
+        logger.warning(
+            "重复入库被阻止 | paper_id=%s | 已存在 %d 条记录 | 将跳过 %d 条新记录",
+            paper_id, existing_count, len([c for c in merged if verdicts.get(c.get("chunk_id", ""), {}).get("passed")]),
+        )
+        return {"stored": 0, "failed": 0, "duplicate": True, "existing_count": existing_count}
+
+    stored = 0
+    failed = 0
+
+    for chunk in merged:
+        v = verdicts.get(chunk.get("chunk_id", ""))
+        if v and v.get("passed"):
+            context = chunk_contexts.get(chunk.get("chunk_id", ""), "")
+            content = chunk.get("raw_content", "")
+            content_with_context = f"{context}\n\n{content}" if context else content
+
+            metadata = {
+                "page": chunk.get("page"),
+                "bbox": chunk.get("bbox"),
+                "column": chunk.get("column"),
+                "order_in_page": chunk.get("order_in_page"),
+                "global_order": chunk.get("global_order"),
+                "chunk_id": chunk.get("chunk_id"),
+                "content_type": chunk.get("content_type"),
+                "score": v.get("score"),
+                "category": quality.get("category"),
+                "classify_status": quality.get("classify_status"),
+                "credibility": quality.get("credibility"),
+                "fermentation_relevance": quality.get("fermentation_relevance"),
+                "is_actionable": quality.get("is_actionable"),
+                "paper_title": quality.get("paper_title"),
+                "paper_summary": quality.get("paper_summary"),
+                "target_products": quality.get("target_products", []),
+                "organisms": quality.get("organisms", []),
+                "classify_reason": quality.get("classify_reason", ""),
+            }
+            try:
+                store.add(
+                    paper_id=paper_id,
+                    worker_type=chunk.get("content_type", "text"),
+                    content=content_with_context,
+                    metadata=metadata,
+                )
+                stored += 1
+            except Exception as e:
+                logger.error("入库失败 chunk_id=%s: %s", chunk.get("chunk_id", "?"), e)
+                failed += 1
+
+    store.save("")
+    return {"stored": stored, "failed": failed}
+
+
+def evaluate_parsed_chunks(result: dict) -> dict:
+    """手动质量评估：对已解析的 pipeline 结果执行分类 → Map-Reduce → chunk 上下文。
+
+    返回 quality_result dict，含 category / credibility / chunk_contexts 等。
+    """
+    from src.judge.paper_evaluator import PaperQualityEvaluator
+
+    merged = result.get("merged_chunks", [])
+    pdf_path = result.get("_pdf_path", "")
+
+    if not merged:
+        return {"skip": True, "error": "no merged chunks"}
+
+    import types
+
+    evaluator = PaperQualityEvaluator()
+    # merged_chunks 已序列化为 dict，evaluator 需要属性访问（.content_type / .raw_content 等）
+    chunk_objs = [types.SimpleNamespace(**c) for c in merged]
+    quality = evaluator.evaluate(chunk_objs, pdf_path)
+    return quality
 
 
 def _chunk_to_dict(chunk) -> dict:
@@ -170,34 +419,34 @@ def _chunk_to_dict(chunk) -> dict:
         "content_type": chunk.content_type,
         "page": chunk.page,
         "column": chunk.column,
+        "global_order": chunk.global_order,
         "raw_content": chunk.raw_content,
         "bbox": chunk.bbox,
         "metadata": chunk.metadata or {},
     }
 
 
-def faiss_search(query: str, paper_id: str, top_k: int = 5) -> list[dict]:
+def qdrant_search(query: str, paper_id: str, top_k: int = 5, rerank: bool = False) -> list[dict]:
     import sys
     sys.path.insert(0, ".")
-    import numpy as np
-    from src.store.faiss_store import FAISSStore
+    from src.store.qdrant_store import QdrantStore
 
-    index_dir = FAISS_DIR / paper_id
-    if not (index_dir / "index.faiss").exists():
-        return []
-
-    store = FAISSStore()
-    store.load(index_dir)
-    embedding = store.embed(query)
-    vec = np.array([embedding], dtype="float32")
-    distances, indices = store.index.search(vec, top_k)
-    results = []
-    for dist, idx in zip(distances[0], indices[0]):
-        if idx < 0 or idx >= len(store.records):
-            continue
-        rec = store.records[idx]
-        results.append({**rec, "distance": float(dist)})
-    return results
+    store = QdrantStore()
+    results = store.search(
+        query=query,
+        limit=top_k,
+        filter_kwargs={"paper_id": paper_id},
+        rerank=rerank,
+    )
+    return [
+        {
+            "id": r["id"],
+            "score": r["score"],
+            "reranked": r.get("reranked", False),
+            "payload": r["payload"],
+        }
+        for r in results
+    ]
 
 
 # ─── PDF 重建 ──────────────────────────────────────────────────────────────────
@@ -395,6 +644,7 @@ def render_chunk_card(chunk: dict, verdict: dict | None = None, index: int = 0) 
 
 
 def render_overview(result: dict) -> None:
+    """纯展示，不包含任何会触发 st.rerun() 的按钮。"""
     text_n = len(result.get("text_chunks", []))
     table_n = len(result.get("table_chunks", []))
     img_n = len(result.get("images", result.get("image_chunks", [])))
@@ -412,15 +662,54 @@ def render_overview(result: dict) -> None:
         c4.metric("Judge 通过", f"{passed} / {passed + failed}")
 
         status = result.get("status", "")
-        if status == "done":
-            st.success("✅ 流水线完成，FAISS 已保存")
-        elif status == "partial":
-            st.warning("⚠️ 部分 chunk 判定失败，已降级存储通过部分")
-        else:
-            st.info(f"状态: {status}")
+        quality = result.get("quality", {})
+        has_quality = bool(quality.get("category"))
+
+        if status == "done" and not has_quality:
+            st.success("✅ 解析完成")
+        elif status == "done" and has_quality:
+            st.success("✅ 质量评估完成")
+            st.caption(f"分类: {quality.get('category')} | 可信度: {quality.get('credibility', 0):.2f}")
+
+        # 计时面板（展示，无按钮）
+        quality = result.get("quality", {})
+        timing = quality.get("timing", {})
+        worker_timing = result.get("worker_timing", {})
+        if timing or worker_timing:
+            with st.expander("⏱️ 耗时统计", expanded=False):
+                # 解析阶段
+                wt_text = worker_timing.get("text", 0)
+                wt_table = worker_timing.get("table", 0)
+                wt_image = worker_timing.get("image", 0)
+                parse_total = wt_text + wt_table + wt_image
+                st.caption("**解析阶段**（三个 Worker 并行）")
+                pc1, pc2, pc3, pc4 = st.columns(4)
+                pc1.metric("文本解析", f"{wt_text:.1f}s")
+                pc2.metric("表格解析", f"{wt_table:.1f}s")
+                pc3.metric("图片解析", f"{wt_image:.1f}s")
+                pc4.metric("并行合计", f"{parse_total:.1f}s")
+
+                # 图片子阶段（image_extract / image_describe）
+                if worker_timing.get("image_describe", 0) > 0:
+                    st.caption("图片解析详情：提取 {:.1f}s + VL描述 {:.1f}s".format(
+                        worker_timing.get("image_extract", 0),
+                        worker_timing.get("image_describe", 0),
+                    ))
+
+                # 质量评估阶段
+                t_cls = timing.get("classify", 0)
+                t_map = timing.get("map", 0)
+                t_red = timing.get("reduce", 0)
+                if t_cls or t_map or t_red:
+                    st.caption("**质量评估阶段**")
+                    qc1, qc2, qc3, qc4 = st.columns(4)
+                    qc1.metric("分类", f"{t_cls:.1f}s")
+                    qc2.metric("Map", f"{t_map:.1f}s")
+                    qc3.metric("Reduce", f"{t_red:.1f}s")
+                    qc4.metric("合计", f"{t_cls + t_map + t_red:.1f}s")
     else:
         c4.metric("模式", "快速预览")
-        st.info("ℹ️ 快速预览模式：仅解析，不调用 LLM，无 Judge / FAISS 写入")
+        st.info("ℹ️ 快速预览模式：仅解析，不调用 LLM，无 Judge / 向量索引写入")
 
 
 def render_text_tab(chunks: list[dict], verdicts: dict) -> None:
@@ -469,38 +758,353 @@ def render_image_tab(result: dict) -> None:
 
 
 def render_search_tab(paper_id: str) -> None:
-    index_path = FAISS_DIR / paper_id / "index.faiss"
-    if not index_path.exists():
-        st.info("FAISS 索引不存在，请先运行完整流水线")
+    try:
+        from src.store.qdrant_store import QdrantStore
+        store = QdrantStore()
+        if store.count == 0:
+            st.info("Qdrant 索引为空，请先运行完整流水线")
+            return
+    except Exception:
+        st.warning("Qdrant 服务未连接（localhost:6333），请先启动 Qdrant")
         return
 
-    query = st.text_input("输入检索关键词或问题", placeholder="e.g. lacto-N-tetraose biosynthesis yield")
-    top_k = st.slider("返回条数", 1, 10, 5)
-    if st.button("🔍 检索"):
+    sub_tabs = st.tabs(["🔍 手动检索", "🤖 Agent 检索"])
+
+    with sub_tabs[0]:
+        _render_manual_search(paper_id)
+
+    with sub_tabs[1]:
+        _render_agent_search(paper_id)
+
+
+def _render_manual_search(paper_id: str) -> None:
+    query = st.text_input("输入检索关键词或问题", placeholder="e.g. lacto-N-tetraose biosynthesis yield",
+                          key="manual_query")
+    top_k = st.slider("返回条数", 1, 10, 5, key="manual_top_k")
+    use_rerank = st.checkbox("启用 Rerank（qwen3-rerank 二次排序）", value=True,
+                              help="先 Hybrid 召回，再用 Rerank 模型精排", key="manual_rerank")
+    if st.button("🔍 检索", key="manual_search_btn"):
         if not query.strip():
             st.warning("请输入查询内容")
             return
-        with st.spinner("向量检索中…"):
-            results = faiss_search(query, paper_id, top_k)
+        spinner_text = "Hybrid 检索 + Rerank 中…" if use_rerank else "Hybrid 检索中…"
+        with st.spinner(spinner_text):
+            results = qdrant_search(query, paper_id, top_k, rerank=use_rerank)
         if not results:
             st.warning("未找到相关结果")
             return
         st.caption(f"找到 {len(results)} 条结果")
         for r in results:
-            dist = r.get("distance", 0)
-            wtype = r.get("worker_type", "")
-            content = r.get("content", "")
-            meta = r.get("metadata", {})
-            pg = meta.get("page", "?")
-            with st.expander(f"📌 距离={dist:.4f} | {wtype} | p{pg}", expanded=True):
+            score = r.get("score", 0)
+            payload = r.get("payload", {})
+            wtype = payload.get("worker_type", "")
+            content = payload.get("content", "")
+            pg = payload.get("page", "?")
+            reranked = "🔁 " if r.get("reranked") else ""
+            with st.expander(f"{reranked}📌 相似度={score:.4f} | {wtype} | p{pg}", expanded=True):
                 st.text(content[:800])
+
+
+def _render_agent_search(paper_id: str) -> None:
+    st.caption("Qwen 自主检索 + 综合建议。模型会自动选择关键词和过滤条件。")
+    question = st.text_area("输入你的问题", placeholder="e.g. HMO 发酵中乳糖补料导致乙酸积累，文献中有什么解决方案？",
+                            key="agent_question", height=100)
+    max_rounds = st.slider("最大检索轮次", 1, 3, 2, key="agent_rounds",
+                            help="每轮可调用一次 search_literature，多轮可换角度再查")
+
+    if st.button("🤖 Agent 检索", key="agent_search_btn", type="primary"):
+        if not question.strip():
+            st.warning("请输入问题")
+            return
+
+        from src.agent.literature_agent import LiteratureAgent
+
+        agent = LiteratureAgent()
+        with st.spinner("Agent 分析中（检索 + 综合建议）…"):
+            result = agent.query(question, max_rounds=max_rounds)
+
+        # 检索历史
+        if result["search_history"]:
+            with st.expander(f"🔍 检索过程（{len(result['search_history'])} 轮，共 {result['total_chunks']} 个 chunk）", expanded=False):
+                for h in result["search_history"]:
+                    st.caption(f"第 {h['round'] + 1} 轮: `{h['args'].get('query', '?')}`")
+                    if h["args"].get("category"):
+                        st.caption(f"  过滤: category={h['args']['category']}")
+                    st.caption(f"  命中: {h['hits']} 条")
+
+        # 综合建议
+        st.markdown("### 🧠 综合建议")
+        st.markdown(result["answer"])
+
+
+# ─── 已保存结果 ────────────────────────────────────────────────────────────────
+
+
+def category_label(cat: str) -> str:
+    labels = {
+        "fermentation_experiment": "🧪 发酵实验",
+        "biosynthesis_review": "📖 合成生物学综述",
+        "other": "📎 其他",
+    }
+    return labels.get(cat, cat)
+
+
+def render_saved_tab() -> None:
+    """已保存结果标签页：列表 + 详情。"""
+    saved_list = load_saved_list()
+
+    if not saved_list:
+        st.info("暂无已保存的解析结果。运行完整流水线后点击\"💾 保存解析结果\"即可保存。")
+        return
+
+    # 如果当前选中项不在列表中（被删除），清除选中
+    if st.session_state.selected_saved and st.session_state.selected_saved not in {
+        s["file_stem"] for s in saved_list
+    }:
+        st.session_state.selected_saved = None
+
+    # 列表 + 详情布局
+    col_list, col_detail = st.columns([1, 2])
+
+    with col_list:
+        st.caption(f"共 {len(saved_list)} 条已保存结果")
+
+        # 清空所有已保存
+        if "confirm_clear_saved" not in st.session_state:
+            st.session_state.confirm_clear_saved = False
+        if not st.session_state.confirm_clear_saved:
+            st.button("🗑️ 清空所有已保存", key="clear_all_saved", use_container_width=True,
+                      on_click=lambda: setattr(st.session_state, "confirm_clear_saved", True))
+        else:
+            st.warning("⚠️ 将删除所有已保存结果（不含向量库数据）")
+            c1, c2 = st.columns(2)
+            if c1.button("✅ 确认", use_container_width=True):
+                for item in saved_list:
+                    delete_saved(item["file_stem"])
+                st.session_state.confirm_clear_saved = False
+                st.session_state.selected_saved = None
+                st.rerun()
+            if c2.button("❌ 取消", use_container_width=True):
+                st.session_state.confirm_clear_saved = False
+                st.rerun()
+
+        for item in saved_list:
+            title = item.get("paper_title", "?")
+            cat = item.get("category", "?")
+            cred = item.get("credibility", 0)
+            passed = item.get("passed", 0)
+            failed = item.get("failed", 0)
+            saved_at = item.get("saved_at", "")[:16].replace("T", " ")
+
+            # 卡片
+            selected = st.session_state.selected_saved == item["file_stem"]
+            card_style = "border: 2px solid #2196F3; border-radius: 8px; padding: 10px;" if selected else ""
+            with st.container():
+                if st.button(
+                    f"{category_label(cat)}\n**{title[:60]}**\n可信度: {cred:.2f} | ✅{passed} ❌{failed}\n{saved_at}",
+                    key=f"saved_{item['file_stem']}",
+                    use_container_width=True,
+                ):
+                    st.session_state.selected_saved = item["file_stem"]
+                    st.rerun()
+
+    with col_detail:
+        if st.session_state.selected_saved:
+            detail = load_saved_detail(st.session_state.selected_saved)
+            if detail:
+                render_saved_detail(detail, st.session_state.selected_saved)
+        else:
+            st.info("← 选择一条已保存结果查看详情")
+
+
+def render_saved_detail(detail: dict, file_stem: str) -> None:
+    """已保存结果的详细视图。"""
+    quality = detail.get("quality", {})
+    stats = detail.get("stats", {})
+    verdicts = detail.get("verdicts", {})
+    chunks = detail.get("chunks", [])
+    chunk_map = quality.get("chunk_map", {})
+
+    st.subheader(quality.get("paper_title", file_stem))
+    st.caption(f"保存时间: {detail.get('saved_at', '')[:19].replace('T', ' ')} | "
+               f"文件: {detail.get('filename', file_stem)} | ID: `{detail.get('paper_id', '?')[:16]}`")
+
+    if st.button("🗑️ 删除此结果", key=f"del_{file_stem}", type="secondary"):
+        delete_saved(file_stem)
+        st.session_state.selected_saved = None
+        st.rerun()
+
+    # 子标签页
+    sub_tabs = st.tabs(["📊 概览", "📝 文本块", "📋 表格", "🖼️ 图片", "🔍 质量详情"])
+
+    # ── 概览 ──
+    with sub_tabs[0]:
+        cat = quality.get("category", "?")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("分类", category_label(cat))
+        c2.metric("可信度", f"{quality.get('credibility', 0):.2f}")
+        c3.metric("发酵相关性", f"{quality.get('fermentation_relevance', 0):.2f}")
+        c4.metric("自洽性", quality.get("classify_status", "?"))
+
+        c5, c6, c7, c8 = st.columns(4)
+        c5.metric("总 Chunks", stats.get("total", 0))
+        c6.metric("✅ 通过", stats.get("passed", 0))
+        c7.metric("❌ 失败", stats.get("failed", 0))
+        c8.metric("状态", stats.get("status", "?"))
+
+        # 计时
+        timing = quality.get("timing", {})
+        if timing:
+            st.divider()
+            st.caption("⏱️ 质量评估耗时")
+            t_cls = timing.get("classify", 0)
+            t_map = timing.get("map", 0)
+            t_red = timing.get("reduce", 0)
+            tc1, tc2, tc3, tc4 = st.columns(4)
+            tc1.metric("分类", f"{t_cls:.1f}s")
+            tc2.metric("Map", f"{t_map:.1f}s")
+            tc3.metric("Reduce", f"{t_red:.1f}s")
+            tc4.metric("合计", f"{t_cls + t_map + t_red:.1f}s")
+
+        st.divider()
+
+        if quality.get("paper_summary"):
+            st.markdown("**论文摘要**")
+            st.info(quality["paper_summary"])
+
+        c9, c10 = st.columns(2)
+        with c9:
+            if quality.get("target_products"):
+                st.markdown("**目标产物**")
+                for p in quality["target_products"]:
+                    st.markdown(f"- {p}")
+        with c10:
+            if quality.get("organisms"):
+                st.markdown("**相关菌株**")
+                for o in quality["organisms"]:
+                    st.markdown(f"- {o}")
+
+        if quality.get("classify_reason"):
+            st.markdown("**分类依据**")
+            st.caption(quality["classify_reason"])
+
+        if quality.get("is_actionable"):
+            st.success("✅ 包含可指导发酵实验的信息")
+
+        if quality.get("key_evidence"):
+            st.markdown("**关键原文证据**")
+            for i, ev in enumerate(quality["key_evidence"], 1):
+                with st.expander(f"证据 {i}"):
+                    st.text(ev)
+
+    # ── 文本块 ──
+    with sub_tabs[1]:
+        text_chunks = [c for c in chunks if c.get("content_type") == "text"]
+        if not text_chunks:
+            st.info("无文本块")
+        else:
+            st.caption(f"共 {len(text_chunks)} 个文本块")
+            for c in text_chunks:
+                cid = c.get("chunk_id", "")
+                verdict = verdicts.get(cid, {})
+                passed = verdict.get("passed", True)
+                score = verdict.get("score", 0)
+                v_badge = "✅" if passed else "❌"
+                preview = c.get("raw_content", "")[:80].replace("\n", " ")
+
+                with st.expander(
+                    f"{v_badge} p{c.get('page', '?')} · {preview}… | score={score:.2f}",
+                    expanded=False,
+                ):
+                    st.text(c.get("raw_content", "")[:1200])
+                    # Map 结果
+                    cm = chunk_map.get(cid)
+                    if cm:
+                        kps = cm.get("key_points", [])
+                        ents = cm.get("entities", [])
+                        claim = cm.get("contains_claim", False)
+                        claim_detail = cm.get("claim_detail", "")
+                        if kps:
+                            st.caption("**关键要点**")
+                            for kp in kps:
+                                st.markdown(f"- {kp}")
+                        if ents:
+                            st.caption(f"**实体**: {', '.join(ents)}")
+                        if claim:
+                            st.info(f"📌 **声明**: {claim_detail}" if claim_detail else "📌 包含实验/方法声明")
+                    # Verdict
+                    fb = verdict.get("feedback", "")
+                    if fb:
+                        st.caption(f"**Judge 意见**: {fb}")
+
+    # ── 表格 ──
+    with sub_tabs[2]:
+        table_chunks = [c for c in chunks if c.get("content_type") == "table"]
+        if not table_chunks:
+            st.info("无表格块")
+        else:
+            st.caption(f"共 {len(table_chunks)} 个表格块")
+            for c in table_chunks:
+                cid = c.get("chunk_id", "")
+                verdict = verdicts.get(cid, {})
+                passed = verdict.get("passed", True)
+                score = verdict.get("score", 0)
+                v_badge = "✅" if passed else "❌"
+                with st.expander(
+                    f"{v_badge} 表格 p{c.get('page', '?')} | score={score:.2f}",
+                    expanded=False,
+                ):
+                    st.markdown(c.get("raw_content", ""))
+                    fb = verdict.get("feedback", "")
+                    if fb:
+                        st.caption(f"**Judge 意见**: {fb}")
+
+    # ── 图片 ──
+    with sub_tabs[3]:
+        img_chunks = [c for c in chunks if c.get("content_type") == "image"]
+        if not img_chunks:
+            st.info("无图片块")
+        else:
+            st.caption(f"共 {len(img_chunks)} 个图片块")
+            for c in img_chunks:
+                cid = c.get("chunk_id", "")
+                verdict = verdicts.get(cid, {})
+                passed = verdict.get("passed", True)
+                score = verdict.get("score", 0)
+                v_badge = "✅" if passed else "❌"
+                with st.expander(
+                    f"{v_badge} 图片 p{c.get('page', '?')} | score={score:.2f}",
+                    expanded=False,
+                ):
+                    st.text(c.get("raw_content", "")[:1200])
+                    fb = verdict.get("feedback", "")
+                    if fb:
+                        st.caption(f"**Judge 意见**: {fb}")
+
+    # ── 质量详情 ──
+    with sub_tabs[4]:
+        classify_result = quality.get("classify_result", {})
+        verify_result = quality.get("verify_result", {})
+
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("**分类结果 (Prompt 1)**")
+            st.json(classify_result)
+        with c2:
+            st.markdown("**验证结果 (Prompt 2)**")
+            st.json(verify_result)
+
+        if quality.get("classify_reason"):
+            st.divider()
+            st.markdown("**判断依据**")
+            st.info(quality["classify_reason"])
 
 
 # ─── 侧边栏 ────────────────────────────────────────────────────────────────────
 
 
-def sidebar() -> tuple[bytes | None, str, str]:
-    """返回 (pdf_bytes, paper_id, mode)。"""
+def sidebar() -> tuple[bytes | None, str, str, bool, str]:
+    """返回 (pdf_bytes, paper_id, mode, parse_clicked, filename)。"""
     with st.sidebar:
         st.title(f"{LOGO} SortPaper")
         st.caption("学术论文解析与检索工具")
@@ -546,9 +1150,17 @@ def sidebar() -> tuple[bytes | None, str, str]:
         mode = st.radio(
             "模式",
             ["快速预览", "完整流水线"],
-            captions=["仅解析，无 LLM 调用（免费）", "Judge + FAISS 写入（消耗 API 配额）"],
+            captions=["仅解析，无 LLM 调用（免费）", "Judge + Qdrant 写入（消耗 API 配额）"],
             label_visibility="collapsed",
         )
+
+        if mode == "完整流水线":
+            st.info(
+                "⏱️ 预计耗时 **1 ~ 2 分钟**\n\n"
+                "包含 LLM Judge + VisionParser（图片）。\n"
+                "质量评估和入库请在解析完成后手动触发。\n\n"
+                "若长时间无响应请检查 `DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` 配置。",
+            )
 
         st.divider()
 
@@ -564,68 +1176,232 @@ def sidebar() -> tuple[bytes | None, str, str]:
         if not can_parse:
             st.caption("请先选择 PDF 文件")
 
-    return pdf_bytes, paper_id, mode, parse_clicked  # type: ignore[return-value]
+        st.divider()
+
+        # ── 清空向量库 ──
+        st.subheader("向量库管理")
+        if "confirm_clear" not in st.session_state:
+            st.session_state.confirm_clear = False
+
+        if not st.session_state.confirm_clear:
+            if st.button("🗑️ 清空 Qdrant 向量库", use_container_width=True, type="secondary"):
+                st.session_state.confirm_clear = True
+                st.rerun()
+        else:
+            st.warning("⚠️ 将删除 Qdrant 中所有论文数据，不可恢复")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("✅ 确认清空", use_container_width=True, type="primary"):
+                    try:
+                        from src.store.qdrant_store import QdrantStore
+                        store = QdrantStore()
+                        before = store.count
+                        store.clear()
+                        st.session_state.confirm_clear = False
+                        st.success(f"已清空（删除 {before} 条记录）")
+                    except Exception as exc:
+                        st.session_state.confirm_clear = False
+                        st.error(f"清空失败：{exc}")
+            with col2:
+                if st.button("❌ 取消", use_container_width=True):
+                    st.session_state.confirm_clear = False
+                    st.rerun()
+
+    return pdf_bytes, paper_id, mode, parse_clicked, filename  # type: ignore[return-value]
 
 
 # ─── 主界面 ────────────────────────────────────────────────────────────────────
 
 
 def main() -> None:
-    pdf_bytes, paper_id, mode, parse_clicked = sidebar()
+    pdf_bytes, paper_id, mode, parse_clicked, filename = sidebar()
 
     # session state 管理
     if "result" not in st.session_state:
         st.session_state.result = None
     if "current_paper" not in st.session_state:
         st.session_state.current_paper = None
+    if "orig_filename" not in st.session_state:
+        st.session_state.orig_filename = ""
+    # 已保存结果：选择查看
+    if "selected_saved" not in st.session_state:
+        st.session_state.selected_saved = None
+    # 保存覆盖确认文件名
+    if "pending_save_filename" not in st.session_state:
+        st.session_state.pending_save_filename = ""
+    # 保存成功消息
+    if "save_success_msg" not in st.session_state:
+        st.session_state.save_success_msg = ""
+
+    # 记住原始文件名
+    if filename:
+        st.session_state.orig_filename = filename
 
     # 切换论文时清除旧结果
     if paper_id and paper_id != st.session_state.current_paper:
         st.session_state.result = None
         st.session_state.current_paper = paper_id
+        st.session_state.selected_saved = None
+
+    PIPELINE_TIMEOUT = 300  # 流水线最长等待 5 分钟
 
     if parse_clicked and pdf_bytes:
         st.session_state._pdf_bytes = pdf_bytes  # 供 PDF 重建使用
         mode_key = "preview" if mode == "快速预览" else "pipeline"
-        with st.spinner(f"解析中（{mode}）…"):
-            try:
-                if mode_key == "preview":
+
+        start_ts = time.time()
+        try:
+            if mode_key == "preview":
+                with st.spinner("快速预览中…"):
                     result = run_preview(pdf_bytes)
-                else:
-                    result = run_pipeline(pdf_bytes, paper_id)
-                st.session_state.result = result
-            except Exception as exc:
-                st.error(f"解析失败：{exc}")
-                logging.exception("parse error")
-                return
+            else:
+                timeout_banner = st.info(
+                    "⏳ 解析进行中…每次 API 调用最长等待 60 秒，"
+                    f"总超时 **{PIPELINE_TIMEOUT // 60} 分钟**。请勿刷新页面。",
+                )
+                with st.spinner("解析中（LLM Judge · VisionParser）…"):
+                    with ThreadPoolExecutor(max_workers=1) as pool:
+                        fut = pool.submit(run_pipeline, pdf_bytes, paper_id)
+                        try:
+                            result = fut.result(timeout=PIPELINE_TIMEOUT)
+                        except FutureTimeoutError:
+                            timeout_banner.error(
+                                f"⏰ **解析超时**（已等待 {PIPELINE_TIMEOUT // 60} 分钟）\n\n"
+                                "**可能原因：** DeepSeek / DashScope / Qwen-VL API 响应过慢或网络不稳定。\n\n"
+                                "**建议：**\n"
+                                "- 确认 `.env` 中 `DEEPSEEK_API_KEY` 与 `DASHSCOPE_API_KEY` 均有效且有余额\n"
+                                "- 稍后重试，或改用「快速预览」模式跳过所有 LLM 调用"
+                            )
+                            return
+                timeout_banner.empty()
+            elapsed = time.time() - start_ts
+            st.session_state.result = result
+            if mode_key == "pipeline":
+                st.caption(f"✅ 解析完成，耗时 {elapsed:.1f} 秒")
+        except Exception as exc:
+            st.error(f"解析失败：{exc}")
+            logging.exception("parse error")
+            return
 
     result = st.session_state.result
 
     if result is None:
-        # 欢迎页
-        st.markdown("## 欢迎使用 SortPaper 📄")
-        st.markdown(
-            """
-            **使用步骤：**
-            1. 在左侧选择或上传 PDF 文件
-            2. 选择解析模式（快速预览 / 完整流水线）
-            3. 点击 **🚀 开始解析**
-            4. 在各标签页查看解析结果
+        # 欢迎页 + 已保存入口
+        welcome_tabs = st.tabs(["🏠 欢迎", "💾 已保存"])
+        with welcome_tabs[0]:
+            st.markdown("## 欢迎使用 SortPaper 📄")
+            st.markdown(
+                """
+                **使用步骤：**
+                1. 在左侧选择或上传 PDF 文件
+                2. 选择解析模式（快速预览 / 完整流水线）
+                3. 点击 **🚀 开始解析**
+                4. 在各标签页查看解析结果
 
-            ---
-            **快速预览**：仅调用本地解析器（PyMuPDF + pdfplumber），即时出结果，无需 API 配额。  
-            **完整流水线**：调用 LLM Judge（qwen-max）评估质量，图片调用 VisionParser（qwen-vl-max）生成描述，最终写入 FAISS 向量索引，支持语义检索。
-            """
-        )
+                ---
+                **快速预览**：仅调用本地解析器（PyMuPDF + pdfplumber），即时出结果，无需 API 配额。  
+                **完整流水线**：调用 LLM Judge 评估质量，图片调用 VisionParser（qwen-vl-plus）生成描述，最终写入 Qdrant 向量索引，支持语义检索。
+                """
+            )
+        with welcome_tabs[1]:
+            render_saved_tab()
         return
 
     # 结果展示
     verdicts = result.get("verdicts", {})
+    is_pipeline = result.get("mode") == "pipeline"
 
-    tabs = st.tabs(["📊 概览", "📝 文本块", "🖼️ 图片", "📋 表格", "📐 PDF 重建", "🔍 语义检索"])
+    tabs = st.tabs(["📊 概览", "📝 文本块", "🖼️ 图片", "📋 表格", "📐 PDF 重建", "🔍 语义检索", "💾 已保存"])
 
     with tabs[0]:
         render_overview(result)
+
+        # ── 流水线模式：阶段操作按钮 ──
+        if is_pipeline:
+            quality = result.get("quality", {})
+            has_quality = bool(quality.get("category"))
+            stored_key = f"stored_{result.get('paper_id', '')}"
+            is_stored = bool(st.session_state.get(stored_key))
+
+            st.divider()
+
+            # 阶段 1: 解析完成 → 质量评估
+            if not has_quality:
+                st.info("📊 请运行质量评估以获得分类、摘要和可信度")
+                col_btn, _ = st.columns([1, 3])
+                with col_btn:
+                    if st.button("📊 质量评估", use_container_width=True, type="primary",
+                                 key=f"eval_{result.get('paper_id', '')}"):
+                        with st.spinner("正在执行 Map-Reduce 质量评估（约 60~90 秒）…"):
+                            eval_result = evaluate_parsed_chunks(result)
+                        result["quality"] = eval_result
+                        st.session_state.result = result
+                        st.rerun()
+
+            # 阶段 2: 质量评估完成 → 入库
+            elif not is_stored:
+                st.info("📥 质量评估已完成，请入库到 Qdrant")
+                col_btn, _ = st.columns([1, 3])
+                with col_btn:
+                    if st.button("📥 入库到 Qdrant", use_container_width=True, type="primary",
+                                 key=f"store_{result.get('paper_id', '')}"):
+                        with st.spinner("正在检查重复并写入 Qdrant…"):
+                            store_r = store_parsed_chunks(result)
+                        st.session_state[stored_key] = store_r
+                        st.rerun()
+
+            # 阶段 3: 入库完成
+            elif is_stored:
+                store_r = st.session_state[stored_key]
+                if store_r.get("duplicate"):
+                    st.warning(
+                        f"⚠️ 重复入库被阻止：该论文已存在 {store_r['existing_count']} 条记录。"
+                    )
+                elif store_r.get("failed", 0) == 0:
+                    st.success(f"✅ 入库完成！{store_r['stored']} 个 chunk 已写入 Qdrant")
+                else:
+                    st.warning(f"⚠️ 部分入库：{store_r['stored']} 成功, {store_r['failed']} 失败")
+
+        # ── 流水线模式：保存到文件 ──
+        if is_pipeline and result.get("status") in ("done",):
+            st.divider()
+            st.markdown("### 💾 保存解析结果到文件")
+            save_filename = st.session_state.get("orig_filename", "paper") or "paper"
+            save_name = st.text_input("保存文件名", value=save_filename, key="save_name_input").strip()
+
+            col_save, _ = st.columns([1, 3])
+            with col_save:
+                if st.button("💾 保存结果", use_container_width=True, type="primary"):
+                    safe_name = save_name.replace("/", "_").replace("\\", "_")
+                    if (RESULTS_DIR / f"{safe_name}.json").exists():
+                        st.session_state.pending_save_filename = save_name
+                    else:
+                        snapshot = build_snapshot(result, save_name)
+                        save_result(snapshot, save_name)
+                        st.session_state.save_success_msg = f"✅ 已保存到 data/results/{safe_name}.json"
+
+            # 覆盖确认
+            pending_name = st.session_state.get("pending_save_filename", "")
+            if pending_name:
+                safe_name = pending_name.replace("/", "_").replace("\\", "_")
+                st.warning(f"⚠️ 已存在同名文件 \"{safe_name}.json\"，是否覆盖？")
+                col_yes, col_no = st.columns(2)
+                with col_yes:
+                    if st.button("✅ 确认覆盖", type="primary"):
+                        snapshot = build_snapshot(result, pending_name)
+                        overwrite_result(snapshot, pending_name)
+                        st.session_state.pending_save_filename = ""
+                        st.session_state.save_success_msg = f"✅ 已覆盖保存到 data/results/{safe_name}.json"
+                        st.rerun()
+                with col_no:
+                    if st.button("❌ 取消"):
+                        st.session_state.pending_save_filename = ""
+                        st.rerun()
+
+            # 保存成功提示
+            if st.session_state.get("save_success_msg"):
+                st.success(st.session_state.save_success_msg)
+                st.session_state.save_success_msg = ""
 
     with tabs[1]:
         # 预览模式展示 merged_chunks（含 header 合并），流水线模式展示原始 text_chunks
@@ -646,6 +1422,9 @@ def main() -> None:
             render_search_tab(paper_id)
         else:
             st.info("无论文 ID，无法检索")
+
+    with tabs[6]:
+        render_saved_tab()
 
 
 if __name__ == "__main__":
