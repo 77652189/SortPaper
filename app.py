@@ -1291,6 +1291,34 @@ def main() -> None:
     PIPELINE_TIMEOUT = 300  # 流水线最长等待 5 分钟
 
     if parse_clicked and pdf_bytes:
+        # ── 重复检测 ──
+        from src.store.qdrant_store import QdrantStore
+        from qdrant_client.http import models as qdrant_models
+        dup_store = QdrantStore()
+        dup_count = dup_store.client.count(
+            collection_name=dup_store.collection,
+            count_filter=qdrant_models.Filter(
+                must=[qdrant_models.FieldCondition(
+                    key="paper_id", match=qdrant_models.MatchValue(value=paper_id),
+                )],
+            ),
+        ).count
+        if dup_count > 0:
+            force_key = f"force_reparse_{paper_id}"
+            if not st.session_state.get(force_key):
+                st.warning(
+                    f"⚠️ 该论文已存在 {dup_count} 条入库记录（paper_id: `{paper_id}`）。"
+                )
+                col_f1, col_f2, _ = st.columns([1, 1, 3])
+                with col_f1:
+                    if st.button("强制重新解析", key=f"force_{paper_id}"):
+                        st.session_state[force_key] = True
+                        st.rerun()
+                with col_f2:
+                    if st.button("取消", key=f"cancel_{paper_id}"):
+                        return
+                return  # 未确认，阻止解析
+
         st.session_state._pdf_bytes = pdf_bytes  # 供 PDF 重建使用
         mode_key = "preview" if mode == "快速预览" else "pipeline"
 
