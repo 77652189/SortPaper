@@ -129,15 +129,27 @@ class LiteratureAgent:
             # 检查是否有 tool_calls
             if hasattr(msg, "tool_calls") and msg.tool_calls:
                 # 执行所有 tool calls
-                assistant_msg = {"role": "assistant", "content": msg.content or "", "tool_calls": msg.tool_calls}
+                tool_calls_raw = msg.tool_calls
+                assistant_msg = {"role": "assistant", "content": msg.content or "",
+                                 "tool_calls": tool_calls_raw}
                 messages.append(assistant_msg)
 
-                for tc in msg.tool_calls:
-                    func_name = tc.function.name
-                    try:
-                        args = json.loads(tc.function.arguments)
-                    except json.JSONDecodeError:
-                        args = {"query": user_question}
+                for tc in tool_calls_raw:
+                    # DashScope 可能返回对象或 dict，统一处理
+                    if isinstance(tc, dict):
+                        func_name = tc["function"]["name"]
+                        try:
+                            args = json.loads(tc["function"]["arguments"]) if isinstance(tc["function"]["arguments"], str) else tc["function"]["arguments"]
+                        except (json.JSONDecodeError, TypeError):
+                            args = {"query": user_question}
+                        tc_id = tc.get("id", "")
+                    else:
+                        func_name = tc.function.name
+                        try:
+                            args = json.loads(tc.function.arguments)
+                        except (json.JSONDecodeError, TypeError):
+                            args = {"query": user_question}
+                        tc_id = tc.id
 
                     logger.info(
                         "Agent round %d | tool=%s | query=%s | category=%s | cred=%s",
@@ -151,7 +163,7 @@ class LiteratureAgent:
                     messages.append({
                         "role": "tool",
                         "content": json.dumps(tool_result, ensure_ascii=False),
-                        "tool_call_id": tc.id,
+                        "tool_call_id": tc_id,
                     })
             else:
                 # 无 tool call → 模型认为够了
