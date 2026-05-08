@@ -354,7 +354,15 @@ def store_parsed_chunks(result: dict) -> dict:
         if v and v.get("passed"):
             context = chunk_contexts.get(chunk.get("chunk_id", ""), "")
             raw_content = chunk.get("raw_content", "")
+            content_type = chunk.get("content_type", "text")
             display_content = f"{context}\n\n{raw_content}" if context else raw_content
+
+            # 嵌入内容预处理：表格加表头前缀提升检索精度
+            embed_content = raw_content
+            if content_type == "table":
+                header_prefix = _table_header_prefix(raw_content)
+                if header_prefix:
+                    embed_content = f"{header_prefix}\n\n{raw_content}"
 
             metadata = {
                 "page": chunk.get("page"),
@@ -363,7 +371,7 @@ def store_parsed_chunks(result: dict) -> dict:
                 "order_in_page": chunk.get("order_in_page"),
                 "global_order": chunk.get("global_order"),
                 "chunk_id": chunk.get("chunk_id"),
-                "content_type": chunk.get("content_type"),
+                "content_type": content_type,
                 "score": v.get("score"),
                 "category": quality.get("category"),
                 "classify_status": quality.get("classify_status"),
@@ -375,14 +383,14 @@ def store_parsed_chunks(result: dict) -> dict:
                 "target_products": quality.get("target_products", []),
                 "organisms": quality.get("organisms", []),
                 "classify_reason": quality.get("classify_reason", ""),
-                "context": context,  # 存入 payload 供展示，不参与向量化
+                "context": context,
             }
             try:
                 store.add(
                     paper_id=paper_id,
-                    worker_type=chunk.get("content_type", "text"),
-                    content=display_content,         # payload 里的完整内容
-                    embed_content=raw_content,       # 向量化只用原始英文
+                    worker_type=content_type,
+                    content=display_content,
+                    embed_content=embed_content,
                     metadata=metadata,
                 )
                 stored += 1
@@ -392,6 +400,21 @@ def store_parsed_chunks(result: dict) -> dict:
 
     store.save("")
     return {"stored": stored, "failed": failed}
+
+
+def _table_header_prefix(markdown_table: str) -> str:
+    """从 Markdown 表中提取表头，生成嵌入用描述前缀。
+
+    示例: "| Product | Key enzymes | Yield |"
+        → "Table: Product, Key enzymes, Yield"
+    """
+    lines = markdown_table.strip().split("\n")
+    # 跳过可能的前置上下文行，找第一行含 | 的
+    for line in lines:
+        if "|" in line:
+            header = line.strip("| ").replace("|", ",").strip()
+            return f"Table: {header}"
+    return ""
 
 
 def evaluate_parsed_chunks(result: dict) -> dict:
