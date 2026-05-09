@@ -19,7 +19,8 @@ class JudgeVerdict:
 
 
 @dataclass
-class SummaryReport:
+class ParseQualityReport:
+    """解析质量汇总报告（非论文摘要）。"""
     status: str
     modules: dict[str, Any]
     stored_types: list[str]
@@ -36,16 +37,14 @@ PROMPTS = {
 class LLMJudge:
     def __init__(
         self,
-        dashscope_model: str = "qwen-max",
         deepseek_model: str = "deepseek-chat",
         threshold: float = 0.7,
     ) -> None:
-        self.dashscope_model = dashscope_model
         self.deepseek_model = deepseek_model
         self.threshold = threshold
 
     def _call_deepseek(self, prompt: str) -> str:
-        """调用 DeepSeek V4-Flash（OpenAI 兼容接口）。"""
+        """调用 DeepSeek V4 Pro（OpenAI 兼容接口）。"""
         import os
 
         from openai import OpenAI
@@ -59,20 +58,15 @@ class LLMJudge:
             model=self.deepseek_model,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2,
-            max_tokens=4096,
+            max_tokens=2048,
         )
         return response.choices[0].message.content or ""
 
     def judge(self, worker_type: str, content: str, pdf_path: str) -> JudgeVerdict:
+        """对所有类型（text/table/image）统一使用 DeepSeek V4 Pro 评判。"""
         prompt_template = PROMPTS[worker_type]
         prompt = prompt_template.format(pdf_path=pdf_path, content=content or "")
-
-        if worker_type == "image":
-            # 图片保持 DashScope（VL 模型兼容性）
-            return self._judge_with_dashscope(prompt)
-        else:
-            # 文字和表格用 DeepSeek
-            return self._judge_with_deepseek(prompt)
+        return self._judge_with_deepseek(prompt)
 
     def _judge_with_deepseek(self, prompt: str) -> JudgeVerdict:
         try:
@@ -89,41 +83,7 @@ class LLMJudge:
             logger.exception("DeepSeek judge call failed")
             return JudgeVerdict(passed=False, score=0.0, feedback=f"DeepSeek call failed: {e}")
 
-    def _judge_with_dashscope(self, prompt: str) -> JudgeVerdict:
-        from dashscope import Generation
-
-        try:
-            response = Generation.call(
-                model=self.dashscope_model,
-                messages=[{"role": "user", "content": prompt}],
-                result_format="message",
-                timeout=60,
-            )
-        except Exception as e:
-            logger.exception("DashScope judge call failed | type=image")
-            return JudgeVerdict(passed=False, score=0.0, feedback=f"DashScope API call failed: {e}")
-
-        status = getattr(response, "status_code", None)
-        if status is not None and status != 200:
-            error_msg = getattr(response, "message", "Unknown API error")
-            code = getattr(response, "code", "")
-            return JudgeVerdict(passed=False, score=0.0, feedback=f"DashScope API error {code}: {error_msg}")
-
-        if not hasattr(response, "output") or not response.output:
-            return JudgeVerdict(passed=False, score=0.0, feedback="Empty DashScope API response")
-
-        try:
-            message = response.output.choices[0].message.content
-            payload = self._extract_payload(message)
-            score = float(payload.get("score", 0.0))
-            passed = bool(payload.get("passed", False)) and score >= self.threshold
-            feedback = str(payload.get("feedback", ""))
-            return JudgeVerdict(passed=passed, score=score, feedback=feedback)
-        except Exception:
-            logger.exception("DashScope judge response parse failed")
-            return JudgeVerdict(passed=False, score=0.0, feedback="DashScope judge response parse error")
-
-    def summarize(
+    def report_quality(
         self,
         pdf_path: str,
         text_verdict: JudgeVerdict | None,
@@ -133,7 +93,7 @@ class LLMJudge:
         table_retries: int,
         image_retries: int,
         status: str,
-    ) -> SummaryReport:
+    ) -> ParseQualityReport:
 
         def _v(v: JudgeVerdict | None, key: str, default: Any) -> Any:
             if v is None:
@@ -157,18 +117,18 @@ class LLMJudge:
         try:
             message = self._call_deepseek(prompt)
             payload = self._extract_payload(message)
-            return SummaryReport(
+            return ParseQualityReport(
                 status=str(payload.get("status", status)),
                 modules=payload.get("modules", {}),
                 stored_types=payload.get("stored_types", []),
                 notes=str(payload.get("notes", "")),
             )
         except Exception as e:
-            return SummaryReport(
+            return ParseQualityReport(
                 status=status,
                 modules={},
                 stored_types=[],
-                notes=f"summary via DeepSeek failed: {e}",
+                notes=f"quality report via DeepSeek failed: {e}",
             )
 
     @staticmethod
@@ -195,8 +155,14 @@ class LLMJudge:
         # fallback：提取第一个完整 JSON 对象
         start = text.find("{")
         end = text.rfind("}")
-        if start == -1 or end == -1 or end <= start:
+        if start == -1:
             raise ValueError(f"No JSON object found in LLM response: {text[:200]!r}")
+
+        # 截断兜底：JSON 没写完 → 尝试补 } 后解析
+        if end == -1 or end <= start:
+            text = text + "}"
+            end = text.rfind("}")
+
         candidate = text[start : end + 1]
         try:
             return json.loads(candidate, strict=False)

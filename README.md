@@ -9,7 +9,7 @@
 [![LangGraph](https://img.shields.io/badge/LangGraph-pipeline-4A90D9)](https://github.com/langchain-ai/langgraph)
 [![Qdrant](https://img.shields.io/badge/Qdrant-Hybrid--Search-5B21B6)](https://qdrant.tech)
 [![DashScope](https://img.shields.io/badge/DashScope-Embedding+Generate-FF6A00)](https://dashscope.aliyun.com)
-[![DeepSeek](https://img.shields.io/badge/DeepSeek-V4--flash-4D6BFE)](https://deepseek.com)
+[![DeepSeek](https://img.shields.io/badge/DeepSeek-V4--flash%20%26%20Pro-4D6BFE)](https://deepseek.com)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
 **Language:**
@@ -31,12 +31,15 @@
 | Feature | Description |
 |---|---|
 | 📝 Text extraction | PyMuPDF-based layout-aware text chunking with column detection |
-| 📋 Table detection | pdfplumber lattice-mode table parsing with false-positive filtering |
-| 🖼️ Image captioning | Qwen-VL-Max vision model generates natural-language descriptions |
-| ⚖️ LLM Judge | qwen-max evaluates every chunk for quality; failed chunks retry up to 3× |
-| 💾 FAISS storage | Passing chunks are embedded (text-embedding-v3) and indexed for search |
-| 📉 Degraded storage | Even if some chunks fail after retries, successful chunks are still saved |
-| 🖥️ GUI | Streamlit web interface: upload, parse, browse chunks, semantic search |
+| 📋 Table detection | pdfplumber + PyMuPDF + camelot triple-engine, adaptive to borderless tables |
+| 🖼️ Image captioning | Qwen-VL-Max with subfigure-aware prompts; text-rewrite on retry |
+| ⚖️ LLM Judge | DeepSeek-chat evaluates every chunk; already-passed chunks auto-skipped on retry |
+| 💾 Qdrant storage | Hybrid Search (Dense + Sparse + RRF) + qwen3-rerank |
+| 📉 Degraded storage | Tables with structural issues preserved as `degraded`; false positives discarded |
+| 🔁 Smart retry | Image retry rewrites text via DeepSeek (no re-reading); table retry switches parser |
+| 🖥️ GUI | Streamlit: one-click import, batch drag-and-drop, vector library management |
+| 📊 Quality eval | 4-step: classify → Map-Reduce summary → chunk context → store |
+| 🤖 Agent search | Qwen-plus autonomous tool-calling for multi-round semantic search & synthesis |
 
 ## 🏗️ Architecture
 
@@ -46,19 +49,20 @@ PDF
  ▼
 Coordinator
  │
- ├──► Text Worker  ──► Judge Text  ──┐
- ├──► Table Worker ──► Judge Table ──┤──► Merge ──► FAISS Store
- └──► Image Worker ──► Judge Image ──┘
-         ▲                           │
-         └──── retry (max 3×) ───────┘
+ ├──► Text Worker  ──► Judge (DeepSeek) ──┐
+ ├──► Table Worker ──► Judge (DeepSeek) ──┤──► Merge ──► Qdrant
+ └──► Image Worker ──► Judge (DeepSeek) ──┘
+  (Qwen-VL-Max)      ▲                   │
+                      └── Retry (rewrite) ─┘
 ```
 
 **Layers:**
 
-- **Parser layer** — `PyMuPDFParser`, `TableParser`, `VisionParser`
-- **Judge layer** — `LLMJudge` (qwen-max, section-aware prompts)
-- **Store layer** — `FAISSStore` (text-embedding-v3, 1024-dim)
-- **Orchestration** — LangGraph fan-out/fan-in state machine
+- **Parser layer** — `PyMuPDFParser`, `TableParser` (3 engines), `VisionParser` (qwen-vl-max)
+- **Judge layer** — `LLMJudge` (DeepSeek-chat, section-aware)
+- **Quality evaluation** — `PaperQualityEvaluator`: classify → Map-Reduce (Reduce uses DeepSeek-v4-pro)
+- **Store layer** — `QdrantStore` (Hybrid Search + Rerank)
+- **Orchestration** — LangGraph fan-out/fan-in with smart retry skipping
 
 ## 🚀 Quick Start
 
@@ -70,16 +74,23 @@ cd SortPaper
 pip install -r requirements.txt
 ```
 
-**2. Configure DashScope API key**
+**2. Configure API keys**
 
 ```bash
-# Create .env file
 echo "DASHSCOPE_API_KEY=sk-xxxxxxxxxxxxxxxx" > .env
+echo "DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxx" >> .env
 ```
 
-> Get your API key at [DashScope Console](https://dashscope.aliyun.com). A balance top-up of ¥20 is sufficient for processing ~10 papers.
+> - **DashScope**: text-embedding-v3, qwen-vl-max (vision), qwen3-rerank, qwen-plus (agent). Get key at [DashScope Console](https://dashscope.aliyun.com).
+> - **DeepSeek**: Judge evaluation + Map-Reduce summarization. Get key at [DeepSeek Platform](https://platform.deepseek.com).
 
-**3. Launch the GUI**
+**3. Start Qdrant** (default: localhost:6333)
+
+```bash
+docker run -p 6333:6333 qdrant/qdrant
+```
+
+**4. Launch the GUI**
 
 ```bash
 streamlit run app.py
@@ -89,13 +100,15 @@ Then open **http://localhost:8501** in your browser.
 
 ## 🖥️ GUI Usage
 
-1. **Select PDF** — Upload any PDF or choose from the built-in sample papers
+1. **Select PDF** — Upload any PDF or pick from sample papers; supports batch drag-and-drop
 2. **Choose mode:**
-   - **Quick Preview** — local parsers only, instant results, no API cost
-   - **Full Pipeline** — runs Judge + VisionParser + FAISS (uses API quota)
+   - **Quick Preview** — local parsers only, instant, no API cost
+   - **Full Pipeline** — runs Judge; quality eval & store triggered manually
+   - **One-Click Import** — parse → judge → eval → store, fully automatic
 3. **Click 🚀 Parse**
-4. Browse results across five tabs:
-   - 📊 Overview · 📝 Text · 🖼️ Images · 📋 Tables · 🔍 Semantic Search
+4. Browse results across tabs:
+   - 📊 Overview · 📝 Text · 🖼️ Images · 📋 Tables · 📐 PDF Rebuild · 🔍 Search
+5. **Vector Library** — sidebar shows indexed papers list with per-paper deletion
 
 ## 📁 Project Structure
 
@@ -104,12 +117,15 @@ SortPaper/
 ├── app.py                    # Streamlit GUI
 ├── main.py                   # CLI batch runner
 ├── src/
-│   ├── parsers/              # PyMuPDF, pdfplumber, VisionParser
-│   ├── judge/                # LLMJudge + prompts
-│   ├── store/                # FAISSStore + chunking
-│   └── graph/                # LangGraph pipeline
+│   ├── parsers/              # PyMuPDF, pdfplumber, camelot, VisionParser
+│   ├── judge/                # LLMJudge + PaperQualityEvaluator + prompts
+│   ├── store/                # QdrantStore (Hybrid Search)
+│   ├── agent/                # LiteratureAgent (Qwen function calling)
+│   └── graph/                # LangGraph pipeline orchestration
 ├── scripts/                  # Verification & debug scripts
-└── data/sample_papers/       # Sample PDFs
+└── data/
+    ├── sample_papers/        # Sample PDFs
+    └── results/              # Parse result snapshots
 ```
 
 ## 🛠️ Tech Stack
@@ -117,14 +133,14 @@ SortPaper/
 | Component | Technology |
 |---|---|
 | Text parsing | PyMuPDF (fitz) |
-| Table parsing | pdfplumber |
+| Table parsing | pdfplumber + PyMuPDF + camelot (3 engines adaptive) |
 | Image captioning | Qwen-VL-Max (DashScope) |
-| LLM Judge | DeepSeek V4-flash |
-| Vision | qwen-vl-plus (DashScope) |
-| Embedding | text-embedding-v3 (Dense + Sparse) |
-| Reranker | qwen3-rerank |
+| LLM Judge | DeepSeek-chat |
+| Quality eval | DeepSeek-chat (classify+Map) + DeepSeek-v4-pro (Reduce) |
+| Embedding | text-embedding-v3 (DashScope, Dense + Sparse dual) |
+| Reranker | qwen3-rerank (DashScope) |
 | Vector store | Qdrant (Hybrid Search: Dense + Sparse + RRF) |
-| Agent | Qwen Function Calling |
+| Agent | Qwen-plus (DashScope Function Calling) |
 | Pipeline | LangGraph |
 | GUI | Streamlit |
 
@@ -136,13 +152,14 @@ SortPaper/
 
 | Model | Role | Contribution |
 |---|---|---|
-| 🐋 **DeepSeek V4-flash** | Chief Judge & Quality Evaluator | Evaluates chunk quality, classifies papers, performs Map-Reduce summarization |
-| 🧬 **text-embedding-v3** | Dual-Index Librarian | Generates dense + sparse vectors for Hybrid Search — captures both semantic meaning and precise terminology |
-| 🎯 **qwen3-rerank** | Senior Editor | Re-ranks retrieved chunks, ensuring the most relevant literature appears first |
-| 👁️ **qwen-vl-plus** | Visual Analyst | Describes figures, charts, and embedded images in papers |
-| 🧠 **Qwen (Generation)** | Synthesis Agent | Function-calling agent that autonomously searches, filters, and synthesizes cross-paper recommendations |
-| 🧭 **LangGraph** | Pipeline Orchestrator | Coordinates parallel parsing → judging → merging with retry logic |
-| 🤖 **DeepSeek V4 Pro** | Development Companion | Real-time code generation, architecture design, and iterative refinement via WorkBuddy |
+| 🐋 **DeepSeek-chat** | Judge & Map Evaluator | Evaluates chunk quality, classifies papers, performs Map-Reduce summarization |
+| 🧬 **DeepSeek-v4-pro** | Chief Summarizer | Generates high-quality paper summaries in the Reduce step |
+| 🧬 **text-embedding-v3** | Dual-Index Librarian | Generates dense + sparse vectors for Hybrid Search |
+| 🎯 **qwen3-rerank** | Senior Editor | Re-ranks retrieved chunks for relevance |
+| 👁️ **qwen-vl-max** | Visual Analyst | Describes figures, charts, subfigures with structured three-step analysis |
+| 🧠 **Qwen-plus** | Synthesis Agent | Function-calling agent for autonomous multi-round search & synthesis |
+| 🧭 **LangGraph** | Pipeline Orchestrator | Coordinates parallel parsing → judging → merging with smart retry |
+| 🤖 **WorkBuddy** | Development Companion | Real-time code generation, architecture design, iterative refinement |
 
 <div align="center">
   <sub>🐋 DeepSeek · 🧬 DashScope · 🎯 Qwen · 👁️ qwen-vl · 🧠 Qwen-Agent · 🧭 LangGraph · 🤖 WorkBuddy</sub>

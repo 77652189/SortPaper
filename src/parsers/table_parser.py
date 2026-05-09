@@ -80,10 +80,10 @@ class TableParser:
         pymupdf_chunks = self._parse_with_pymupdf()
         all_chunks.extend(pymupdf_chunks)
 
-        if len(all_chunks) < CFG.CAMELOT_TRIGGER_THRESHOLD:
-            logger.info("前两个解析器检测到表格较少，尝试 camelot")
-            camelot_chunks = self._parse_with_camelot(pages=camelot_pages)
-            all_chunks.extend(camelot_chunks)
+        # camelot 始终参与（处理无边框表格），去重阶段会处理重叠
+        logger.info("camelot 作为补充解析器运行")
+        camelot_chunks = self._parse_with_camelot(pages=camelot_pages)
+        all_chunks.extend(camelot_chunks)
 
         if len(all_chunks) > 1:
             all_chunks = self._deduplicate_chunks(all_chunks)
@@ -495,36 +495,48 @@ class TableParser:
             # 少于 2 行（表头 + 至少 1 行数据）→ 空表
             return False
 
-        # 尝试定位真正的表头行（包含列名关键词的行）
-        header_row_idx = 0
+        # 定位表头行：优先找 "Table " 标题行的下一行，其次按结构特征推断
+        header_row_idx: int | None = None
+
+        # 策略 1: 找到 "Table X" 标题行 → 下一行即为表头
         for idx, row in enumerate(normalized):
-            content = " ".join(cell.lower() for cell in row)
-            non_empty = sum(1 for cell in row if cell.strip())
-            # 优先找包含常见表头关键词的行，且该行有多个非空白单元格（看起来像表头）
-            if non_empty >= 2 and any(
-                kw in content
-                for kw in HEADER_KEYWORDS
-            ):
+            if "table " in " ".join(cell.lower() for cell in row):
+                if idx + 1 < len(normalized):
+                    next_row = normalized[idx + 1]
+                    non_empty = sum(1 for cell in next_row if cell.strip())
+                    if non_empty >= 2:
+                        header_row_idx = idx + 1
+                        break
+                # "Table" 标题行本身非空格少 → 不是真表头，继续往下找
+                if sum(1 for cell in row if cell.strip()) < 2:
+                    continue
                 header_row_idx = idx
                 break
 
-        # 如果找不到列名行，尝试找包含 "Table " 的行，并假设下一行是真正表头
-        if header_row_idx == 0:
+        # 策略 2: 关键词匹配（加分项，不是必须通过）
+        if header_row_idx is None:
             for idx, row in enumerate(normalized):
-                if "table " in " ".join(cell.lower() for cell in row):
-                    # 找到 Table X 标题行，检查下一行是否像表头
-                    if idx + 1 < len(normalized):
-                        next_row = normalized[idx + 1]
-                        # 下一行如果包含多个非空白单元格，可能是真正表头
-                        non_empty = sum(1 for cell in next_row if cell.strip())
-                        if non_empty >= 2:
-                            header_row_idx = idx + 1
-                            break
-                    # 如果下一行不像表头，就从当前行开始（包含Table标题）
+                content = " ".join(cell.lower() for cell in row)
+                non_empty = sum(1 for cell in row if cell.strip())
+                if non_empty >= 2 and any(kw in content for kw in HEADER_KEYWORDS):
                     header_row_idx = idx
                     break
 
-        # 如果还是找不到，使用首行
+        # 策略 3: 结构特征 — 非空单元格最多、平均长度最短的行最像表头
+        if header_row_idx is None:
+            best_score = -1
+            for idx, row in enumerate(normalized):
+                non_empty = sum(1 for cell in row if cell.strip())
+                avg_len = sum(len(cell) for cell in row if cell.strip()) / max(non_empty, 1)
+                score = non_empty - avg_len / 20  # 非空多 + 短词 → 更像表头
+                if score > best_score:
+                    best_score = score
+                    header_row_idx = idx
+
+        # 兜底：首行
+        if header_row_idx is None:
+            header_row_idx = 0
+
         header = normalized[header_row_idx]
         data_rows = normalized[header_row_idx + 1:]
         num_cols = len(header)
@@ -541,11 +553,27 @@ class TableParser:
         if not has_data:
             return False
 
-        # 首格内容检查：期刊名、图注、参考文献等页眉特征 → 伪表格
-        first_cell_raw = normalized[0][0].strip()
-        first_cell = first_cell_raw.lower()
-        if any(first_cell.startswith(p) for p in SKIP_PREFIXES):
+        # 跳过页眉行：期刊名、图注、参考文献等（camelot 可能把页眉吞进表格）
+        stripped_skip = 0
+        while stripped_skip < len(normalized):
+            cell = normalized[stripped_skip][0].strip().lower()
+            if any(cell.startswith(p) for p in SKIP_PREFIXES):
+                stripped_skip += 1
+            else:
+                break
+
+        if stripped_skip > 0:
+            normalized = normalized[stripped_skip:]
+            # 跳过页眉行后重新定位表头
+            if header_row_idx < stripped_skip:
+                header_row_idx = 0
+            else:
+                header_row_idx -= stripped_skip
+
+        if not normalized or len(normalized) < CFG.MIN_DATA_ROWS + 1:
             return False
+
+        first_cell_raw = normalized[0][0].strip() if normalized and normalized[0] else ""
 
         # 期刊 running title / 作者行检测：连续大写无空格的长字符串
         # 例如 "CRITICALREVIEWSINBIOTECHNOLOGY"、"Y.ZHUETAL."

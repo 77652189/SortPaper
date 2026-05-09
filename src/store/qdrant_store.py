@@ -418,6 +418,61 @@ class QdrantStore:
         self._ensure_collection()
         logger.info("Cleared collection '%s'", self.collection)
 
+    def list_papers(self) -> list[dict[str, Any]]:
+        """列出已入库的论文（去重 paper_id），每项含 paper_title / paper_id / chunk_count。
+        通过 scroll 遍历所有 points，按 paper_id 聚合。"""
+        papers: dict[str, dict[str, Any]] = {}
+        offset = None
+        while True:
+            points, next_offset = self.client.scroll(
+                collection_name=self.collection, limit=500,
+                with_payload=True, with_vectors=False, offset=offset,
+            )
+            for pt in points:
+                payload = pt.payload or {}
+                pid = payload.get("paper_id", "?")
+                if pid not in papers:
+                    papers[pid] = {
+                        "paper_id": pid,
+                        "paper_title": payload.get("paper_title", "?"),
+                        "chunk_count": 0,
+                    }
+                papers[pid]["chunk_count"] += 1
+            if next_offset is None:
+                break
+            offset = next_offset
+        return sorted(papers.values(), key=lambda x: x["paper_title"])
+
+    def delete_by_paper_id(self, paper_id: str) -> int:
+        """删除指定 paper_id 的所有 points，返回删除数量。"""
+        from qdrant_client.models import FilterSelector
+
+        # 先计数
+        count_result = self.client.count(
+            collection_name=self.collection,
+            count_filter=models.Filter(
+                must=[models.FieldCondition(
+                    key="paper_id", match=models.MatchValue(value=paper_id),
+                )],
+            ),
+        )
+        before = count_result.count
+        if before == 0:
+            return 0
+
+        self.client.delete(
+            collection_name=self.collection,
+            points_selector=FilterSelector(
+                filter=models.Filter(
+                    must=[models.FieldCondition(
+                        key="paper_id", match=models.MatchValue(value=paper_id),
+                    )],
+                ),
+            ),
+        )
+        logger.info("Deleted %d points for paper_id='%s'", before, paper_id)
+        return before
+
     # ── 文本切分 ────────────────────────────────────────────────────────────
 
     def _chunk_text(self, content: str, chunk_size: int, chunk_overlap: int) -> list[dict[str, Any]]:

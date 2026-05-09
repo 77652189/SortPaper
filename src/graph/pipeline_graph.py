@@ -276,13 +276,31 @@ def image_worker_node(state: PipelineState) -> dict:
     retries = state.get("image_retries", 0)
 
     if failed_ids:
+        # 所有 retry 都走 DeepSeek 文字改写（不重读图）
         logger.warning(
-            "image_worker retry %d/%d | paper=%s | failed=%s",
+            "image_worker retry (text rewrite) %d/%d | paper=%s | failed=%s",
             retries + 1, MAX_RETRIES, state.get("paper_id", "?"), list(failed_ids),
         )
+        existing = {c.chunk_id: c for c in state.get("image_chunks", [])}
+        verdicts = state.get("image_verdicts", [])
+        for vid in failed_ids:
+            chunk = existing.get(vid)
+            if chunk is None:
+                continue
+            fb = next((v.get("feedback", "") for v in verdicts if v.get("chunk_id") == vid), "")
+            rewritten = _rewrite_image_desc(chunk.raw_content, fb)
+            if rewritten:
+                chunk.raw_content = rewritten
 
+        return {
+            "image_retries": retries + 1,
+            "image_chunks": list(existing.values()),
+            "worker_timing": {"image": round(time.time() - t0, 1)},
+        }
+
+    # 首次解析：VL 读图
     parser = VisionParser(state["pdf_path"])
-    new_chunks, vis_timing = parser.parse(feedback=feedback)
+    new_chunks, vis_timing = parser.parse()
 
     if failed_ids:
         existing: dict[str, LayoutChunk] = {}
@@ -300,6 +318,38 @@ def image_worker_node(state: PipelineState) -> dict:
             "image_describe": vis_timing.get("describe", 0),
         },
     }
+
+
+def _rewrite_image_desc(original: str, feedback: str) -> str:
+    """用 DeepSeek 根据 Judge 反馈改写图片描述（不重新读图）。"""
+    import os
+    from openai import OpenAI
+
+    prompt = (
+        "以下是一张学术论文图片的解析描述，以及质检员的反馈意见。"
+        "请根据反馈修改描述，只描述图片中实际可见的视觉内容。"
+        "保持原描述中有用的信息，删除编造或错误的部分。\n\n"
+        f"原始描述：\n{original[:3000]}\n\n"
+        f"质检反馈：{feedback}\n\n"
+        "直接返回修改后的描述文字，不要额外说明。"
+    )
+
+    try:
+        client = OpenAI(
+            api_key=os.getenv("DEEPSEEK_API_KEY", ""),
+            base_url="https://api.deepseek.com/v1",
+            timeout=30.0,
+        )
+        resp = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=2048,
+            temperature=0.2,
+        )
+        return resp.choices[0].message.content or ""
+    except Exception as e:
+        logger.warning("改写图片描述失败: %s", e)
+        return ""
 
 
 # ─── Judge 节点（并行）────────────────────────────────────────────────────────
@@ -390,81 +440,126 @@ def _group_by_section(chunks: list[LayoutChunk]) -> list[list[LayoutChunk]]:
 
 
 def judge_text_node(state: PipelineState) -> dict:
+    import time
+    t0 = time.time()
     chunks = state.get("text_chunks", [])
 
     if not chunks:
         return {"text_verdicts": [], "routes_done": {"text"}}
 
+    # retry 时复用已通过的 verdict，只重判失败的
+    prev_verdicts = {v["chunk_id"]: v for v in state.get("text_verdicts", [])}
     judge = LLMJudge()
-    verdicts: list[dict] = []
+    verdicts: list[dict] = list(prev_verdicts.values())  # 先保留旧 verdict
 
-    # 噪音 chunk 直接被标记为跳过（不参与 judge，不计入 passed/failed）
+    # 噪音 chunk 直接被标记为跳过
     noise_ids: set[str] = set()
     for chunk in chunks:
         if _is_noise(chunk.raw_content):
             noise_ids.add(chunk.chunk_id)
-            verdicts.append({
-                "chunk_id": chunk.chunk_id,
-                "passed": True,
-                "score": 1.0,
-                "feedback": "noise — skipped",
-            })
 
-    # Section 级别判断：同 section 内所有非噪音 chunks 拼接后一起送 judge
+    # Section 级别判断：只重判含未通过 chunk 的 section
     sections = _group_by_section(chunks)
     for section_chunks in sections:
+        # 该 section 所有非噪音 chunk 都已通过 → 跳过
+        need_judge = [
+            c for c in section_chunks
+            if c.chunk_id not in noise_ids
+            and not prev_verdicts.get(c.chunk_id, {}).get("passed")
+        ]
+        if not need_judge:
+            continue
+
         combined = "\n\n".join(c.raw_content for c in section_chunks)
         v = judge.judge("text", combined, state["pdf_path"])
         for chunk in section_chunks:
             if chunk.chunk_id in noise_ids:
                 continue
-            verdicts.append({
+            next_v = {
                 "chunk_id": chunk.chunk_id,
                 "passed": v.passed,
                 "score": v.score,
                 "feedback": v.feedback,
-            })
+            }
+            # 更新已有 verdict 或添加新的
+            for idx, old in enumerate(verdicts):
+                if old.get("chunk_id") == chunk.chunk_id:
+                    verdicts[idx] = next_v
+                    break
+            else:
+                verdicts.append(next_v)
+
+    jt = state.get("judge_timing", {})
+    jt["text"] = round(time.time() - t0, 1)
+    return {"text_verdicts": verdicts, "routes_done": {"text"}, "judge_timing": jt}
 
     return {"text_verdicts": verdicts, "routes_done": {"text"}}
 
 
 def judge_table_node(state: PipelineState) -> dict:
+    import time
+    t0 = time.time()
     chunks = state.get("table_chunks", [])
 
     if not chunks:
         return {"table_verdicts": [{"chunk_id": "", "passed": True, "score": 1.0, "feedback": "no tables"}], "routes_done": {"table"}}
 
+    prev_verdicts = {v["chunk_id"]: v for v in state.get("table_verdicts", [])}
     judge = LLMJudge()
-    verdicts: list[dict] = []
+    verdicts: list[dict] = list(prev_verdicts.values())
+
     for chunk in chunks:
+        cid = chunk.chunk_id
+        if prev_verdicts.get(cid, {}).get("passed"):
+            continue  # 已通过，跳过
         v = judge.judge(chunk.content_type, chunk.raw_content, state["pdf_path"])
-        verdicts.append({
-            "chunk_id": chunk.chunk_id,
-            "passed": v.passed,
-            "score": v.score,
-            "feedback": v.feedback,
-            "issue_type": v.issue_type,
-        })
-    return {"table_verdicts": verdicts, "routes_done": {"table"}}
+        next_v = {
+            "chunk_id": cid, "passed": v.passed, "score": v.score,
+            "feedback": v.feedback, "issue_type": v.issue_type,
+        }
+        for idx, old in enumerate(verdicts):
+            if old.get("chunk_id") == cid:
+                verdicts[idx] = next_v
+                break
+        else:
+            verdicts.append(next_v)
+
+    jt = state.get("judge_timing", {})
+    jt["table"] = round(time.time() - t0, 1)
+    return {"table_verdicts": verdicts, "routes_done": {"table"}, "judge_timing": jt}
 
 
 def judge_image_node(state: PipelineState) -> dict:
+    import time
+    t0 = time.time()
     chunks = state.get("image_chunks", [])
 
     if not chunks:
         return {"image_verdicts": [{"chunk_id": "", "passed": True, "score": 1.0, "feedback": "no images"}], "routes_done": {"image"}}
 
+    prev_verdicts = {v["chunk_id"]: v for v in state.get("image_verdicts", [])}
     judge = LLMJudge()
-    verdicts: list[dict] = []
+    verdicts: list[dict] = list(prev_verdicts.values())
+
     for chunk in chunks:
+        cid = chunk.chunk_id
+        if prev_verdicts.get(cid, {}).get("passed"):
+            continue  # 已通过，跳过
         v = judge.judge(chunk.content_type, chunk.raw_content, state["pdf_path"])
-        verdicts.append({
-            "chunk_id": chunk.chunk_id,
-            "passed": v.passed,
-            "score": v.score,
+        next_v = {
+            "chunk_id": cid, "passed": v.passed, "score": v.score,
             "feedback": v.feedback,
-        })
-    return {"image_verdicts": verdicts, "routes_done": {"image"}}
+        }
+        for idx, old in enumerate(verdicts):
+            if old.get("chunk_id") == cid:
+                verdicts[idx] = next_v
+                break
+        else:
+            verdicts.append(next_v)
+
+    jt = state.get("judge_timing", {})
+    jt["image"] = round(time.time() - t0, 1)
+    return {"image_verdicts": verdicts, "routes_done": {"image"}, "judge_timing": jt}
 
 
 # ─── 重试路由（各路线独立）────────────────────────────────────────────────────
@@ -498,6 +593,8 @@ def merge_chunks_node(state: PipelineState) -> PipelineState:
     按 page → column → y0 → x0 排序，生成统一的 merged_chunks。
     排序后回填 global_order 和 nearby_context（前后各1个chunk摘要）。
     """
+    import time
+    t0 = time.time()
     all_chunks: list[LayoutChunk] = []
     all_chunks.extend(state.get("text_chunks", []))
     all_chunks.extend(state.get("table_chunks", []))
@@ -512,7 +609,8 @@ def merge_chunks_node(state: PipelineState) -> PipelineState:
             "next": merged[i + 1].raw_content[:100] if i < len(merged) - 1 else "",
         }
 
-    return {"merged_chunks": merged}
+    mt = state.get("merge_timing", 0)
+    return {"merged_chunks": merged, "merge_timing": round(mt + time.time() - t0, 1)}
 
 
 # ─── 质量评估节点 ──────────────────────────────────────────────────────────────

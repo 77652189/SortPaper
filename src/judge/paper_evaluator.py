@@ -51,10 +51,12 @@ class PaperQualityEvaluator:
         classify_content = self._extract_classify_content(merged_chunks)
 
         # ── Step 1: 分类（双 prompt + 自洽性验证）───────────────────────
+        print(f"  [eval] classify start", flush=True)
         t0 = time.time()
         result1 = self._classify(classify_content)
         result2 = self._verify(classify_content)
         t_classify = time.time() - t0
+        print(f"  [eval] classify done ({t_classify:.0f}s) | category={result1.get('category')}", flush=True)
 
         category = result1.get("category", "other")
         classify_conf = result1.get("confidence", 0.0)
@@ -96,6 +98,7 @@ class PaperQualityEvaluator:
         # 并发 Map（ThreadPoolExecutor，避免串行等待 API）
         t_map_start = time.time()
         map_results: list[dict] = [{}] * total
+        completed = 0
         with ThreadPoolExecutor(max_workers=min(MAX_MAP_WORKERS, total)) as pool:
             futures = {
                 pool.submit(self._map_chunk, text_chunks[i].raw_content, i + 1, total, lite=use_lite): i
@@ -108,9 +111,14 @@ class PaperQualityEvaluator:
                 except Exception as exc:
                     logger.warning("Map chunk %d/%d failed: %s", idx + 1, total, exc)
                     map_results[idx] = {"key_points": [], "entities": []}
+                completed += 1
+                if completed % 10 == 0 or completed == total:
+                    print(f"  [eval] Map {completed}/{total} chunks ({time.time() - t_map_start:.0f}s)", flush=True)
         t_map = time.time() - t_map_start
+        print(f"  [eval] Map done ({t_map:.0f}s)", flush=True)
 
         t_reduce_start = time.time()
+        print(f"  [eval] Reduce start", flush=True)
 
         if category == "fermentation_experiment":
             reduce_result = self._reduce(
@@ -134,6 +142,7 @@ class PaperQualityEvaluator:
             credibility = 0.6
 
         t_reduce = time.time() - t_reduce_start
+        print(f"  [eval] Reduce done ({t_reduce:.0f}s) | summary={len(paper_summary)} chars | credibility={credibility}", flush=True)
 
         # ── Step 3: 构建 chunk 上下文 ──────────────────────────────────
         fermentation_relevance = result1.get("fermentation_relevance", 0.0)
@@ -343,7 +352,7 @@ class PaperQualityEvaluator:
         if skip_credibility:
             prompt += '\n注意：只需输出摘要，credibility 字段设为 0.6。'
 
-        message = self._call_deepseek(prompt)
+        message = self._call_deepseek(prompt, model="deepseek-v4-pro")
         try:
             return json.loads(message)
         except json.JSONDecodeError:
@@ -352,7 +361,7 @@ class PaperQualityEvaluator:
 
     # ── LLM 调用 ──────────────────────────────────────────────────────
 
-    def _call_deepseek(self, prompt: str) -> str:
+    def _call_deepseek(self, prompt: str, model: str | None = None) -> str:
         from openai import OpenAI
 
         api_key = os.environ.get("DEEPSEEK_API_KEY", "")
@@ -361,7 +370,7 @@ class PaperQualityEvaluator:
 
         client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com/v1", timeout=60.0)
         response = client.chat.completions.create(
-            model=self.model,
+            model=model or self.model,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2,
             max_tokens=4096,

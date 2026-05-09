@@ -126,10 +126,9 @@ class LiteratureAgent:
             choice = response.output.choices[0]
             msg = choice.message
 
-            # 检查是否有 tool_calls
-            if hasattr(msg, "tool_calls") and msg.tool_calls:
-                # 执行所有 tool calls
-                tool_calls_raw = msg.tool_calls
+            # 检查是否有 tool_calls（DashScope response 的 __getattr__ 会抛 KeyError，改用 dict.get）
+            tool_calls_raw = msg.get("tool_calls") if isinstance(msg, dict) else getattr(msg, "tool_calls", None)
+            if tool_calls_raw:
                 assistant_msg = {"role": "assistant", "content": msg.content or "",
                                  "tool_calls": tool_calls_raw}
                 messages.append(assistant_msg)
@@ -207,7 +206,7 @@ class LiteratureAgent:
             p = r.get("payload", {})
             formatted.append({
                 "score": round(r.get("score", 0), 4),
-                "content": p.get("content", "")[:600],
+                "content": p.get("content", ""),
                 "paper_title": p.get("paper_title", ""),
                 "page": p.get("page", "?"),
                 "content_type": p.get("content_type", "text"),
@@ -222,7 +221,7 @@ class LiteratureAgent:
         from http import HTTPStatus
 
         docs_text = "\n---\n".join(
-            f"[来源: {c.get('paper_title', '?')}, p{c.get('page', '?')}]\n{c.get('content', '')[:600]}"
+            f"[来源: {c.get('paper_title', '?')}, p{c.get('page', '?')}]\n{c.get('content', '')}"
             for c in chunks[:10]
         )
         prompt = SYNTHESIS_PROMPT.format(query=query, documents=docs_text)

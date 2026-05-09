@@ -16,7 +16,7 @@ from typing import Any
 from src.parsers.layout_chunk import LayoutChunk, infer_column
 from src.parsers.config import VISION as CFG
 
-MAX_VISION_WORKERS = 4  # Qwen-VL 并发数
+MAX_VISION_WORKERS = 7  # Qwen-VL 并发数
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 class VisionParser:
-    def __init__(self, pdf_path: str | Path, model: str = "qwen-vl-plus") -> None:
+    def __init__(self, pdf_path: str | Path, model: str = "qwen-vl-max") -> None:
         self.pdf_path = str(pdf_path)
         self.model = model
 
@@ -102,7 +102,7 @@ class VisionParser:
                 column=t["column"],
                 order_in_page=t["img_idx"],
                 metadata={
-                    "parser": "qwen-vl-plus",
+                    "parser": "qwen-vl-max",
                     "caption": t["caption"],
                     "image_index": t["img_idx"],
                     "xref": t["xref"],
@@ -175,11 +175,18 @@ class VisionParser:
 
         mime = f"image/{ext.lower()}" if ext else "image/png"
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
-        prompt = "描述此论文图片的关键内容，并结合图注总结可检索信息。"
+        prompt = (
+            "你是学术论文图片解析专家。请按以下步骤分析图片：\n\n"
+            "1. 判断结构：识别图中有几个子图（如 A、B、C 标签），有无共享图例。\n"
+            "2. 逐一描述：每个子图单独列出，标明子图标签（如「图A」「图B」），"
+            "描述其图表类型、坐标轴、数据趋势、关键标注。禁止混淆不同子图的数据。\n"
+            "3. 可检索总结：结合图注，用一段话概括图片的核心信息。\n\n"
+            "仅描述实际可见的视觉内容，禁止编造或输出「评审反馈」「代谢纠正」章节。"
+        )
         if caption:
             prompt += f" 图注：{caption}"
         if feedback:
-            prompt += f" 评审反馈：{feedback}"
+            prompt += f" 上次解析的问题（请避免）：{feedback}"
 
         try:
             response = MultiModalConversation.call(

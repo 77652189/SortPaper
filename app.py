@@ -321,6 +321,9 @@ def run_pipeline(pdf_bytes: bytes, paper_id: str, filename: str = "") -> dict:
         "status": final.get("status", "unknown"),
         "quality": {},
         "worker_timing": final.get("worker_timing", {}),
+        "judge_timing": final.get("judge_timing", {}),
+        "merge_timing": final.get("merge_timing", 0),
+        "retry_timing": final.get("retry_timing", 0),
         "mode": "pipeline",
     }
 
@@ -355,51 +358,78 @@ def store_parsed_chunks(result: dict) -> dict:
         return {"stored": 0, "failed": 0, "duplicate": True, "existing_count": existing_count}
 
     stored = 0
+    degraded = 0
     failed = 0
 
-    for chunk in merged:
-        v = verdicts.get(chunk.get("chunk_id", ""))
-        if v and v.get("passed"):
-            context = chunk_contexts.get(chunk.get("chunk_id", ""), "")
-            raw_content = chunk.get("raw_content", "")
-            display_content = f"{context}\n\n{raw_content}" if context else raw_content
+    def _build_metadata(chunk: dict, v: dict, quality_label: str = "clean") -> dict:
+        context = chunk_contexts.get(chunk.get("chunk_id", ""), "")
+        raw_content = chunk.get("raw_content", "")
+        display_content = f"{context}\n\n{raw_content}" if context else raw_content
+        return {
+            "page": chunk.get("page"),
+            "bbox": chunk.get("bbox"),
+            "column": chunk.get("column"),
+            "order_in_page": chunk.get("order_in_page"),
+            "global_order": chunk.get("global_order"),
+            "chunk_id": chunk.get("chunk_id"),
+            "content_type": chunk.get("content_type", "text"),
+            "table_quality": quality_label if chunk.get("content_type") == "table" else "",
+            "score": v.get("score"),
+            "category": quality.get("category"),
+            "classify_status": quality.get("classify_status"),
+            "credibility": quality.get("credibility"),
+            "fermentation_relevance": quality.get("fermentation_relevance"),
+            "is_actionable": quality.get("is_actionable"),
+            "paper_title": quality.get("paper_title"),
+            "paper_summary": quality.get("paper_summary"),
+            "target_products": quality.get("target_products", []),
+            "organisms": quality.get("organisms", []),
+            "classify_reason": quality.get("classify_reason", ""),
+            "context": context,
+        }, display_content
 
-            metadata = {
-                "page": chunk.get("page"),
-                "bbox": chunk.get("bbox"),
-                "column": chunk.get("column"),
-                "order_in_page": chunk.get("order_in_page"),
-                "global_order": chunk.get("global_order"),
-                "chunk_id": chunk.get("chunk_id"),
-                "content_type": chunk.get("content_type", "text"),
-                "score": v.get("score"),
-                "category": quality.get("category"),
-                "classify_status": quality.get("classify_status"),
-                "credibility": quality.get("credibility"),
-                "fermentation_relevance": quality.get("fermentation_relevance"),
-                "is_actionable": quality.get("is_actionable"),
-                "paper_title": quality.get("paper_title"),
-                "paper_summary": quality.get("paper_summary"),
-                "target_products": quality.get("target_products", []),
-                "organisms": quality.get("organisms", []),
-                "classify_reason": quality.get("classify_reason", ""),
-                "context": context,
-            }
+    for chunk in merged:
+        cid = chunk.get("chunk_id", "")
+        v = verdicts.get(cid)
+        if not v:
+            continue
+        ct = chunk.get("content_type", "text")
+
+        if v.get("passed"):
+            # 通过 → 正常存储
+            meta, display = _build_metadata(chunk, v, "clean")
             try:
                 store.add(
-                    paper_id=paper_id,
-                    worker_type=chunk.get("content_type", "text"),
-                    content=display_content,     # payload 展示（含中文 context）
-                    embed_content=raw_content,   # 向量化（英文 + LLM 前缀）
-                    metadata=metadata,
+                    paper_id=paper_id, worker_type=ct,
+                    content=display,
+                    embed_content=chunk.get("raw_content", ""),
+                    metadata=meta,
                 )
                 stored += 1
             except Exception as e:
-                logger.error("入库失败 chunk_id=%s: %s", chunk.get("chunk_id", "?"), e)
+                logger.error("入库失败 chunk_id=%s: %s", cid, e)
                 failed += 1
 
+        elif ct == "table" and v.get("issue_type") != "false_positive":
+            # 表格解析质量差但非误检 → 降级存储（保留原始数据）
+            meta, display = _build_metadata(chunk, v, "degraded")
+            meta["judge_feedback"] = v.get("feedback", "")
+            try:
+                store.add(
+                    paper_id=paper_id, worker_type=ct,
+                    content=display,
+                    embed_content=chunk.get("raw_content", ""),
+                    metadata=meta,
+                )
+                degraded += 1
+            except Exception as e:
+                logger.error("降级入库失败 chunk_id=%s: %s", cid, e)
+                failed += 1
+
+        # false_positive → 丢弃（参考文献/图注等）
+
     store.save("")
-    return {"stored": stored, "failed": failed}
+    return {"stored": stored, "degraded": degraded, "failed": failed}
 
 
 def _generate_chunk_description(content_type: str, raw_content: str) -> str:
@@ -471,16 +501,17 @@ def _chunk_to_dict(chunk) -> dict:
     }
 
 
-def qdrant_search(query: str, paper_id: str, top_k: int = 5, rerank: bool = False) -> list[dict]:
+def qdrant_search(query: str, paper_id: str = None, top_k: int = 5, rerank: bool = False) -> list[dict]:
     import sys
     sys.path.insert(0, ".")
     from src.store.qdrant_store import QdrantStore
 
     store = QdrantStore()
+    filter_kwargs = {"paper_id": paper_id} if paper_id else None
     results = store.search(
         query=query,
         limit=top_k,
-        filter_kwargs={"paper_id": paper_id},
+        filter_kwargs=filter_kwargs,
         rerank=rerank,
     )
     return [
@@ -726,13 +757,28 @@ def render_overview(result: dict) -> None:
                 wt_text = worker_timing.get("text", 0)
                 wt_table = worker_timing.get("table", 0)
                 wt_image = worker_timing.get("image", 0)
-                parse_total = wt_text + wt_table + wt_image
+                parse_total = max(wt_text, wt_table, wt_image)  # Worker 并行，取最长
                 st.caption("**解析阶段**（三个 Worker 并行）")
                 pc1, pc2, pc3, pc4 = st.columns(4)
                 pc1.metric("文本解析", f"{wt_text:.1f}s")
                 pc2.metric("表格解析", f"{wt_table:.1f}s")
                 pc3.metric("图片解析", f"{wt_image:.1f}s")
-                pc4.metric("并行合计", f"{parse_total:.1f}s")
+                pc4.metric("并行耗时", f"{parse_total:.1f}s")
+
+                # Judge 阶段
+                jt = result.get("judge_timing", {})
+                if jt:
+                    st.caption("**Judge 阶段**（text / table / image 分线并行）")
+                    jc1, jc2, jc3, jc4 = st.columns(4)
+                    jc1.metric("文本 Judge", f"{jt.get('text', 0):.1f}s")
+                    jc2.metric("表格 Judge", f"{jt.get('table', 0):.1f}s")
+                    jc3.metric("图片 Judge", f"{jt.get('image', 0):.1f}s")
+                    jc4.metric("Judge 合计", f"{sum(jt.values()):.1f}s")
+
+                # Merge 阶段
+                mt = result.get("merge_timing", 0)
+                if mt:
+                    st.caption(f"**Merge 阶段**: {mt:.1f}s")
 
                 # 图片子阶段（image_extract / image_describe）
                 if worker_timing.get("image_describe", 0) > 0:
@@ -740,6 +786,12 @@ def render_overview(result: dict) -> None:
                         worker_timing.get("image_extract", 0),
                         worker_timing.get("image_describe", 0),
                     ))
+
+                # 总计
+                total_elapsed = result.get("_elapsed", 0)
+                if total_elapsed:
+                    accounted = parse_total + sum(jt.values()) + mt
+                    st.caption(f"**总耗时 {total_elapsed:.0f} 秒** — 已统计 {accounted:.0f}s，其余为路由/通信开销")
 
                 # 质量评估阶段
                 t_cls = timing.get("classify", 0)
@@ -803,15 +855,20 @@ def render_image_tab(result: dict) -> None:
 
 
 def render_search_tab(paper_id: str) -> None:
+    """语义检索标签页：当前论文内检索。"""
     try:
         from src.store.qdrant_store import QdrantStore
         store = QdrantStore()
-        if store.count == 0:
-            st.info("Qdrant 索引为空，请先运行完整流水线")
-            return
+        total = store.count
     except Exception:
         st.warning("Qdrant 服务未连接（localhost:6333），请先启动 Qdrant")
         return
+
+    if total == 0:
+        st.info("Qdrant 索引为空，请先解析论文并入库")
+        return
+
+    st.caption(f"当前索引共 {total} 条记录，当前论文: `{paper_id}`")
 
     sub_tabs = st.tabs(["🔍 手动检索", "🤖 Agent 检索"])
 
@@ -822,7 +879,32 @@ def render_search_tab(paper_id: str) -> None:
         _render_agent_search(paper_id)
 
 
-def _render_manual_search(paper_id: str) -> None:
+def render_standalone_search_tab() -> None:
+    """独立检索标签页：不需要先解析论文，直接搜索 Qdrant 全库。"""
+    try:
+        from src.store.qdrant_store import QdrantStore
+        store = QdrantStore()
+        total = store.count
+    except Exception:
+        st.warning("Qdrant 服务未连接（localhost:6333），请先启动 Qdrant")
+        return
+
+    if total == 0:
+        st.info("Qdrant 索引为空，请先解析论文并入库后再来检索。")
+        return
+
+    st.caption(f"全库共 {total} 条记录，跨论文检索")
+
+    st_tabs = st.tabs(["🔍 手动检索", "🤖 Agent 检索"])
+
+    with st_tabs[0]:
+        _render_manual_search(paper_id=None)
+
+    with st_tabs[1]:
+        _render_agent_search(paper_id=None)
+
+
+def _render_manual_search(paper_id: str | None = None) -> None:
     query = st.text_input("输入检索关键词或问题", placeholder="e.g. lacto-N-tetraose biosynthesis yield",
                           key="manual_query")
     top_k = st.slider("返回条数", 1, 10, 5, key="manual_top_k")
@@ -842,16 +924,22 @@ def _render_manual_search(paper_id: str) -> None:
         for r in results:
             score = r.get("score", 0)
             payload = r.get("payload", {})
-            wtype = payload.get("worker_type", "")
+            wtype = payload.get("content_type", payload.get("worker_type", ""))
             content = payload.get("content", "")
             pg = payload.get("page", "?")
+            paper_title = payload.get("paper_title", "?")
             reranked = "🔁 " if r.get("reranked") else ""
-            with st.expander(f"{reranked}📌 相似度={score:.4f} | {wtype} | p{pg}", expanded=True):
-                st.text(content[:800])
+            paper_info = f" | {paper_title[:40]}" if paper_id is None else ""
+            with st.expander(f"{reranked}📌 相似度={score:.4f} | {wtype} | p{pg}{paper_info}", expanded=True):
+                if wtype == "table":
+                    st.markdown(content)
+                else:
+                    st.text(content)
 
 
-def _render_agent_search(paper_id: str) -> None:
-    st.caption("Qwen 自主检索 + 综合建议。模型会自动选择关键词和过滤条件。")
+def _render_agent_search(paper_id: str | None = None) -> None:
+    st.caption("Qwen 自主检索 + 综合建议。模型会自动选择关键词和过滤条件。" +
+               ("（全库检索）" if paper_id is None else f"（限定论文: `{paper_id}`）"))
     question = st.text_area("输入你的问题", placeholder="e.g. HMO 发酵中乳糖补料导致乙酸积累，文献中有什么解决方案？",
                             key="agent_question", height=100)
     max_rounds = st.slider("最大检索轮次", 1, 3, 2, key="agent_rounds",
@@ -1148,118 +1236,241 @@ def render_saved_detail(detail: dict, file_stem: str) -> None:
 # ─── 侧边栏 ────────────────────────────────────────────────────────────────────
 
 
-def sidebar() -> tuple[bytes | None, str, str, bool, str]:
-    """返回 (pdf_bytes, paper_id, mode, parse_clicked, filename)。"""
+def sidebar() -> dict:
+    """返回 {
+        pdf_bytes, paper_id, mode, parse_clicked, filename,
+        batch: {files: list[Path], pending: bool} | None,
+    }。"""
+    result: dict = {
+        "pdf_bytes": None, "paper_id": "", "mode": "快速预览",
+        "parse_clicked": False, "filename": "",
+        "batch": None,
+    }
+
     with st.sidebar:
         st.title(f"{LOGO} SortPaper")
         st.caption("学术论文解析与检索工具")
         st.divider()
 
         # ── 文件来源 ──
-        source = st.radio("PDF 来源", ["上传文件", "示例论文"], horizontal=True)
+        source = st.radio("PDF 来源", ["上传文件", "示例论文", "📁 批量导入"], horizontal=True)
 
         pdf_bytes: bytes | None = None
         filename = ""
 
-        if source == "上传文件":
-            uploaded = st.file_uploader("选择 PDF 文件", type="pdf", label_visibility="collapsed")
-            if uploaded:
-                pdf_bytes = uploaded.read()
-                filename = uploaded.name
-        else:
-            samples = sorted(SAMPLE_DIR.glob("*.pdf")) if SAMPLE_DIR.exists() else []
-            if not samples:
-                st.warning("data/sample_papers/ 目录为空")
-            else:
-                choice = st.selectbox(
-                    "选择示例论文",
-                    options=samples,
-                    format_func=lambda p: p.name,
-                    label_visibility="collapsed",
-                )
-                if choice:
-                    pdf_bytes = choice.read_bytes()
-                    filename = choice.name
+        if source == "📁 批量导入":
+            # ── 批量导入 ──
+            batch_files = _render_batch_import()
+            result["batch"] = {"files": batch_files, "pending": False}
+            if "batch_trigger" not in st.session_state:
+                st.session_state.batch_trigger = False
 
-        if pdf_bytes:
-            paper_id = build_paper_id(pdf_bytes)
-            st.caption(f"📎 {filename}")
-            st.caption(f"ID: `{paper_id}`")
-        else:
-            paper_id = ""
+            st.divider()
 
-        st.divider()
-
-        # ── 解析模式 ──
-        st.subheader("解析模式")
-        mode = st.radio(
-            "模式",
-            ["快速预览", "完整流水线"],
-            captions=["仅解析，无 LLM 调用（免费）", "Judge + Qdrant 写入（消耗 API 配额）"],
-            label_visibility="collapsed",
-        )
-
-        if mode == "完整流水线":
-            st.info(
-                "⏱️ 预计耗时 **1 ~ 2 分钟**\n\n"
-                "包含 LLM Judge + VisionParser（图片）。\n"
-                "质量评估和入库请在解析完成后手动触发。\n\n"
-                "若长时间无响应请检查 `DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` 配置。",
+            # 一键入库按钮
+            can_batch = bool(batch_files)
+            if can_batch:
+                est_min = len(batch_files) * 5  # pipeline 2min + Map-Reduce ~3min
+                st.caption(f"预计耗时约 {est_min} 分钟（每篇最长 15 分钟）")
+            batch_btn = st.button(
+                "🚀 一键批量入库", disabled=not can_batch,
+                use_container_width=True, type="primary",
             )
+            if batch_btn and can_batch:
+                st.session_state.batch_trigger = True
+                result["batch"]["pending"] = True
+            if not can_batch:
+                st.caption("请先扫描并选择 PDF 文件")
 
-        st.divider()
+            result["parse_clicked"] = False
+            result["paper_id"] = "batch"
+            result["filename"] = f"批量 {len(batch_files)} 篇"
+            st.divider()
+            _render_vector_library_ui()
+            return result
 
-        # ── 解析按钮 ──
-        can_parse = pdf_bytes is not None
-        parse_clicked = st.button(
-            "🚀 开始解析",
-            disabled=not can_parse,
-            use_container_width=True,
-            type="primary",
-        )
-
-        if not can_parse:
-            st.caption("请先选择 PDF 文件")
-
-        st.divider()
-
-        # ── 清空向量库 ──
-        st.subheader("向量库管理")
-        if "confirm_clear" not in st.session_state:
-            st.session_state.confirm_clear = False
-
-        if not st.session_state.confirm_clear:
-            if st.button("🗑️ 清空 Qdrant 向量库", use_container_width=True, type="secondary"):
-                st.session_state.confirm_clear = True
-                st.rerun()
         else:
-            st.warning("⚠️ 将删除 Qdrant 中所有论文数据，不可恢复")
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("✅ 确认清空", use_container_width=True, type="primary"):
-                    try:
-                        from src.store.qdrant_store import QdrantStore
-                        store = QdrantStore()
-                        before = store.count
-                        store.clear()
-                        st.session_state.confirm_clear = False
-                        st.success(f"已清空（删除 {before} 条记录）")
-                    except Exception as exc:
-                        st.session_state.confirm_clear = False
-                        st.error(f"清空失败：{exc}")
-            with col2:
-                if st.button("❌ 取消", use_container_width=True):
-                    st.session_state.confirm_clear = False
-                    st.rerun()
+            # ── 单篇模式（上传 / 示例）──
+            if source == "上传文件":
+                uploaded = st.file_uploader("选择 PDF 文件", type="pdf", label_visibility="collapsed")
+                if uploaded:
+                    pdf_bytes = uploaded.read()
+                    filename = uploaded.name
+            else:
+                samples = sorted(SAMPLE_DIR.glob("*.pdf")) if SAMPLE_DIR.exists() else []
+                if not samples:
+                    st.warning("data/sample_papers/ 目录为空")
+                else:
+                    choice = st.selectbox(
+                        "选择示例论文", options=samples,
+                        format_func=lambda p: p.name, label_visibility="collapsed",
+                    )
+                    if choice:
+                        pdf_bytes = choice.read_bytes()
+                        filename = choice.name
 
-    return pdf_bytes, paper_id, mode, parse_clicked, filename  # type: ignore[return-value]
+            if pdf_bytes:
+                paper_id = build_paper_id(pdf_bytes)
+                st.caption(f"📎 {filename}")
+                st.caption(f"ID: `{paper_id}`")
+            else:
+                paper_id = ""
+
+            result["pdf_bytes"] = pdf_bytes
+            result["paper_id"] = paper_id
+            result["filename"] = filename
+
+            st.divider()
+
+            # ── 解析模式 ──
+            st.subheader("解析模式")
+            mode = st.radio(
+                "模式",
+                ["快速预览", "完整流水线", "一键入库"],
+                captions=["仅解析，无 LLM（免费）", "Judge + 质量评估（手动入库）", "解析→评估→入库 全自动"],
+                label_visibility="collapsed",
+            )
+            result["mode"] = mode
+
+            if mode == "完整流水线":
+                st.info(
+                    "⏱️ 预计 **1 ~ 2 分钟** | LLM Judge + VisionParser\n"
+                    "质量评估和入库请在解析完成后手动触发。\n"
+                    "需 `DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY`。",
+                )
+            elif mode == "一键入库":
+                st.info(
+                    "⏱️ 预计 **2 ~ 3 分钟**\n"
+                    "自动完成：解析 → Judge → 质量评估 → Qdrant 入库。\n"
+                    "已入库的论文会检测重复。",
+                )
+
+            st.divider()
+
+            can_parse = pdf_bytes is not None
+            parse_clicked = st.button(
+                "🚀 开始解析", disabled=not can_parse,
+                use_container_width=True, type="primary",
+            )
+            if not can_parse:
+                st.caption("请先选择 PDF 文件")
+
+            result["parse_clicked"] = parse_clicked
+
+        st.divider()
+        _render_vector_library_ui()
+
+    return result
+
+
+def _render_batch_import() -> list[Any]:
+    """渲染批量导入 UI，返回用户上传的 UploadedFile 列表。"""
+    uploaded = st.file_uploader(
+        "拖拽或选择 PDF 文件", type="pdf",
+        accept_multiple_files=True, label_visibility="collapsed",
+        key="batch_uploader",
+    )
+    if uploaded:
+        st.caption(f"已选择 {len(uploaded)} 个 PDF 文件")
+    else:
+        st.caption("支持多选或拖拽 PDF 文件")
+    return list(uploaded) if uploaded else []
+
+
+def _render_vector_library_ui() -> None:
+    """展示向量库文献列表 + 删除/清空功能。"""
+    from src.store.qdrant_store import QdrantStore
+
+    st.subheader("向量库管理")
+
+    try:
+        store = QdrantStore()
+        total = store.count
+    except Exception:
+        st.warning("Qdrant 未连接")
+        return
+
+    st.caption(f"共 {total} 条记录")
+
+    papers = store.list_papers()
+    if not papers:
+        st.caption("暂无已录入文献")
+    else:
+        for p in papers:
+            pid = p["paper_id"]
+            with st.expander(f"📄 {p['paper_title'][:50]}", expanded=False):
+                st.caption(f"Hash: `{pid}`")
+                st.caption(f"Chunks: {p['chunk_count']}")
+                if st.button("🗑️ 删除此文献", key=f"del_{pid}"):
+                    try:
+                        n = store.delete_by_paper_id(pid)
+                        st.success(f"已删除 {n} 条记录")
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"删除失败：{exc}")
+
+    st.divider()
+    # 清空按钮
+    if "confirm_clear" not in st.session_state:
+        st.session_state.confirm_clear = False
+
+    if not st.session_state.confirm_clear:
+        if st.button("🗑️ 清空全部向量库", use_container_width=True, type="secondary"):
+            st.session_state.confirm_clear = True
+            st.rerun()
+    else:
+        st.warning("⚠️ 将删除 Qdrant 中所有论文数据，不可恢复")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("✅ 确认清空", use_container_width=True, type="primary"):
+                try:
+                    before = store.count
+                    store.clear()
+                    st.session_state.confirm_clear = False
+                    st.success(f"已清空（删除 {before} 条记录）")
+                    st.rerun()
+                except Exception as exc:
+                    st.session_state.confirm_clear = False
+                    st.error(f"清空失败：{exc}")
+        with col2:
+            if st.button("❌ 取消", use_container_width=True):
+                st.session_state.confirm_clear = False
+                st.rerun()
+
+
+# ─── 批量处理辅助 ──────────────────────────────────────────────────────────────
+
+
+def _process_one_pdf(file_bytes: bytes, paper_id: str, filename: str) -> dict:
+    """一条龙：解析 → 质量评估 → 入库。返回 quality dict。"""
+    import sys
+    t0 = time.time()
+    print(f"\n[batch] {filename} | pipeline start", flush=True); sys.stdout.flush()
+    pipe_result = run_pipeline(file_bytes, paper_id, filename)
+    print(f"[batch] {filename} | pipeline done ({time.time()-t0:.0f}s) | quality eval start", flush=True); sys.stdout.flush()
+    q_result = evaluate_parsed_chunks(pipe_result)
+    print(f"[batch] {filename} | quality eval done ({time.time()-t0:.0f}s) | store start", flush=True); sys.stdout.flush()
+    pipe_result["quality"] = q_result
+    store_parsed_chunks(pipe_result)
+    print(f"[batch] {filename} | store done ({time.time()-t0:.0f}s)", flush=True); sys.stdout.flush()
+    return {
+        "category": q_result.get("category", "?"),
+        "credibility": q_result.get("credibility", 0),
+        "chunks": len(pipe_result.get("merged_chunks", [])),
+    }
 
 
 # ─── 主界面 ────────────────────────────────────────────────────────────────────
 
 
 def main() -> None:
-    pdf_bytes, paper_id, mode, parse_clicked, filename = sidebar()
+    sb = sidebar()
+    pdf_bytes: bytes | None = sb["pdf_bytes"]
+    paper_id: str = sb["paper_id"]
+    mode: str = sb["mode"]
+    parse_clicked: bool = sb["parse_clicked"]
+    filename: str = sb["filename"]
+    batch_info: dict | None = sb.get("batch")
 
     # session state 管理
     if "result" not in st.session_state:
@@ -1277,6 +1488,9 @@ def main() -> None:
     # 保存成功消息
     if "save_success_msg" not in st.session_state:
         st.session_state.save_success_msg = ""
+    # 批量处理进度
+    if "batch_results" not in st.session_state:
+        st.session_state.batch_results: list[dict] = []
 
     # 记住原始文件名
     if filename:
@@ -1288,8 +1502,97 @@ def main() -> None:
         st.session_state.current_paper = paper_id
         st.session_state.selected_saved = None
 
-    PIPELINE_TIMEOUT = 300  # 流水线最长等待 5 分钟
+    PIPELINE_TIMEOUT = 900  # 每篇最长 15 分钟（pipeline ~2min + Map-Reduce ~5-10min + store）
 
+    # ── 批量模式 ──
+    if batch_info and batch_info.get("pending"):
+        batch_files = batch_info.get("files", [])
+        if batch_files:
+            progress = st.progress(0, "批量入库中…")
+            status = st.empty()
+            st.session_state.batch_results = []
+            success_n = 0
+            skip_n = 0
+            fail_n = 0
+
+            for i, pdf_file in enumerate(batch_files):
+                pct = (i + 1) / len(batch_files)
+                status.info(f"({i+1}/{len(batch_files)}) 处理: {pdf_file.name}")
+
+                try:
+                    file_bytes = pdf_file.read()
+                    pid = build_paper_id(file_bytes)
+
+                    # 重复检测
+                    from src.store.qdrant_store import QdrantStore
+                    from qdrant_client.http import models as qdrant_models
+                    dup_store = QdrantStore()
+                    dup_count = dup_store.client.count(
+                        collection_name=dup_store.collection,
+                        count_filter=qdrant_models.Filter(
+                            must=[qdrant_models.FieldCondition(
+                                key="paper_id", match=qdrant_models.MatchValue(value=pid),
+                            )],
+                        ),
+                    ).count
+                    if dup_count > 0:
+                        skip_n += 1
+                        st.session_state.batch_results.append({
+                            "file": pdf_file.name, "paper_id": pid, "status": "skip",
+                            "reason": f"已存在 {dup_count} 条记录",
+                        })
+                        progress.progress(pct, f"({i+1}/{len(batch_files)}) {pdf_file.name} — 跳过（已入库）")
+                        continue
+
+                    # 一键入库：run_pipeline → quality eval → store（统一超时保护）
+                    t_start = time.time()
+                    with ThreadPoolExecutor(max_workers=1) as pool:
+                        fut = pool.submit(_process_one_pdf, file_bytes, pid, pdf_file.name)
+                        try:
+                            q_result = fut.result(timeout=PIPELINE_TIMEOUT)
+                        except FutureTimeoutError:
+                            fail_n += 1
+                            st.session_state.batch_results.append({
+                                "file": pdf_file.name, "paper_id": pid, "status": "fail",
+                                "reason": "超时",
+                            })
+                            progress.progress(pct, f"({i+1}/{len(batch_files)}) {pdf_file.name} — 超时")
+                            continue
+
+                    elapsed = time.time() - t_start
+                    success_n += 1
+                    st.session_state.batch_results.append({
+                        "file": pdf_file.name, "paper_id": pid,
+                        "status": "ok",
+                        "category": q_result.get("category", "?"),
+                        "chunks": q_result.get("chunks", 0),
+                        "time": f"{elapsed:.0f}s",
+                    })
+                except Exception as exc:
+                    fail_n += 1
+                    st.session_state.batch_results.append({
+                        "file": pdf_file.name, "paper_id": pid if 'pid' in dir() else "?",
+                        "status": "fail", "reason": str(exc)[:200],
+                    })
+
+                progress.progress(pct)
+
+            progress.empty()
+            status.empty()
+
+            st.markdown(f"## ✅ 批量处理完成")
+            st.markdown(f"成功 **{success_n}** | 跳过（已入库）**{skip_n}** | 失败 **{fail_n}**")
+
+            if st.session_state.batch_results:
+                import pandas as pd
+                df = pd.DataFrame(st.session_state.batch_results)
+                st.dataframe(df, use_container_width=True, hide_index=True)
+
+            st.session_state.batch_trigger = False
+            # 不清除 batch_info，让用户可以看到结果后手动切换
+        return
+
+    # ── 单篇模式 ──
     if parse_clicked and pdf_bytes:
         # ── 重复检测 ──
         from src.store.qdrant_store import QdrantStore
@@ -1303,7 +1606,7 @@ def main() -> None:
                 )],
             ),
         ).count
-        if dup_count > 0:
+        if dup_count > 0 and mode != "一键入库":
             force_key = f"force_reparse_{paper_id}"
             if not st.session_state.get(force_key):
                 st.warning(
@@ -1320,7 +1623,11 @@ def main() -> None:
                 return  # 未确认，阻止解析
 
         st.session_state._pdf_bytes = pdf_bytes  # 供 PDF 重建使用
-        mode_key = "preview" if mode == "快速预览" else "pipeline"
+
+        if mode == "快速预览":
+            mode_key = "preview"
+        else:
+            mode_key = "pipeline"  # 完整流水线 + 一键入库都用 pipeline
 
         start_ts = time.time()
         try:
@@ -1332,7 +1639,8 @@ def main() -> None:
                     "⏳ 解析进行中…每次 API 调用最长等待 60 秒，"
                     f"总超时 **{PIPELINE_TIMEOUT // 60} 分钟**。请勿刷新页面。",
                 )
-                with st.spinner("解析中（LLM Judge · VisionParser）…"):
+                pipeline_spinner = "📄 阶段 1/3: 解析中（LLM Judge · VisionParser）…" if mode == "一键入库" else "解析中（LLM Judge · VisionParser）…"
+                with st.spinner(pipeline_spinner):
                     with ThreadPoolExecutor(max_workers=1) as pool:
                         fut = pool.submit(run_pipeline, pdf_bytes, paper_id, filename)
                         try:
@@ -1348,9 +1656,37 @@ def main() -> None:
                             return
                 timeout_banner.empty()
             elapsed = time.time() - start_ts
+            result["_elapsed"] = elapsed
+            st.caption(f"✅ 解析完成，耗时 {elapsed:.1f} 秒")
+
+            # 标记解析模式（供结果展示判断）
+            result["mode"] = "auto" if mode == "一键入库" else result.get("mode", "pipeline")
+
+            # ── 一键入库：自动质量评估 + 入库 + 保存 ──
+            if mode == "一键入库":
+                steps = st.empty()
+                steps.info("📊 阶段 2/3: 质量评估中（Map-Reduce）…")
+                q_result = evaluate_parsed_chunks(result)
+                result["quality"] = q_result
+
+                steps.info("📥 阶段 3/3: 入库到 Qdrant…")
+                store_parsed_chunks(result)
+
+                steps.info("💾 保存解析结果…")
+                snapshot = build_snapshot(result, filename)
+                save_result(snapshot, filename)
+
+                steps.empty()
+                stored_key = f"stored_{paper_id}"
+                st.session_state[stored_key] = True
+                st.success(
+                    f"✅ 一键入库完成 | "
+                    f"分类: {q_result.get('category', '?')} | "
+                    f"可信度: {q_result.get('credibility', '?')} | "
+                    f"已保存"
+                )
+
             st.session_state.result = result
-            if mode_key == "pipeline":
-                st.caption(f"✅ 解析完成，耗时 {elapsed:.1f} 秒")
         except Exception as exc:
             st.error(f"解析失败：{exc}")
             logging.exception("parse error")
@@ -1359,8 +1695,8 @@ def main() -> None:
     result = st.session_state.result
 
     if result is None:
-        # 欢迎页 + 已保存入口
-        welcome_tabs = st.tabs(["🏠 欢迎", "💾 已保存"])
+        # 欢迎页 + 已保存入口 + 独立检索
+        welcome_tabs = st.tabs(["🏠 欢迎", "🔍 语义检索", "💾 已保存"])
         with welcome_tabs[0]:
             st.markdown("## 欢迎使用 SortPaper 📄")
             st.markdown(
@@ -1377,20 +1713,23 @@ def main() -> None:
                 """
             )
         with welcome_tabs[1]:
+            render_standalone_search_tab()
+        with welcome_tabs[2]:
             render_saved_tab()
         return
 
     # 结果展示
     verdicts = result.get("verdicts", {})
-    is_pipeline = result.get("mode") == "pipeline"
+    is_pipeline = result.get("mode") in ("pipeline", "auto")
+    is_manual_pipeline = result.get("mode") == "pipeline"  # 完整流水线（需手动分步）
 
     tabs = st.tabs(["📊 概览", "📝 文本块", "🖼️ 图片", "📋 表格", "📐 PDF 重建", "🔍 语义检索", "💾 已保存"])
 
     with tabs[0]:
         render_overview(result)
 
-        # ── 流水线模式：阶段操作按钮 ──
-        if is_pipeline:
+        # ── 完整流水线模式：阶段操作按钮（一键入库已自动完成，不显示）──
+        if is_manual_pipeline:
             quality = result.get("quality", {})
             has_quality = bool(quality.get("category"))
             stored_key = f"stored_{result.get('paper_id', '')}"
