@@ -165,12 +165,11 @@ class LiteratureAgent:
                         "tool_call_id": tc_id,
                     })
             else:
-                # 无 tool call → 模型认为够了
-                final_answer = msg.content
+                # 无 tool call → 模型认为够了，结束搜索
                 break
 
-        # 如果多轮结束还没拿到回答，强制综合
-        if not final_answer and self._all_chunks:
+        # 始终用 DeepSeek 综合检索结果生成最终回答
+        if self._all_chunks:
             final_answer = self._synthesize(user_question, self._all_chunks)
 
         return {
@@ -216,9 +215,9 @@ class LiteratureAgent:
         return formatted
 
     def _synthesize(self, query: str, chunks: list[dict[str, Any]]) -> str:
-        """强制综合：当 Agent 循环结束但未生成回答时调用。"""
-        import dashscope
-        from http import HTTPStatus
+        """强制综合：当 Agent 循环结束但未生成回答时调用。使用 DeepSeek。"""
+        import os
+        from openai import OpenAI
 
         docs_text = "\n---\n".join(
             f"[来源: {c.get('paper_title', '?')}, p{c.get('page', '?')}]\n{c.get('content', '')}"
@@ -226,11 +225,19 @@ class LiteratureAgent:
         )
         prompt = SYNTHESIS_PROMPT.format(query=query, documents=docs_text)
 
-        response = dashscope.Generation.call(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}],
-            result_format="message",
-        )
-        if response.status_code == HTTPStatus.OK:
-            return response.output.choices[0].message.content
-        return ""
+        try:
+            client = OpenAI(
+                api_key=os.getenv("DEEPSEEK_API_KEY", ""),
+                base_url="https://api.deepseek.com/v1",
+                timeout=60.0,
+            )
+            response = client.chat.completions.create(
+                model="deepseek-chat",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=2048,
+            )
+            return response.choices[0].message.content or ""
+        except Exception as e:
+            logger.error("synthesize via DeepSeek failed: %s", e)
+            return f"检索到 {len(chunks)} 个相关 chunk，但综合生成失败：{e}"
