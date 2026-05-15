@@ -27,6 +27,8 @@ class TableParserConfig:
     # ---- 表格有效性验证（仅结构检查，内容判断已迁移至 LLM Judge）----
     MIN_COLS: int = 2                     # 最少列数
     MIN_DATA_ROWS: int = 2                # 最少数据行数（除去表头后）
+    MAX_CELL_CHARS: int = 200             # 单个单元格字符数上限；超出即视为正文段落误检
+    THREELINE_COL_GAP_PT: float = 8.0    # 三线表列检测：相邻列之间的最小间距（pt）
 
     # ---- 表格合并 ----
     MERGE_X_OVERLAP_RATIO: float = 0.5    # x 方向重叠度 ≥ 此值才考虑合并

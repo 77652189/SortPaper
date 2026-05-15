@@ -175,7 +175,8 @@ def run_preview(pdf_bytes: bytes) -> dict:
         wt_text = round(time.time() - t0_text, 1)
 
         t0_table = time.time()
-        table_chunks = TableParser(tmp_path).parse()
+        # 快速预览只跑 pdfplumber，跳过 camelot（camelot 全文档耗时15-30s）
+        table_chunks = TableParser(tmp_path).parse(strategy="pdfplumber_only")
         wt_table = round(time.time() - t0_table, 1)
 
         print(f"[preview] before merge: {len(text_chunks)} text + {len(table_chunks)} table")
@@ -184,22 +185,12 @@ def run_preview(pdf_bytes: bytes) -> dict:
         merged_chunks = LayoutMerger.merge(text_chunks + table_chunks)
         print(f"[preview] after merge: {len(merged_chunks)} chunks")
 
-        # image metadata + OpenCV 表格检测（均为本地操作，零额外 API 费用）
+        # 图片元数据（本地操作，无额外 API 费用）
         import fitz  # type: ignore
-        from src.parsers.opencv_table_detector import OpenCVTableDetector
-        detector = OpenCVTableDetector()
         doc = fitz.open(str(tmp_path))
         images = []
-        opencv_detections: dict[int, list[list[float]]] = {}
         for page_index in range(len(doc)):
             page = doc[page_index]
-            # OpenCV 表格区域检测（纯本地形态学，毫秒级）
-            bboxes_px = detector.detect_page(page)
-            if bboxes_px:
-                opencv_detections[page_index + 1] = [
-                    list(detector.bbox_to_pdf_pts(b)) for b in bboxes_px
-                ]
-            # 图片元数据
             img_list = page.get_images(full=True)
             for img_info in img_list:
                 xref = img_info[0]
@@ -269,7 +260,6 @@ def run_preview(pdf_bytes: bytes) -> dict:
         "images": images,
         "verdicts": verdicts,
         "mode": "preview",
-        "opencv_detections": opencv_detections,
         # 计时（供耗时面板展示）
         "worker_timing": {"text": wt_text, "table": wt_table},
         "judge_timing": {"text_table": jt_judge},
@@ -893,7 +883,7 @@ def render_overview(result: dict) -> None:
             c4.metric("Judge 通过", f"{passed} / {total_v}")
         else:
             c4.metric("模式", "快速预览")
-        st.info("ℹ️ 快速预览模式：PyMuPDF/pdfplumber 解析 + OpenCV 检测 + LLM Judge，无 VisionParser / Qwen-VL / 向量索引写入")
+        st.info("ℹ️ 快速预览模式：PyMuPDF 文本 + pdfplumber 表格（跳过 camelot）+ OpenCV 检测 + LLM Judge，无 VisionParser / Qwen-VL / 向量索引写入")
 
         # 计时面板（快速预览）
         worker_timing = result.get("worker_timing", {})
@@ -929,62 +919,14 @@ def render_text_tab(chunks: list[dict], verdicts: dict) -> None:
         render_chunk_card(c, verdict, i)
 
 
-def _render_page_with_detections(pdf_bytes: bytes, page_idx: int, bboxes_pdf: list) -> object:
-    """渲染单页缩略图并在检测到的表格区域上画红框，返回 PIL Image。"""
-    import fitz  # type: ignore
-    from PIL import Image, ImageDraw
-
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    page = doc[page_idx - 1]
-    mat = fitz.Matrix(1.5, 1.5)  # ~108 DPI，缩略图清晰度够用
-    pix = page.get_pixmap(matrix=mat)
-    img = Image.frombytes("RGB", (pix.w, pix.h), pix.samples)
-    doc.close()
-
-    draw = ImageDraw.Draw(img)
-    scale = 1.5
-    for bbox in bboxes_pdf:
-        x0, y0, x1, y1 = [v * scale for v in bbox]
-        draw.rectangle([x0, y0, x1, y1], outline="#e63946", width=3)
-        draw.rectangle([x0 + 1, y0 + 1, x1 - 1, y1 - 1], outline="#e63946aa" if hasattr(draw, "alpha_composite") else "#e63946", width=1)
-
-    return img
-
 
 def render_table_tab(
     chunks: list[dict],
     verdicts: dict,
-    opencv_detections: dict | None = None,
-    pdf_bytes: bytes | None = None,
 ) -> None:
-    # ── OpenCV 检测可视化（仅快速预览模式有数据）────────────────────────────
-    if opencv_detections and pdf_bytes:
-        total = sum(len(v) for v in opencv_detections.values())
-        pages = sorted(opencv_detections.keys())
-        with st.expander(
-            f"🔍 OpenCV 检测到 {total} 处候选表格区域（共 {len(pages)} 页）",
-            expanded=True,
-        ):
-            st.caption("红框 = 形态学横线聚类检测结果，仅用于定位，内容由旧引擎或视觉模型提取。")
-            cols = st.columns(min(len(pages), 3))
-            for i, page_idx in enumerate(pages):
-                with cols[i % 3]:
-                    try:
-                        img = _render_page_with_detections(
-                            pdf_bytes, page_idx, opencv_detections[page_idx]
-                        )
-                        st.image(
-                            img,
-                            caption=f"第 {page_idx} 页 · {len(opencv_detections[page_idx])} 处",
-                            use_container_width=True,
-                        )
-                    except Exception as e:
-                        st.warning(f"第 {page_idx} 页渲染失败: {e}")
-
     # ── 表格内容块 ────────────────────────────────────────────────────────────
     if not chunks:
-        st.info("无表格块（已过滤所有误检伪表格）" if not opencv_detections else
-                "旧引擎未提取到表格内容（OpenCV 已检测到区域，完整流水线可用视觉模型提取）")
+        st.info("未检测到表格（pdfplumber 未找到有效表格结构）")
         return
     st.caption(f"共 {len(chunks)} 个表格块")
     for i, c in enumerate(chunks):
@@ -1990,8 +1932,6 @@ def main() -> None:
         render_table_tab(
             result.get("table_chunks", []),
             verdicts,
-            opencv_detections=result.get("opencv_detections"),
-            pdf_bytes=pdf_bytes,
         )
 
     with tabs[4]:

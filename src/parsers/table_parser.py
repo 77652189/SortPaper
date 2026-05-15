@@ -265,7 +265,7 @@ class TableParser:
                         rows = table_obj.extract()
                         if not rows:
                             continue
-                        normalized = self._normalize_table(rows)
+                        normalized = self._truncate_at_body_text(self._normalize_table(rows))
                         if not self._is_valid_table(normalized):
                             continue
 
@@ -349,7 +349,25 @@ class TableParser:
                     if not rows:
                         continue
 
-                    normalized = self._normalize_table(rows)
+                    # 三线表检测：3条横线 + 0条竖线 → 用几何+词位置提取
+                    h_count, h_ys, v_count = TableParser._count_threeline_lines(
+                        page, table_obj.bbox
+                    )
+                    if h_count == 3 and v_count == 0:
+                        tl = TableParser._extract_threeline(page, table_obj.bbox, h_ys)
+                        normalized = tl if (tl and len(tl) >= 2) else \
+                            self._truncate_at_body_text(self._normalize_table(rows))
+                        logger.debug(
+                            "p%d 三线表检测: h=%d v=%d → %s (%d行)",
+                            page_index, h_count, v_count,
+                            "几何提取" if (tl and len(tl) >= 2) else "普通提取",
+                            len(normalized),
+                        )
+                    else:
+                        normalized = self._truncate_at_body_text(
+                            self._normalize_table(rows)
+                        )
+
                     if not self._is_valid_table(normalized):
                         continue
 
@@ -417,7 +435,7 @@ class TableParser:
                     if not rows or not rows[0]:
                         continue
 
-                    normalized = self._normalize_table(rows)
+                    normalized = self._truncate_at_body_text(self._normalize_table(rows))
                     if not self._is_valid_table(normalized):
                         continue
 
@@ -491,7 +509,7 @@ class TableParser:
                 if not rows:
                     continue
 
-                normalized = self._normalize_table(rows)
+                normalized = self._truncate_at_body_text(self._normalize_table(rows))
                 if not self._is_valid_table(normalized):
                     continue
 
@@ -724,6 +742,243 @@ class TableParser:
                 return False
 
         return True
+
+    @staticmethod
+    def _truncate_at_body_text(normalized: list[list[str]]) -> list[list[str]]:
+        """截断到第一个含超长单元格的行之前。
+
+        pdfplumber 有时会把表格下方的正文一起框进来，导致末尾出现段落级长文本。
+        遇到第一个超过 MAX_CELL_CHARS 字符的单元格，截断该行及之后的内容，
+        保留上方的真实表格数据继续走验证流程。
+        """
+        for i, row in enumerate(normalized):
+            if any(len(cell) > CFG.MAX_CELL_CHARS for cell in row):
+                logger.debug(
+                    "截断正文混入 row=%d（单元格 %d 字符）: %.60s…",
+                    i, max(len(c) for c in row), max(row, key=len),
+                )
+                return normalized[:i]
+        return normalized
+
+    # ── 三线表几何提取（词位置 + 横线坐标） ───────────────────────────────────
+
+    @staticmethod
+    def _count_threeline_lines(
+        pdf_page,
+        bbox_plumb: tuple[float, float, float, float],
+    ) -> tuple[int, list[float], int]:
+        """
+        统计 pdfplumber 页面中落在 bbox 内的有效水平线和垂直线数量。
+
+        用于识别三线表（h_count==3, v_count==0）。
+
+        参数:
+            pdf_page   : pdfplumber Page 对象
+            bbox_plumb : (x0, top, x1, bottom) pdfplumber 坐标系（y 从上往下）
+
+        返回: (h_count, h_ys_sorted, v_count)
+        """
+        x0, top, x1, bottom = bbox_plumb
+        min_h_width = (x1 - x0) * 0.4      # 横线至少覆盖 bbox 宽度 40%
+
+        seen_y_bins: dict[int, float] = {}  # 5pt 分箱去重
+        v_count = 0
+
+        for edge in pdf_page.edges:
+            ori = edge.get("orientation", "")
+            ey0 = float(edge.get("y0", 0))
+            ey1 = float(edge.get("y1", ey0))
+            ex0 = float(edge.get("x0", 0))
+            ex1 = float(edge.get("x1", ex0))
+
+            if ori == "h":
+                ey = ey0  # 水平线 y0 == y1
+                if not (top - 2 <= ey <= bottom + 2):
+                    continue
+                if abs(ex1 - ex0) < min_h_width:
+                    continue
+                y_bin = round(ey / 5)
+                if y_bin not in seen_y_bins:
+                    seen_y_bins[y_bin] = ey
+
+            elif ori == "v":
+                if not (x0 - 2 <= ex0 <= x1 + 2):
+                    continue
+                v_top = min(ey0, ey1)
+                v_bottom = max(ey0, ey1)
+                if v_top > bottom or v_bottom < top:
+                    continue
+                v_count += 1
+
+        h_ys = sorted(seen_y_bins.values())
+        return len(h_ys), h_ys, v_count
+
+    @staticmethod
+    def _find_col_ranges(
+        words: list[dict],
+        min_gap_pt: float = 8.0,
+    ) -> list[tuple[float, float]]:
+        """
+        从词语列表中检测列边界（基于相邻词语 x 间距的空隙）。
+
+        算法：
+          1. 按 x0 排序所有词语
+          2. 合并 x 间距 < min_gap_pt 的相邻词（同一列内的词）
+          3. 每段合并区间 → 一个列范围
+
+        返回: [(col_x0, col_x1), ...] 升序排列
+        """
+        if not words:
+            return []
+
+        sorted_words = sorted(words, key=lambda w: float(w.get("x0", 0)))
+        spans = [(float(w.get("x0", 0)), float(w.get("x1", 0))) for w in sorted_words]
+
+        merged: list[tuple[float, float]] = []
+        cur_x0, cur_x1 = spans[0]
+
+        for sx0, sx1 in spans[1:]:
+            if sx0 - cur_x1 < min_gap_pt:
+                cur_x1 = max(cur_x1, sx1)
+            else:
+                merged.append((cur_x0, cur_x1))
+                cur_x0, cur_x1 = sx0, sx1
+        merged.append((cur_x0, cur_x1))
+
+        return merged
+
+    @staticmethod
+    def _word_to_col(
+        word: dict,
+        col_ranges: list[tuple[float, float]],
+    ) -> int:
+        """将单个词语映射到最近的列（返回列索引，-1 表示列为空）。"""
+        if not col_ranges:
+            return -1
+
+        wx_center = (float(word.get("x0", 0)) + float(word.get("x1", 0))) / 2
+
+        best_idx = 0
+        best_dist = float("inf")
+
+        for i, (cx0, cx1) in enumerate(col_ranges):
+            if cx0 <= wx_center <= cx1:
+                return i
+            dist = min(abs(wx_center - cx0), abs(wx_center - cx1))
+            if dist < best_dist:
+                best_dist = dist
+                best_idx = i
+
+        return best_idx
+
+    @staticmethod
+    def _build_data_rows(
+        words: list[dict],
+        col_ranges: list[tuple[float, float]],
+        row_gap_pt: float = 6.0,
+    ) -> list[list[str]]:
+        """
+        将数据区词语按行（y 间距）分组，再按列分配，返回二维字符串列表。
+
+        row_gap_pt : 相邻词语 y0 差值超过此值时视为新行（需小于实际行高）。
+        """
+        if not words:
+            return []
+
+        def _top(w: dict) -> float:
+            return float(w.get("top", w.get("y0", 0)))
+
+        sorted_words = sorted(words, key=lambda w: (_top(w), float(w.get("x0", 0))))
+
+        rows_raw: list[list[dict]] = []
+        cur_row = [sorted_words[0]]
+        cur_y = _top(sorted_words[0])
+
+        for w in sorted_words[1:]:
+            wy = _top(w)
+            if wy - cur_y > row_gap_pt:
+                rows_raw.append(cur_row)
+                cur_row = [w]
+                cur_y = wy
+            else:
+                cur_row.append(w)
+        rows_raw.append(cur_row)
+
+        num_cols = len(col_ranges)
+        result: list[list[str]] = []
+
+        for row_words in rows_raw:
+            row: list[str] = [""] * num_cols
+            for word in row_words:
+                ci = TableParser._word_to_col(word, col_ranges)
+                if 0 <= ci < num_cols:
+                    text = word.get("text", "")
+                    row[ci] = (row[ci] + " " + text).strip()
+            result.append(row)
+
+        return result
+
+    @staticmethod
+    def _extract_threeline(
+        pdf_page,
+        bbox_plumb: tuple[float, float, float, float],
+        h_ys: list[float],
+    ) -> list[list[str]]:
+        """
+        三线表专用提取器：基于水平线位置 + 词语 x0 坐标检测列。
+
+        - 表头带：第1条横线 ↔ 第2条横线
+        - 数据带：第2条横线 ↔ 第3条横线
+
+        h_ys     : 三条横线的 y 坐标（升序，pdfplumber 坐标系）
+        返回     : normalized rows，首行为表头；失败时返回 []
+        """
+        x0, _top, x1, _bottom = bbox_plumb
+        margin = 1.5  # 排除线条本身的像素误差
+
+        header_bbox = (x0, h_ys[0] + margin, x1, h_ys[1] - margin)
+        data_bbox   = (x0, h_ys[1] + margin, x1, h_ys[2] - margin)
+
+        try:
+            header_words = pdf_page.within_bbox(header_bbox).extract_words()
+            data_words   = pdf_page.within_bbox(data_bbox).extract_words()
+        except Exception:
+            logger.debug("_extract_threeline: within_bbox 失败", exc_info=True)
+            return []
+
+        if not header_words:
+            return []
+
+        # 列检测：优先仅用表头；若列数 < 2 则合并表头+数据词再检测
+        col_ranges = TableParser._find_col_ranges(
+            header_words, min_gap_pt=CFG.THREELINE_COL_GAP_PT
+        )
+        if len(col_ranges) < 2 and data_words:
+            col_ranges = TableParser._find_col_ranges(
+                header_words + data_words, min_gap_pt=CFG.THREELINE_COL_GAP_PT
+            )
+
+        if len(col_ranges) < CFG.MIN_COLS:
+            return []
+
+        # 构建表头行
+        num_cols = len(col_ranges)
+        header_row: list[str] = [""] * num_cols
+        for w in header_words:
+            ci = TableParser._word_to_col(w, col_ranges)
+            if 0 <= ci < num_cols:
+                header_row[ci] = (header_row[ci] + " " + w.get("text", "")).strip()
+
+        # 构建数据行
+        data_rows = TableParser._build_data_rows(data_words, col_ranges)
+
+        logger.debug(
+            "_extract_threeline: 检测到 %d 列，表头=%s，数据行=%d",
+            num_cols, header_row, len(data_rows),
+        )
+        return [header_row] + data_rows
+
+    # ── 通用工具（normalize / markdown / validate）─────────────────────────────
 
     @staticmethod
     def _normalize_table(table: list[list[str | None]]) -> list[list[str]]:
