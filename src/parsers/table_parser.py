@@ -20,25 +20,14 @@ from src.parsers.config import TABLE_PARSER as CFG
 
 logger = logging.getLogger(__name__)
 
-# ── 模块级常量（原 config.py 数据集）────────────────────────────────────────
-# 表头关键词：用于定位真正的列名行
+# ── 模块级常量 ────────────────────────────────────────────────
+# 注意：表头关键词仅用于 _find_header_row 的表头定位（Markdown 渲染），
+# 不参与表格真伪判断。真伪判断已迁移至 LLM Judge。
 HEADER_KEYWORDS: tuple[str, ...] = (
     "product", "yield", "reference", "substrate",
     "enzyme", "key enzyme", "reaction",
     "host", "strain", "characteristic", "cultivation",
     "company", "brand", "brands", "country",
-)
-
-# 首格跳过前缀：页眉 / 图注 / 参考文献误检
-SKIP_PREFIXES: tuple[str, ...] = (
-    "journal of",
-    "figure ", "fig.",
-    "references",
-    "secnerefer",          # 旋转后的 "references"
-    "supporting information",
-    "doi:",
-    "published online",
-    "to link to this article",
 )
 
 
@@ -51,9 +40,21 @@ class TableParser:
         """
         提取 PDF 所有表格，返回 LayoutChunk 列表。
 
+        strategy 可选值：
+          "all"           : 关键词引导 + pdfplumber + PyMuPDF + camelot（默认）
+          "hybrid"        : OpenCV检测 + 视觉模型(主) + pdfplumber交叉验证(副)
+                            适用于三线表等传统引擎无法解析的场景
+          "pdfplumber_only" / "pymupdf_only" / "camelot_only" : 单引擎模式
         camelot_pages: 限制 camelot 扫描的页码（1-indexed），默认全文档。
         """
         all_chunks: list[LayoutChunk] = []
+
+        if strategy == "hybrid":
+            from src.parsers.hybrid_table_parser import HybridTableParser
+            chunks = HybridTableParser(self.pdf_path).parse()
+            if len(chunks) > 1:
+                chunks = self._deduplicate_chunks(chunks)
+            return chunks
 
         if strategy == "pdfplumber_only":
             chunks = self._parse_with_pdfplumber(feedback)
@@ -73,14 +74,17 @@ class TableParser:
                 chunks = self._deduplicate_chunks(chunks)
             return chunks
 
-        # strategy == "all"：依次尝试，合并结果
+        # strategy == "all"：关键词引导优先，结构检测补充，最终去重
+        # 关键词引导精度最高（定位准确），放在最前以在去重时优先保留
+        kw_chunks = self._parse_with_keyword_guided()
+        all_chunks.extend(kw_chunks)
+
         chunks = self._parse_with_pdfplumber(feedback)
         all_chunks.extend(chunks)
 
         pymupdf_chunks = self._parse_with_pymupdf()
         all_chunks.extend(pymupdf_chunks)
 
-        # camelot 始终参与（处理无边框表格），去重阶段会处理重叠
         logger.info("camelot 作为补充解析器运行")
         camelot_chunks = self._parse_with_camelot(pages=camelot_pages)
         all_chunks.extend(camelot_chunks)
@@ -138,8 +142,162 @@ class TableParser:
                 unique.append(chunk)
         return unique
 
+    def _parse_with_keyword_guided(self) -> list[LayoutChunk]:
+        """
+        关键词引导式表格提取：定位标题块 → 裁剪区域 → text+text 提取。
+
+        覆盖的格式变体：
+          英文标准   : Table 1. / TABLE 1. / Table S1:
+          补充材料   : Supplementary Table 1. / Table S1.
+          中文期刊   : 表1. / 表 1：/ 表号1.
+          预印本缩写 : Tab. 1.
+        跳过的情形  : 正文内引用（"as shown in Table 1"，不以 Table 开头）、
+                      扫描版 PDF（无文字层）、跨页表格（仅提取标题所在页）。
+
+        坐标系：全程使用 pdfplumber 坐标（top-left 原点），
+        避免 fitz 在横排页（含 /Rotate 元数据）下坐标错位的问题。
+        """
+        import re
+        import pdfplumber
+
+        TITLE_RE = re.compile(
+            r"^(?:"
+            r"(?:Table|TABLE|Tab\.)\s+S?\d+[.:]"       # Table 1. / TABLE S2:
+            r"|Supplementary\s+Table\s+S?\d+[.:]"       # Supplementary Table 1.
+            r"|表\s*[S号]?\d+[.：]"                      # 表1. / 表号1：
+            r")"
+        )
+        MAX_TABLE_HEIGHT_PT = 500
+        LINE_SNAP = 3  # top 差 ≤ LINE_SNAP pt 的词视为同一行
+
+        chunks: list[LayoutChunk] = []
+
+        with pdfplumber.open(self.pdf_path) as pdf:
+            for page_index in range(len(pdf.pages)):
+                pdf_page = pdf.pages[page_index]
+                pw = float(pdf_page.width)
+                ph = float(pdf_page.height)
+
+                # ── 1. 找表格标题行（pdfplumber 坐标，与 within_bbox 完全一致）──
+                words = pdf_page.extract_words()
+                if not words:
+                    continue
+
+                # 按 top 排序后，相邻词 top 差 ≤ LINE_SNAP 则归为同一行
+                words_sorted = sorted(words, key=lambda w: (w["top"], w["x0"]))
+                lines: list[list[dict]] = []
+                for w in words_sorted:
+                    placed = False
+                    for line in reversed(lines):
+                        if abs(w["top"] - line[0]["top"]) <= LINE_SNAP:
+                            line.append(w)
+                            placed = True
+                            break
+                    if not placed:
+                        lines.append([w])
+
+                title_anchors: list[tuple[float, float, float, float]] = []
+                for line in lines:
+                    line_sorted = sorted(line, key=lambda w: w["x0"])
+                    line_text = " ".join(lw["text"] for lw in line_sorted).strip()
+                    if not TITLE_RE.match(line_text):
+                        continue
+                    if len(line_text.split()) > 60:
+                        continue
+                    t_top = min(lw["top"] for lw in line_sorted)
+                    t_bot = max(lw["bottom"] for lw in line_sorted)
+                    t_x0 = min(lw["x0"] for lw in line_sorted)
+                    t_x1 = max(lw["x1"] for lw in line_sorted)
+                    title_anchors.append((t_top, t_bot, t_x0, t_x1))
+
+                if not title_anchors:
+                    continue
+
+                # 收集页面全部宽横线（pdfplumber top-left "top" 坐标）
+                wide_h = [
+                    e for e in pdf_page.edges
+                    if e.get("orientation") == "h"
+                    and (e.get("x1", 0) - e.get("x0", 0)) > pw * 0.2
+                ]
+
+                # ── 2. 对每个标题定位区域并提取 ──────────────────
+                for title_top, title_bot, _tx0, _tx1 in title_anchors:
+                    region_top = title_bot  # 从标题底部开始
+
+                    # 找标题下方的宽横线（表格边框线）
+                    below = [
+                        e for e in wide_h
+                        if e["top"] > region_top
+                        and e["top"] < region_top + MAX_TABLE_HEIGHT_PT
+                    ]
+
+                    if below:
+                        region_bot = max(e["top"] for e in below) + 5
+                        clip_x0 = max(0.0, min(e["x0"] for e in below) - 2)
+                        clip_x1 = min(pw, max(e["x1"] for e in below) + 2)
+                    else:
+                        region_bot = min(region_top + MAX_TABLE_HEIGHT_PT, ph)
+                        clip_x0, clip_x1 = 0.0, pw
+
+                    # bbox 合法性检查（横排页容易触发）
+                    if region_top >= region_bot or clip_x0 >= clip_x1:
+                        logger.warning(
+                            f"keyword_guided p{page_index+1}: 无效 bbox "
+                            f"({clip_x0:.1f},{region_top:.1f},{clip_x1:.1f},{region_bot:.1f})"
+                        )
+                        continue
+
+                    try:
+                        clipped = pdf_page.within_bbox(
+                            (clip_x0, region_top, clip_x1, region_bot)
+                        )
+                        tables = clipped.find_tables(table_settings={
+                            "vertical_strategy": "text",
+                            "horizontal_strategy": "text",
+                            "snap_tolerance": 5,
+                            "join_tolerance": 5,
+                        })
+                    except Exception as ex:
+                        logger.warning(f"keyword_guided p{page_index+1}: {ex}")
+                        continue
+
+                    for ti, table_obj in enumerate(tables):
+                        rows = table_obj.extract()
+                        if not rows:
+                            continue
+                        normalized = self._normalize_table(rows)
+                        if not self._is_valid_table(normalized):
+                            continue
+
+                        bbox_raw = table_obj.bbox
+                        bbox = (
+                            float(bbox_raw[0]),
+                            ph - float(bbox_raw[3]),
+                            float(bbox_raw[2]),
+                            ph - float(bbox_raw[1]),
+                        )
+                        markdown = self._to_markdown(normalized)
+                        column = infer_column(pw, bbox[0], bbox[2])
+
+                        chunks.append(LayoutChunk(
+                            content_type="table",
+                            raw_content=markdown,
+                            page=page_index + 1,
+                            bbox=bbox,
+                            column=column,
+                            order_in_page=ti,
+                            metadata={
+                                "parser": "keyword_guided",
+                                "rows": len(normalized),
+                                "cols": len(normalized[0]),
+                                "table_index": ti,
+                            },
+                        ))
+
+        return chunks
+
     def _parse_with_pdfplumber(self, feedback: str | None) -> list[LayoutChunk]:
-        """使用 pdfplumber 提取表格（原有逻辑）。"""
+        """使用 pdfplumber 提取表格（lines 策略 + 三线表 text 回退）。"""
         import pdfplumber
 
         settings = self._table_settings(feedback)
@@ -150,6 +308,41 @@ class TableParser:
                 page_width = float(page.width) if page.width else 0
                 page_height = float(page.height) if page.height else 0
                 found_tables = page.find_tables(table_settings=settings)
+
+                def _has_data(tbls: list) -> bool:
+                    """lines 策略只检测到 header 区域时（≤1 行），触发 fallback。"""
+                    return any(len(t.extract() or []) > 1 for t in tbls)
+
+                # 回退 1：text+lines 策略（无竖线表格）
+                # 触发条件：未检到表格，或只检到仅含 header 的 1 行区域
+                if not found_tables or not _has_data(found_tables):
+                    t1 = page.find_tables(table_settings=dict(
+                        settings, vertical_strategy="text"
+                    ))
+                    if t1 and _has_data(t1):
+                        found_tables = t1
+
+                # 回退 2：裁剪旋转边注 + text+text
+                # 适用于横版页面或期刊名旋转印于右侧导致列检测失效的情况。
+                # 用宽横线的 x 范围裁剪页面，排除旋转边注文字。
+                if (not found_tables or not _has_data(found_tables)) and page_width > 0:
+                    wide_h = [
+                        e for e in page.edges
+                        if e.get("orientation") == "h"
+                        and (e.get("x1", 0) - e.get("x0", 0)) > page_width * 0.2
+                    ]
+                    if wide_h:
+                        clip_x0 = max(0.0, min(e["x0"] for e in wide_h) - 2)
+                        clip_x1 = min(page_width, max(e["x1"] for e in wide_h) + 2)
+                        clipped = page.within_bbox((clip_x0, 0, clip_x1, page_height))
+                        t2 = clipped.find_tables(table_settings={
+                            "vertical_strategy": "text",
+                            "horizontal_strategy": "text",
+                            "snap_tolerance": 5,
+                            "join_tolerance": 5,
+                        })
+                        if t2 and _has_data(t2):
+                            found_tables = t2
 
                 for table_index, table_obj in enumerate(found_tables):
                     rows = table_obj.extract()
@@ -477,75 +670,44 @@ class TableParser:
         return settings
 
     @staticmethod
+    def _looks_garbled(cell: str) -> bool:
+        """旋转/倒置文字产生的乱码：≥5个字母、零元音、且非混排大小写。
+
+        混排豁免：LNnT/LNFP 等化学缩写通常混排，不应误判。
+        全大写无元音长串（如 CRTCL、RVSBLT）几乎不存在于真实表格。
+        """
+        s = cell.strip()
+        alpha = [c for c in s if c.isalpha()]
+        if len(alpha) < 5:
+            return False
+        vowels = set("aeiouyAEIOUY")
+        if any(c in vowels for c in s):
+            return False
+        # 混排大小写 → 可能是化学缩写，豁免
+        has_upper = any(c.isupper() for c in s)
+        has_lower = any(c.islower() for c in s)
+        if has_upper and has_lower:
+            return False
+        return True
+
+    @staticmethod
     def _is_valid_table(normalized: list[list[str]]) -> bool:
-        """
-        判断提取出的表格是否为真实表格，过滤掉常见误检情况：
-        - 只有表头没有数据行（空表）
-        - 单列长文本（图注、正文段落被切成单列）
-        - 以期刊名 / Figure / References 等关键词开头（页眉误检）
-        - 旋转/倒置文字形成的假表格
-        - 数据格为空率过高（> 60%）的稀疏表格
-        - camelot stream 模式的常见误检（页眉、参考文献、图片标题等）
+        """结构检查 + 旋转文字过滤。
 
-        改进：camelot 可能把页眉/页码行也纳入表格，需要从表格中识别真正的表头行。
+        内容层面的真伪判断（页眉/参考文献/正文误检等）已迁移至 LLM Judge。
+        旋转文字因零成本且高准确率保留为硬编码规则。
         """
-        import re as _re
-
         if not normalized or len(normalized) < CFG.MIN_DATA_ROWS + 1:
-            # 少于 2 行（表头 + 至少 1 行数据）→ 空表
             return False
 
-        # 定位表头行：优先找 "Table " 标题行的下一行，其次按结构特征推断
-        header_row_idx: int | None = None
-
-        # 策略 1: 找到 "Table X" 标题行 → 下一行即为表头
-        for idx, row in enumerate(normalized):
-            if "table " in " ".join(cell.lower() for cell in row):
-                if idx + 1 < len(normalized):
-                    next_row = normalized[idx + 1]
-                    non_empty = sum(1 for cell in next_row if cell.strip())
-                    if non_empty >= 2:
-                        header_row_idx = idx + 1
-                        break
-                # "Table" 标题行本身非空格少 → 不是真表头，继续往下找
-                if sum(1 for cell in row if cell.strip()) < 2:
-                    continue
-                header_row_idx = idx
-                break
-
-        # 策略 2: 关键词匹配（加分项，不是必须通过）
-        if header_row_idx is None:
-            for idx, row in enumerate(normalized):
-                content = " ".join(cell.lower() for cell in row)
-                non_empty = sum(1 for cell in row if cell.strip())
-                if non_empty >= 2 and any(kw in content for kw in HEADER_KEYWORDS):
-                    header_row_idx = idx
-                    break
-
-        # 策略 3: 结构特征 — 非空单元格最多、平均长度最短的行最像表头
-        if header_row_idx is None:
-            best_score = -1
-            for idx, row in enumerate(normalized):
-                non_empty = sum(1 for cell in row if cell.strip())
-                avg_len = sum(len(cell) for cell in row if cell.strip()) / max(non_empty, 1)
-                score = non_empty - avg_len / 20  # 非空多 + 短词 → 更像表头
-                if score > best_score:
-                    best_score = score
-                    header_row_idx = idx
-
-        # 兜底：首行
-        if header_row_idx is None:
-            header_row_idx = 0
-
+        header_row_idx = TableParser._find_header_row(normalized)
         header = normalized[header_row_idx]
         data_rows = normalized[header_row_idx + 1:]
         num_cols = len(header)
 
-        # 必须有至少 MIN_COLS 列
         if num_cols < CFG.MIN_COLS:
             return False
 
-        # 至少有 MIN_DATA_ROWS 行非空数据（过滤掉只有1行数据的误检）
         if len(data_rows) < CFG.MIN_DATA_ROWS:
             return False
 
@@ -553,84 +715,13 @@ class TableParser:
         if not has_data:
             return False
 
-        # 跳过页眉行：期刊名、图注、参考文献等（camelot 可能把页眉吞进表格）
-        stripped_skip = 0
-        while stripped_skip < len(normalized):
-            cell = normalized[stripped_skip][0].strip().lower()
-            if any(cell.startswith(p) for p in SKIP_PREFIXES):
-                stripped_skip += 1
-            else:
-                break
-
-        if stripped_skip > 0:
-            normalized = normalized[stripped_skip:]
-            # 跳过页眉行后重新定位表头
-            if header_row_idx < stripped_skip:
-                header_row_idx = 0
-            else:
-                header_row_idx -= stripped_skip
-
-        if not normalized or len(normalized) < CFG.MIN_DATA_ROWS + 1:
-            return False
-
-        first_cell_raw = normalized[0][0].strip() if normalized and normalized[0] else ""
-
-        # 期刊 running title / 作者行检测：连续大写无空格的长字符串
-        # 例如 "CRITICALREVIEWSINBIOTECHNOLOGY"、"Y.ZHUETAL."
-        # 但如果是 "Y. ZHU ET AL." 格式（有空格），可能是页眉，需要结合其他特征判断
-        compact = first_cell_raw.replace(".", "").replace(" ", "")
-        if len(compact) > CFG.COMPACT_UPPER_MIN_LEN and compact.isupper() and " " not in first_cell_raw:
-            # 可能是期刊名，但再看看表格其他部分是否有 "Table" 关键词
-            full_text = " ".join(cell for row in normalized for cell in row).lower()
-            if "table " not in full_text:
+        # 旋转文字检测：前几行中超40%非空单元格为乱码 → 过滤
+        sample_rows = (normalized[:header_row_idx] if header_row_idx > 0 else []) + [header] + data_rows[:3]
+        sample_cells = [cell for row in sample_rows for cell in row if cell.strip()]
+        if sample_cells:
+            garbled = sum(1 for c in sample_cells if TableParser._looks_garbled(c))
+            if garbled / len(sample_cells) > 0.4:
                 return False
-
-        # 参考文献列表：首格匹配 "[数字]" 格式，且表格行数很多
-        if _re.match(r"^\[\d+\]", first_cell_raw):
-            return False
-
-        # 页眉特征：首行是孤立的页码数字（如 "8"）
-        if _re.match(r"^\d+$", first_cell_raw.strip()) and len(normalized) > 10:
-            # 可能是页码 + 参考文献列表，过滤
-            return False
-
-        # 正文段落误检：首格以小写开头且长度较长（看起来像段落/短语，不是表头）
-        if (
-            first_cell_raw
-            and first_cell_raw[0].islower()
-            and len(first_cell_raw) > 10
-            and "table " not in first_cell_raw.lower()
-        ):
-            return False
-
-        # 双栏正文误检：
-        #   ① 2 列 + 超过 20 行数据 → pdfplumber 把双栏段落逐行切开，非真实表格
-        #   ② 2 列 + 每格平均字符极长（>80 字符）→ 单元格本身就是流式正文
-        if num_cols == 2:
-            if len(data_rows) > CFG.TWO_COL_MAX_DATA_ROWS:
-                return False
-            all_cells = [cell for row in normalized for cell in row if cell.strip()]
-            if all_cells:
-                avg_len = sum(len(c) for c in all_cells) / len(all_cells)
-                if avg_len > CFG.TWO_COL_MAX_AVG_LEN:
-                    return False
-
-        # 表头空格率 > 40%：页眉被拆成多列，大量空单元格
-        header_empty = sum(1 for cell in header if not cell.strip())
-        if len(header) > 0 and header_empty / len(header) > CFG.HEADER_EMPTY_RATIO:
-            return False
-
-        # 数据行空格率 > 60% → 稀疏伪表格
-        total_cells = sum(len(row) for row in data_rows)
-        empty_cells = sum(1 for row in data_rows for cell in row if not cell.strip())
-        if total_cells > 0 and empty_cells / total_cells > CFG.DATA_EMPTY_RATIO:
-            return False
-
-        # camelot stream 模式特有问题：
-        #   Figure 标题被切成表格，且行数很少 → 误检
-        full_text = " ".join(cell for row in normalized for cell in row).lower()
-        if "figure " in full_text and len(normalized) < 5 and "table " not in full_text:
-            return False
 
         return True
 

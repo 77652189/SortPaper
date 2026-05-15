@@ -7,3 +7,4 @@ langchain-core
 python-dotenv
 numpy
 qdrant-client
+opencv-python

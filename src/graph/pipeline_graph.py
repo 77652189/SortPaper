@@ -192,9 +192,9 @@ def table_worker_node(state: PipelineState) -> dict:
     print(f"[debug] table_worker_node: retries={retries}", flush=True)
 
     if not prev_verdicts:
-        # 首轮：无 verdicts → 全策略解析
+        # 首轮：OpenCV检测 + 视觉模型提取 + pdfplumber交叉验证
         parser = TableParser(state["pdf_path"])
-        new_chunks = parser.parse(strategy="all")
+        new_chunks = parser.parse(strategy="hybrid")
         existing: dict[str, LayoutChunk] = {}
         for chunk in new_chunks:
             existing[chunk.chunk_id] = chunk
@@ -441,63 +441,51 @@ def _group_by_section(chunks: list[LayoutChunk]) -> list[list[LayoutChunk]]:
 
 def judge_text_node(state: PipelineState) -> dict:
     import time
+    from concurrent.futures import ThreadPoolExecutor
     t0 = time.time()
     chunks = state.get("text_chunks", [])
 
     if not chunks:
         return {"text_verdicts": [], "routes_done": {"text"}}
 
-    # retry 时复用已通过的 verdict，只重判失败的
     prev_verdicts = {v["chunk_id"]: v for v in state.get("text_verdicts", [])}
-    judge = LLMJudge()
-    verdicts: list[dict] = list(prev_verdicts.values())  # 先保留旧 verdict
+    noise_ids: set[str] = {c.chunk_id for c in chunks if _is_noise(c.raw_content)}
 
-    # 噪音 chunk 直接被标记为跳过
-    noise_ids: set[str] = set()
-    for chunk in chunks:
-        if _is_noise(chunk.raw_content):
-            noise_ids.add(chunk.chunk_id)
+    # 找出需要重判的 section（有未通过的非噪音 chunk）
+    pending: list[list] = []
+    for section_chunks in _group_by_section(chunks):
+        need = [c for c in section_chunks
+                if c.chunk_id not in noise_ids
+                and not prev_verdicts.get(c.chunk_id, {}).get("passed")]
+        if need:
+            pending.append(section_chunks)
 
-    # Section 级别判断：只重判含未通过 chunk 的 section
-    sections = _group_by_section(chunks)
-    for section_chunks in sections:
-        # 该 section 所有非噪音 chunk 都已通过 → 跳过
-        need_judge = [
-            c for c in section_chunks
-            if c.chunk_id not in noise_ids
-            and not prev_verdicts.get(c.chunk_id, {}).get("passed")
-        ]
-        if not need_judge:
-            continue
-
+    def _judge_section(section_chunks):
         combined = "\n\n".join(c.raw_content for c in section_chunks)
-        v = judge.judge("text", combined, state["pdf_path"])
-        for chunk in section_chunks:
-            if chunk.chunk_id in noise_ids:
-                continue
-            next_v = {
-                "chunk_id": chunk.chunk_id,
-                "passed": v.passed,
-                "score": v.score,
-                "feedback": v.feedback,
-            }
-            # 更新已有 verdict 或添加新的
-            for idx, old in enumerate(verdicts):
-                if old.get("chunk_id") == chunk.chunk_id:
-                    verdicts[idx] = next_v
-                    break
-            else:
-                verdicts.append(next_v)
+        v = LLMJudge().judge("text", combined, state["pdf_path"])
+        return section_chunks, v
+
+    verdict_map: dict[str, dict] = dict(prev_verdicts)
+    if pending:
+        with ThreadPoolExecutor(max_workers=min(5, len(pending))) as pool:
+            for section_chunks, v in pool.map(_judge_section, pending):
+                for chunk in section_chunks:
+                    if chunk.chunk_id not in noise_ids:
+                        verdict_map[chunk.chunk_id] = {
+                            "chunk_id": chunk.chunk_id,
+                            "passed": v.passed,
+                            "score": v.score,
+                            "feedback": v.feedback,
+                        }
 
     jt = state.get("judge_timing", {})
     jt["text"] = round(time.time() - t0, 1)
-    return {"text_verdicts": verdicts, "routes_done": {"text"}, "judge_timing": jt}
-
-    return {"text_verdicts": verdicts, "routes_done": {"text"}}
+    return {"text_verdicts": list(verdict_map.values()), "routes_done": {"text"}, "judge_timing": jt}
 
 
 def judge_table_node(state: PipelineState) -> dict:
     import time
+    from concurrent.futures import ThreadPoolExecutor
     t0 = time.time()
     chunks = state.get("table_chunks", [])
 
@@ -505,32 +493,27 @@ def judge_table_node(state: PipelineState) -> dict:
         return {"table_verdicts": [{"chunk_id": "", "passed": True, "score": 1.0, "feedback": "no tables"}], "routes_done": {"table"}}
 
     prev_verdicts = {v["chunk_id"]: v for v in state.get("table_verdicts", [])}
-    judge = LLMJudge()
-    verdicts: list[dict] = list(prev_verdicts.values())
+    need_judge = [c for c in chunks if not prev_verdicts.get(c.chunk_id, {}).get("passed")]
 
-    for chunk in chunks:
-        cid = chunk.chunk_id
-        if prev_verdicts.get(cid, {}).get("passed"):
-            continue  # 已通过，跳过
-        v = judge.judge(chunk.content_type, chunk.raw_content, state["pdf_path"])
-        next_v = {
-            "chunk_id": cid, "passed": v.passed, "score": v.score,
-            "feedback": v.feedback, "issue_type": v.issue_type,
-        }
-        for idx, old in enumerate(verdicts):
-            if old.get("chunk_id") == cid:
-                verdicts[idx] = next_v
-                break
-        else:
-            verdicts.append(next_v)
+    def _judge_one(chunk):
+        v = LLMJudge().judge(chunk.content_type, chunk.raw_content, state["pdf_path"])
+        return {"chunk_id": chunk.chunk_id, "passed": v.passed, "score": v.score,
+                "feedback": v.feedback, "issue_type": v.issue_type}
+
+    verdict_map: dict[str, dict] = dict(prev_verdicts)
+    if need_judge:
+        with ThreadPoolExecutor(max_workers=min(5, len(need_judge))) as pool:
+            for nv in pool.map(_judge_one, need_judge):
+                verdict_map[nv["chunk_id"]] = nv
 
     jt = state.get("judge_timing", {})
     jt["table"] = round(time.time() - t0, 1)
-    return {"table_verdicts": verdicts, "routes_done": {"table"}, "judge_timing": jt}
+    return {"table_verdicts": list(verdict_map.values()), "routes_done": {"table"}, "judge_timing": jt}
 
 
 def judge_image_node(state: PipelineState) -> dict:
     import time
+    from concurrent.futures import ThreadPoolExecutor
     t0 = time.time()
     chunks = state.get("image_chunks", [])
 
@@ -538,28 +521,22 @@ def judge_image_node(state: PipelineState) -> dict:
         return {"image_verdicts": [{"chunk_id": "", "passed": True, "score": 1.0, "feedback": "no images"}], "routes_done": {"image"}}
 
     prev_verdicts = {v["chunk_id"]: v for v in state.get("image_verdicts", [])}
-    judge = LLMJudge()
-    verdicts: list[dict] = list(prev_verdicts.values())
+    need_judge = [c for c in chunks if not prev_verdicts.get(c.chunk_id, {}).get("passed")]
 
-    for chunk in chunks:
-        cid = chunk.chunk_id
-        if prev_verdicts.get(cid, {}).get("passed"):
-            continue  # 已通过，跳过
-        v = judge.judge(chunk.content_type, chunk.raw_content, state["pdf_path"])
-        next_v = {
-            "chunk_id": cid, "passed": v.passed, "score": v.score,
-            "feedback": v.feedback,
-        }
-        for idx, old in enumerate(verdicts):
-            if old.get("chunk_id") == cid:
-                verdicts[idx] = next_v
-                break
-        else:
-            verdicts.append(next_v)
+    def _judge_one(chunk):
+        v = LLMJudge().judge(chunk.content_type, chunk.raw_content, state["pdf_path"])
+        return {"chunk_id": chunk.chunk_id, "passed": v.passed, "score": v.score,
+                "feedback": v.feedback}
+
+    verdict_map: dict[str, dict] = dict(prev_verdicts)
+    if need_judge:
+        with ThreadPoolExecutor(max_workers=min(5, len(need_judge))) as pool:
+            for nv in pool.map(_judge_one, need_judge):
+                verdict_map[nv["chunk_id"]] = nv
 
     jt = state.get("judge_timing", {})
     jt["image"] = round(time.time() - t0, 1)
-    return {"image_verdicts": verdicts, "routes_done": {"image"}, "judge_timing": jt}
+    return {"image_verdicts": list(verdict_map.values()), "routes_done": {"image"}, "judge_timing": jt}
 
 
 # ─── 重试路由（各路线独立）────────────────────────────────────────────────────

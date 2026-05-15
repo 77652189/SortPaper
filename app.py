@@ -158,7 +158,7 @@ def verdict_badge(passed: bool) -> str:
 
 @st.cache_data(show_spinner=False)
 def run_preview(pdf_bytes: bytes) -> dict:
-    """Quick preview: parsers + LayoutMerger.merge, no LLM calls."""
+    """Quick preview: parsers + OpenCV detection + LLM Judge（无 VisionParser / Qwen-VL）。"""
     import sys
     sys.path.insert(0, ".")
     from src.parsers.pymupdf_parser import PyMuPDFParser
@@ -170,22 +170,36 @@ def run_preview(pdf_bytes: bytes) -> dict:
         tmp_path = Path(tmp.name)
 
     try:
+        t0_text = time.time()
         text_chunks = PyMuPDFParser(tmp_path).parse()
-        table_chunks = TableParser(tmp_path).parse()
+        wt_text = round(time.time() - t0_text, 1)
 
-        # 合并后再返回，预览模式也能看到 header 合并效果
-        print(f"[preview] before merge: {len(text_chunks)} text + {len(table_chunks)} table = {len(text_chunks + table_chunks)} total")
+        t0_table = time.time()
+        table_chunks = TableParser(tmp_path).parse()
+        wt_table = round(time.time() - t0_table, 1)
+
+        print(f"[preview] before merge: {len(text_chunks)} text + {len(table_chunks)} table")
         for c in (text_chunks + table_chunks)[:5]:
             print(f"  p{c.page} col{c.column} y{c.bbox[1]:.1f}-{c.bbox[3]:.1f} | {c.raw_content[:50]}")
         merged_chunks = LayoutMerger.merge(text_chunks + table_chunks)
         print(f"[preview] after merge: {len(merged_chunks)} chunks")
 
-        # image metadata only (no VisionParser — avoids API cost)
+        # image metadata + OpenCV 表格检测（均为本地操作，零额外 API 费用）
         import fitz  # type: ignore
+        from src.parsers.opencv_table_detector import OpenCVTableDetector
+        detector = OpenCVTableDetector()
         doc = fitz.open(str(tmp_path))
         images = []
+        opencv_detections: dict[int, list[list[float]]] = {}
         for page_index in range(len(doc)):
             page = doc[page_index]
+            # OpenCV 表格区域检测（纯本地形态学，毫秒级）
+            bboxes_px = detector.detect_page(page)
+            if bboxes_px:
+                opencv_detections[page_index + 1] = [
+                    list(detector.bbox_to_pdf_pts(b)) for b in bboxes_px
+                ]
+            # 图片元数据
             img_list = page.get_images(full=True)
             for img_info in img_list:
                 xref = img_info[0]
@@ -199,6 +213,52 @@ def run_preview(pdf_bytes: bytes) -> dict:
                     "bbox": bbox,
                 })
         doc.close()
+
+        # LLM Judge（DeepSeek，文本 section + 表格 chunk 全部并行）
+        from concurrent.futures import ThreadPoolExecutor
+        from src.judge.llm_judge import LLMJudge
+        from src.graph.pipeline_graph import _is_noise, _group_by_section
+
+        verdicts: dict[str, dict] = {}
+        t0_judge = time.time()
+        pdf_path_str = str(tmp_path)
+
+        noise_ids = {c.chunk_id for c in text_chunks if _is_noise(c.raw_content)}
+
+        # 构建所有任务（text section 和 table chunk 混合，统一并发）
+        tasks: list[tuple] = []
+        for sec in _group_by_section(text_chunks):
+            if any(c.chunk_id not in noise_ids for c in sec):
+                tasks.append(("text", sec))
+        for chunk in table_chunks:
+            tasks.append(("table", chunk))
+
+        def _run_judge(task):
+            kind, obj = task
+            if kind == "text":
+                section_chunks = obj
+                combined = "\n\n".join(c.raw_content for c in section_chunks)
+                v = LLMJudge().judge("text", combined, pdf_path_str)
+                return [
+                    (c.chunk_id, {"chunk_id": c.chunk_id, "passed": v.passed,
+                                  "score": v.score, "feedback": v.feedback})
+                    for c in section_chunks if c.chunk_id not in noise_ids
+                ]
+            else:
+                chunk = obj
+                v = LLMJudge().judge("table", chunk.raw_content, pdf_path_str)
+                return [(chunk.chunk_id, {"chunk_id": chunk.chunk_id, "passed": v.passed,
+                                          "score": v.score, "feedback": v.feedback,
+                                          "issue_type": v.issue_type})]
+
+        if tasks:
+            with ThreadPoolExecutor(max_workers=min(5, len(tasks))) as pool:
+                for pairs in pool.map(_run_judge, tasks):
+                    for cid, v in pairs:
+                        verdicts[cid] = v
+
+        jt_judge = round(time.time() - t0_judge, 1)
+
     finally:
         tmp_path.unlink(missing_ok=True)
 
@@ -207,8 +267,12 @@ def run_preview(pdf_bytes: bytes) -> dict:
         "table_chunks": [_chunk_to_dict(c) for c in table_chunks],
         "merged_chunks": [_chunk_to_dict(c) for c in merged_chunks],
         "images": images,
-        "verdicts": {},
+        "verdicts": verdicts,
         "mode": "preview",
+        "opencv_detections": opencv_detections,
+        # 计时（供耗时面板展示）
+        "worker_timing": {"text": wt_text, "table": wt_table},
+        "judge_timing": {"text_table": jt_judge},
     }
 
 
@@ -302,13 +366,19 @@ def run_pipeline(pdf_bytes: bytes, paper_id: str, filename: str = "") -> dict:
 
     merged = final.get("merged_chunks", [])
 
-    # 表/图：LLM 生成一句英文描述前缀（提升检索召回率）
-    for chunk in merged:
-        if chunk.content_type in ("table", "image"):
-            desc = _generate_chunk_description(chunk.content_type, chunk.raw_content)
-            if desc:
-                # 前置到 raw_content 开头，Streamlit 和 Qdrant 都能看到
-                chunk.raw_content = f"{desc}\n\n{chunk.raw_content}"
+    # 表/图：LLM 生成一句英文描述前缀（提升检索召回率），并行调用
+    from concurrent.futures import ThreadPoolExecutor as _TPE
+    t_desc = time.time()
+    _targets = [(i, c) for i, c in enumerate(merged) if c.content_type in ("table", "image")]
+    if _targets:
+        def _describe_one(item):
+            idx, chunk = item
+            return idx, _generate_chunk_description(chunk.content_type, chunk.raw_content)
+        with _TPE(max_workers=min(5, len(_targets))) as _pool:
+            for idx, desc in _pool.map(_describe_one, _targets):
+                if desc:
+                    merged[idx].raw_content = f"{desc}\n\n{merged[idx].raw_content}"
+    desc_timing = round(time.time() - t_desc, 1)
 
     return {
         "paper_id": paper_id,
@@ -323,7 +393,7 @@ def run_pipeline(pdf_bytes: bytes, paper_id: str, filename: str = "") -> dict:
         "worker_timing": final.get("worker_timing", {}),
         "judge_timing": final.get("judge_timing", {}),
         "merge_timing": final.get("merge_timing", 0),
-        "retry_timing": final.get("retry_timing", 0),
+        "desc_timing": desc_timing,
         "mode": "pipeline",
     }
 
@@ -780,6 +850,17 @@ def render_overview(result: dict) -> None:
                 if mt:
                     st.caption(f"**Merge 阶段**: {mt:.1f}s")
 
+                # 描述生成阶段（表格/图片 DeepSeek 前缀，pipeline 结束后串行调用）
+                dt = result.get("desc_timing", 0)
+                if dt:
+                    desc_n = sum(
+                        1 for c in result.get("merged_chunks", [])
+                        if c.get("content_type") in ("table", "image")
+                    )
+                    dc1, dc2 = st.columns(2)
+                    dc1.metric("描述生成（表/图前缀）", f"{dt:.1f}s")
+                    dc2.metric("  ", f"{desc_n} 个 chunk × DeepSeek 并行")
+
                 # 图片子阶段（image_extract / image_describe）
                 if worker_timing.get("image_describe", 0) > 0:
                     st.caption("图片解析详情：提取 {:.1f}s + VL描述 {:.1f}s".format(
@@ -790,7 +871,7 @@ def render_overview(result: dict) -> None:
                 # 总计
                 total_elapsed = result.get("_elapsed", 0)
                 if total_elapsed:
-                    accounted = parse_total + sum(jt.values()) + mt
+                    accounted = parse_total + sum(jt.values()) + mt + dt
                     st.caption(f"**总耗时 {total_elapsed:.0f} 秒** — 已统计 {accounted:.0f}s，其余为路由/通信开销")
 
                 # 质量评估阶段
@@ -805,8 +886,37 @@ def render_overview(result: dict) -> None:
                     qc3.metric("Reduce", f"{t_red:.1f}s")
                     qc4.metric("合计", f"{t_cls + t_map + t_red:.1f}s")
     else:
-        c4.metric("模式", "快速预览")
-        st.info("ℹ️ 快速预览模式：仅解析，不调用 LLM，无 Judge / 向量索引写入")
+        verdicts = result.get("verdicts", {})
+        if verdicts:
+            passed = sum(1 for v in verdicts.values() if v["passed"])
+            total_v = len(verdicts)
+            c4.metric("Judge 通过", f"{passed} / {total_v}")
+        else:
+            c4.metric("模式", "快速预览")
+        st.info("ℹ️ 快速预览模式：PyMuPDF/pdfplumber 解析 + OpenCV 检测 + LLM Judge，无 VisionParser / Qwen-VL / 向量索引写入")
+
+        # 计时面板（快速预览）
+        worker_timing = result.get("worker_timing", {})
+        judge_timing = result.get("judge_timing", {})
+        if worker_timing or judge_timing:
+            with st.expander("⏱️ 耗时统计", expanded=False):
+                wt_text = worker_timing.get("text", 0)
+                wt_table = worker_timing.get("table", 0)
+                if wt_text or wt_table:
+                    st.caption("**解析阶段**（文本+表格串行）")
+                    pc1, pc2, pc3 = st.columns(3)
+                    pc1.metric("文本解析", f"{wt_text:.1f}s")
+                    pc2.metric("表格解析", f"{wt_table:.1f}s")
+                    pc3.metric("合计", f"{wt_text + wt_table:.1f}s")
+
+                jt_total = sum(judge_timing.values())
+                if jt_total:
+                    st.caption(f"**Judge 阶段**（文本+表格并行，含 DeepSeek 调用）: {jt_total:.1f}s")
+
+                total_elapsed = result.get("_elapsed", 0)
+                if total_elapsed:
+                    accounted = wt_text + wt_table + jt_total
+                    st.caption(f"**总耗时 {total_elapsed:.0f} 秒** — 已统计 {accounted:.0f}s，其余为 OpenCV 检测 / 路由开销")
 
 
 def render_text_tab(chunks: list[dict], verdicts: dict) -> None:
@@ -819,9 +929,62 @@ def render_text_tab(chunks: list[dict], verdicts: dict) -> None:
         render_chunk_card(c, verdict, i)
 
 
-def render_table_tab(chunks: list[dict], verdicts: dict) -> None:
+def _render_page_with_detections(pdf_bytes: bytes, page_idx: int, bboxes_pdf: list) -> object:
+    """渲染单页缩略图并在检测到的表格区域上画红框，返回 PIL Image。"""
+    import fitz  # type: ignore
+    from PIL import Image, ImageDraw
+
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    page = doc[page_idx - 1]
+    mat = fitz.Matrix(1.5, 1.5)  # ~108 DPI，缩略图清晰度够用
+    pix = page.get_pixmap(matrix=mat)
+    img = Image.frombytes("RGB", (pix.w, pix.h), pix.samples)
+    doc.close()
+
+    draw = ImageDraw.Draw(img)
+    scale = 1.5
+    for bbox in bboxes_pdf:
+        x0, y0, x1, y1 = [v * scale for v in bbox]
+        draw.rectangle([x0, y0, x1, y1], outline="#e63946", width=3)
+        draw.rectangle([x0 + 1, y0 + 1, x1 - 1, y1 - 1], outline="#e63946aa" if hasattr(draw, "alpha_composite") else "#e63946", width=1)
+
+    return img
+
+
+def render_table_tab(
+    chunks: list[dict],
+    verdicts: dict,
+    opencv_detections: dict | None = None,
+    pdf_bytes: bytes | None = None,
+) -> None:
+    # ── OpenCV 检测可视化（仅快速预览模式有数据）────────────────────────────
+    if opencv_detections and pdf_bytes:
+        total = sum(len(v) for v in opencv_detections.values())
+        pages = sorted(opencv_detections.keys())
+        with st.expander(
+            f"🔍 OpenCV 检测到 {total} 处候选表格区域（共 {len(pages)} 页）",
+            expanded=True,
+        ):
+            st.caption("红框 = 形态学横线聚类检测结果，仅用于定位，内容由旧引擎或视觉模型提取。")
+            cols = st.columns(min(len(pages), 3))
+            for i, page_idx in enumerate(pages):
+                with cols[i % 3]:
+                    try:
+                        img = _render_page_with_detections(
+                            pdf_bytes, page_idx, opencv_detections[page_idx]
+                        )
+                        st.image(
+                            img,
+                            caption=f"第 {page_idx} 页 · {len(opencv_detections[page_idx])} 处",
+                            use_container_width=True,
+                        )
+                    except Exception as e:
+                        st.warning(f"第 {page_idx} 页渲染失败: {e}")
+
+    # ── 表格内容块 ────────────────────────────────────────────────────────────
     if not chunks:
-        st.info("无表格块（已过滤所有误检伪表格）")
+        st.info("无表格块（已过滤所有误检伪表格）" if not opencv_detections else
+                "旧引擎未提取到表格内容（OpenCV 已检测到区域，完整流水线可用视觉模型提取）")
         return
     st.caption(f"共 {len(chunks)} 个表格块")
     for i, c in enumerate(chunks):
@@ -1824,7 +1987,12 @@ def main() -> None:
         render_image_tab(result)
 
     with tabs[3]:
-        render_table_tab(result.get("table_chunks", []), verdicts)
+        render_table_tab(
+            result.get("table_chunks", []),
+            verdicts,
+            opencv_detections=result.get("opencv_detections"),
+            pdf_bytes=pdf_bytes,
+        )
 
     with tabs[4]:
         render_reconstruction_tab(result)
