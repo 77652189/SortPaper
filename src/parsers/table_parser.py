@@ -806,7 +806,10 @@ class TableParser:
                     continue
                 if abs(ex1 - ex0) < min_h_width:
                     continue
-                y_bin = round(ey / 5)
+                # 10pt 分箱去重：ACS 等期刊用填充矩形绘制横线（re f），
+                # 矩形的上/下两条边 y 相差 ~1.5pt，5pt 分箱会将它们放入
+                # 不同 bin（导致 h_count 翻倍）。10pt 分箱可安全合并。
+                y_bin = round(ey / 10)
                 if y_bin not in seen_y_bins:
                     seen_y_bins[y_bin] = ey
                 # 记录横线真实 x 范围（bbox 可能因旋转边注被截窄）
@@ -819,6 +822,10 @@ class TableParser:
                 v_top = min(ey0, ey1)
                 v_bottom = max(ey0, ey1)
                 if v_top > bottom or v_bottom < top:
+                    continue
+                # 忽略极短竖线（<5pt）：填充矩形横线的左/右侧边高度
+                # 仅为线宽（~1.5pt），不是真正的竖向分隔线
+                if (v_bottom - v_top) < 5:
                     continue
                 v_count += 1
 
