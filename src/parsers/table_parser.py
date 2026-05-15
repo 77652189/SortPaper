@@ -350,16 +350,19 @@ class TableParser:
                         continue
 
                     # 三线表检测：3条横线 + 0条竖线 → 用几何+词位置提取
-                    h_count, h_ys, v_count = TableParser._count_threeline_lines(
-                        page, table_obj.bbox
-                    )
+                    h_count, h_ys, v_count, lines_x0, lines_x1 = \
+                        TableParser._count_threeline_lines(page, table_obj.bbox)
                     if h_count == 3 and v_count == 0:
-                        tl = TableParser._extract_threeline(page, table_obj.bbox, h_ys)
+                        tl = TableParser._extract_threeline(
+                            page, table_obj.bbox, h_ys, lines_x0, lines_x1
+                        )
+                        if tl and len(tl) >= 2:
+                            tl = self._truncate_at_body_text(tl)
                         normalized = tl if (tl and len(tl) >= 2) else \
                             self._truncate_at_body_text(self._normalize_table(rows))
                         logger.debug(
-                            "p%d 三线表检测: h=%d v=%d → %s (%d行)",
-                            page_index, h_count, v_count,
+                            "p%d 三线表检测: h=%d v=%d lines_x=[%.0f,%.0f] → %s (%d行)",
+                            page_index, h_count, v_count, lines_x0, lines_x1,
                             "几何提取" if (tl and len(tl) >= 2) else "普通提取",
                             len(normalized),
                         )
@@ -766,7 +769,7 @@ class TableParser:
     def _count_threeline_lines(
         pdf_page,
         bbox_plumb: tuple[float, float, float, float],
-    ) -> tuple[int, list[float], int]:
+    ) -> tuple[int, list[float], int, float, float]:
         """
         统计 pdfplumber 页面中落在 bbox 内的有效水平线和垂直线数量。
 
@@ -776,13 +779,19 @@ class TableParser:
             pdf_page   : pdfplumber Page 对象
             bbox_plumb : (x0, top, x1, bottom) pdfplumber 坐标系（y 从上往下）
 
-        返回: (h_count, h_ys_sorted, v_count)
+        返回: (h_count, h_ys_sorted, v_count, h_x0_min, h_x1_max)
+            h_x0_min / h_x1_max : 有效水平线的真实 x 范围（用于修正偏窄的 table bbox）
         """
         x0, top, x1, bottom = bbox_plumb
-        min_h_width = (x1 - x0) * 0.4      # 横线至少覆盖 bbox 宽度 40%
+        page_width = float(pdf_page.width) if pdf_page.width else 500.0
+        # 横线最短宽度：取 bbox 宽度 30% 与页面宽度 15% 中的较大值，
+        # 对 bbox 被旋转边注截窄的情况更鲁棒
+        min_h_width = max((x1 - x0) * 0.3, page_width * 0.15)
 
         seen_y_bins: dict[int, float] = {}  # 5pt 分箱去重
         v_count = 0
+        h_x0_min = float("inf")
+        h_x1_max = float("-inf")
 
         for edge in pdf_page.edges:
             ori = edge.get("orientation", "")
@@ -800,6 +809,9 @@ class TableParser:
                 y_bin = round(ey / 5)
                 if y_bin not in seen_y_bins:
                     seen_y_bins[y_bin] = ey
+                # 记录横线真实 x 范围（bbox 可能因旋转边注被截窄）
+                h_x0_min = min(h_x0_min, ex0)
+                h_x1_max = max(h_x1_max, ex1)
 
             elif ori == "v":
                 if not (x0 - 2 <= ex0 <= x1 + 2):
@@ -811,7 +823,10 @@ class TableParser:
                 v_count += 1
 
         h_ys = sorted(seen_y_bins.values())
-        return len(h_ys), h_ys, v_count
+        # 若没有有效横线，返回安全的默认值
+        if h_x0_min == float("inf"):
+            h_x0_min, h_x1_max = x0, x1
+        return len(h_ys), h_ys, v_count, h_x0_min, h_x1_max
 
     @staticmethod
     def _find_col_ranges(
@@ -923,6 +938,8 @@ class TableParser:
         pdf_page,
         bbox_plumb: tuple[float, float, float, float],
         h_ys: list[float],
+        lines_x0: float = 0.0,
+        lines_x1: float = 0.0,
     ) -> list[list[str]]:
         """
         三线表专用提取器：基于水平线位置 + 词语 x0 坐标检测列。
@@ -930,14 +947,24 @@ class TableParser:
         - 表头带：第1条横线 ↔ 第2条横线
         - 数据带：第2条横线 ↔ 第3条横线
 
-        h_ys     : 三条横线的 y 坐标（升序，pdfplumber 坐标系）
-        返回     : normalized rows，首行为表头；失败时返回 []
+        h_ys              : 三条横线的 y 坐标（升序，pdfplumber 坐标系）
+        lines_x0/lines_x1 : 横线真实 x 范围（修正 ACS 等期刊右侧旋转边注导致的
+                            table bbox 偏窄问题）；为 0 时退化为 bbox 本身 x 范围。
+        返回              : normalized rows，首行为表头；失败时返回 []
         """
         x0, _top, x1, _bottom = bbox_plumb
         margin = 1.5  # 排除线条本身的像素误差
 
-        header_bbox = (x0, h_ys[0] + margin, x1, h_ys[1] - margin)
-        data_bbox   = (x0, h_ys[1] + margin, x1, h_ys[2] - margin)
+        # 横线真实 x 范围通常比 table_obj.bbox 更宽（旋转边注不影响线条绘制）
+        # 取两者的并集以覆盖全部列头文字
+        if lines_x1 > 0:
+            eff_x0 = min(x0, lines_x0) - margin
+            eff_x1 = max(x1, lines_x1) + margin
+        else:
+            eff_x0, eff_x1 = x0, x1
+
+        header_bbox = (eff_x0, h_ys[0] + margin, eff_x1, h_ys[1] - margin)
+        data_bbox   = (eff_x0, h_ys[1] + margin, eff_x1, h_ys[2] - margin)
 
         try:
             header_words = pdf_page.within_bbox(header_bbox).extract_words()
