@@ -299,6 +299,10 @@ def run_pipeline(pdf_bytes: bytes, paper_id: str, filename: str = "") -> dict:
             for k, v in node_data.items():
                 if isinstance(v, set):
                     final[k] = final.get(k, set()) | v
+                elif isinstance(v, dict) and k in ("worker_timing", "judge_timing"):
+                    # 与 PipelineState reducer 一致：保留各路线最慢耗时
+                    a, b = final.get(k, {}), v
+                    final[k] = {key: max(a.get(key, 0), b.get(key, 0)) for key in set(a) | set(b)}
                 elif isinstance(v, dict):
                     final[k] = {**final.get(k, {}), **v}
                 else:
@@ -769,7 +773,7 @@ def render_chunk_card(chunk: dict, verdict: dict | None = None, index: int = 0) 
             st.text(content[:1200] + ("…" if len(content) > 1200 else ""))
 
         col1, col2, col3 = st.columns(3)
-        col1.caption(f"类型: {ctype}")
+        col1.caption(f"类型: {ctype}  [{chunk.get('metadata', {}).get('parser', chunk.get('parser', '?'))}]")
         col2.caption(f"页: {page}")
         col3.caption(f"列: {chunk.get('column', '?')}")
 
@@ -862,6 +866,8 @@ def render_overview(result: dict) -> None:
                 total_elapsed = result.get("_elapsed", 0)
                 if total_elapsed:
                     accounted = parse_total + sum(jt.values()) + mt + dt
+                    if timing:
+                        accounted += sum(timing.values())
                     st.caption(f"**总耗时 {total_elapsed:.0f} 秒** — 已统计 {accounted:.0f}s，其余为路由/通信开销")
 
                 # 质量评估阶段
@@ -1782,6 +1788,8 @@ def main() -> None:
                 save_result(snapshot, filename)
 
                 steps.empty()
+                # 更新总耗时，包含质量评估 + 入库时间
+                result["_elapsed"] = time.time() - start_ts
                 stored_key = f"stored_{paper_id}"
                 st.session_state[stored_key] = True
                 st.success(

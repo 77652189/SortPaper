@@ -28,7 +28,35 @@ class TableParserConfig:
     MIN_COLS: int = 2                     # 最少列数
     MIN_DATA_ROWS: int = 2                # 最少数据行数（除去表头后）
     MAX_CELL_CHARS: int = 200             # 单个单元格字符数上限；超出即视为正文段落误检
+    BODY_TEXT_CELL_CHARS: int = 50        # 2列表格：任一非空单元格 ≥ 此长度 → 可能是正文
+    BODY_TEXT_MIN_CELLS: int = 3          # 2列表格：≥ 此数量的疑似正文单元格 → 拒绝
     THREELINE_COL_GAP_PT: float = 8.0    # 三线表列检测：相邻列之间的最小间距（pt）
+
+    # ---- Vision fallback：pdfplumber 质量不够时切 Vision 重解析 ----
+    VISION_FALLBACK_ENABLED: bool = True   # 是否启用 Vision 兜底
+    VISION_FALLBACK_MODEL: str = "qwen3-vl-plus"  # Vision 模型（Qwen3-VL 最新）
+    VISION_FALLBACK_MIN_CONSISTENCY: float = 0.8  # 列数一致性低于此值触发 fallback
+    VISION_FALLBACK_MIN_FILL_RATE: float = 0.4    # 填充率低于此值触发 fallback
+    VISION_FALLBACK_DPI: int = 150        # 截图表区域时的渲染 DPI
+    VISION_CAPTURE_MARGIN: int = 10       # 截图时 bbox 四周扩展 (pt)
+
+    # ---- 列对齐表格边界检测 (_detect_columnar_table_bounds) ----
+    COLUMN_ALIGN_X_TOLERANCE: int = 15    # 列 x0 对齐容差 (pt)
+    COLUMN_ALIGN_MIN_SHARED: int = 2      # 连续行至少共享 N 列才算表格行
+    COLUMN_ALIGN_MAX_GAP_ROWS: int = 1    # 允许的最大间隙行数（分区标题行如 "PCR primers"）
+
+    # ---- 正文截断 (_truncate_at_body_text) ----
+    TRUNCATE_SPARSE_COL_THRESHOLD: int = 5  # 策略2: max_nonempty 需 ≥ 此值才启用
+    TRUNCATE_BODY_WORD_MIN_LEN: int = 30    # 策略3: 单元格最短长度
+    TRUNCATE_BODY_WORD_MIN_COUNT: int = 4   # 策略3: 最少虚词匹配数
+
+    # ---- 尾部裁剪 (_trim_tail_body_text) ----
+    TAIL_TRIM_MIN_MODE_COLS: int = 3       # 众数列数 < 此值不检查
+    TAIL_TRIM_LONG_CELL_CHARS: int = 50    # 长单元格阈值
+    TAIL_TRIM_MIN_BODY_WORDS: int = 3      # 最少虚词匹配数
+
+    # ---- bbox 精修 (_refine_table_bbox) ----
+    REFINE_BBOX_SEARCH_UPWARD_RATIO: float = 0.4  # 碎片上方搜索起始偏移（页高比例）
 
     # ---- 表格合并 ----
     MERGE_X_OVERLAP_RATIO: float = 0.5    # x 方向重叠度 ≥ 此值才考虑合并

@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
@@ -48,10 +49,13 @@ class TableParser:
         all_chunks: list[LayoutChunk] = []
 
         if strategy == "pdfplumber_only":
+            # 关键词引导同样基于 pdfplumber API，纳入以覆盖无边框表格
+            kw_chunks = self._parse_with_keyword_guided()
             chunks = self._parse_with_pdfplumber(feedback)
-            if len(chunks) > 1:
-                chunks = self._deduplicate_chunks(chunks)
-            return chunks
+            all_chunks = kw_chunks + chunks
+            if len(all_chunks) > 1:
+                all_chunks = self._deduplicate_chunks(all_chunks)
+            return all_chunks
 
         if strategy == "pymupdf_only":
             chunks = self._parse_with_pymupdf()
@@ -227,8 +231,11 @@ class TableParser:
                         clip_x0 = max(0.0, min(e["x0"] for e in below) - 2)
                         clip_x1 = min(pw, max(e["x1"] for e in below) + 2)
                     else:
-                        region_bot = min(region_top + MAX_TABLE_HEIGHT_PT, ph)
-                        clip_x0, clip_x1 = 0.0, pw
+                        region_bot, clip_x0, clip_x1 = (
+                            TableParser._detect_columnar_table_bounds(
+                                pdf_page, region_top, pw, ph
+                            )
+                        )
 
                     # bbox 合法性检查（横排页容易触发）
                     if region_top >= region_bot or clip_x0 >= clip_x1:
@@ -268,6 +275,30 @@ class TableParser:
                             geom_normalized = tl
 
                     if geom_normalized is not None and self._is_valid_table(geom_normalized):
+                        # ── 结构质量评估 + Vision fallback ──────────────────
+                        quality = TableParser._structural_quality(geom_normalized)
+                        if quality["fallback_to_vision"]:
+                            raw_bbox = (clip_x0, region_top, clip_x1, region_bot)
+                            refined_bbox = TableParser._refine_table_bbox(
+                                pdf_page, raw_bbox, pw, ph,
+                            )
+                            logger.warning(
+                                "keyword_guided p%d: bbox 原始(%.0f,%.0f,%.0f,%.0f) → 精修(%.0f,%.0f,%.0f,%.0f) h_原始=%.0f h_精修=%.0f",
+                                page_index + 1,
+                                raw_bbox[0], raw_bbox[1], raw_bbox[2], raw_bbox[3],
+                                refined_bbox[0], refined_bbox[1], refined_bbox[2], refined_bbox[3],
+                                raw_bbox[3] - raw_bbox[1], refined_bbox[3] - refined_bbox[1],
+                            )
+                            vis_rows = TableParser._parse_table_with_vision(
+                                self.pdf_path, page_index, refined_bbox,
+                            )
+                            if vis_rows and len(vis_rows) >= 2:
+                                geom_normalized = vis_rows
+                                logger.warning(
+                                    "keyword_guided p%d: Vision fallback 成功 %d行",
+                                    page_index + 1, len(vis_rows),
+                                )
+
                         # 几何提取成功，直接用裁剪区域 bbox
                         bbox = (
                             float(clip_x0),
@@ -316,6 +347,23 @@ class TableParser:
                         if not self._is_valid_table(normalized):
                             continue
 
+                        # ── 结构质量评估 + Vision fallback ──────────────────
+                        quality = TableParser._structural_quality(normalized)
+                        if quality["fallback_to_vision"]:
+                            bbox_raw = table_obj.bbox
+                            refined_bbox = TableParser._refine_table_bbox(
+                                pdf_page, bbox_raw, pw, ph,
+                            )
+                            vis_rows = TableParser._parse_table_with_vision(
+                                self.pdf_path, page_index, refined_bbox,
+                            )
+                            if vis_rows and len(vis_rows) >= 2:
+                                normalized = vis_rows
+                                logger.warning(
+                                    "keyword_guided p%d t%d: Vision fallback 成功 %d行",
+                                    page_index + 1, ti, len(vis_rows),
+                                )
+
                         bbox_raw = table_obj.bbox
                         bbox = (
                             float(bbox_raw[0]),
@@ -356,6 +404,10 @@ class TableParser:
                 page_height = float(page.height) if page.height else 0
                 found_tables = page.find_tables(table_settings=settings)
 
+                # 快速门控：页面不含 "Table" → 只保留 lines 结果，跳过 text 回退
+                page_text = (page.extract_text() or "").lower()
+                has_table_keyword = "table" in page_text
+
                 def _has_data(tbls: list) -> bool:
                     """lines 策略只检测到 header 区域时（≤1 行），触发 fallback。
                     特例：若 1 行的表格符合表头框（HDRBOX）几何特征，说明数据在框下方，
@@ -375,9 +427,8 @@ class TableParser:
                                 return True  # HDRBOX：数据在框下方
                     return False
 
-                # 回退 1：text+lines 策略（无竖线表格）
-                # 触发条件：未检到表格，或只检到仅含 header 的 1 行区域
-                if not found_tables or not _has_data(found_tables):
+                # 回退 1：text+lines 策略 — 仅含 "Table" 关键词的页面
+                if (not found_tables or not _has_data(found_tables)) and has_table_keyword:
                     t1 = page.find_tables(table_settings=dict(
                         settings, vertical_strategy="text"
                     ))
@@ -388,7 +439,7 @@ class TableParser:
                 # 适用于横版页面或期刊名旋转印于右侧导致列检测失效的情况。
                 # 用宽横线 + 表头框列分隔竖线的联合 x 范围裁剪页面，
                 # 既排除旋转边注文字，又保留表格右侧列头（仅有竖线无横线的部分）。
-                if (not found_tables or not _has_data(found_tables)) and page_width > 0:
+                if (not found_tables or not _has_data(found_tables)) and page_width > 0 and has_table_keyword:
                     wide_h = [
                         e for e in page.edges
                         if e.get("orientation") == "h"
@@ -485,7 +536,6 @@ class TableParser:
                         TableParser._count_threeline_lines(page, table_obj.bbox)
 
                     if h_count == 3 and v_count == 0:
-                        # 三线表：顶线 + 表头分隔线 + 底线，无竖线
                         tl = TableParser._extract_threeline(
                             page, table_obj.bbox, h_ys, lines_x0, lines_x1
                         )
@@ -503,7 +553,6 @@ class TableParser:
                     elif (h_count == 2 and v_count == 0
                           and len(h_ys) == 2
                           and (h_ys[1] - h_ys[0]) < 30):
-                        # 表头框：2条紧挨横线形成矩形表头 + 下方无边框数据行
                         tl = TableParser._extract_headerbox(
                             page, table_obj.bbox, h_ys, lines_x0, lines_x1
                         )
@@ -519,39 +568,29 @@ class TableParser:
                             len(normalized),
                         )
                     else:
-                        normalized = self._truncate_at_body_text(
-                            TableParser._unsplit_twin_columns(self._normalize_table(rows))
+                        bbox_raw = table_obj.bbox
+                        bbox_fitz = (float(bbox_raw[0]), float(bbox_raw[1]),
+                                     float(bbox_raw[2]), float(bbox_raw[3]))
+                        chunk = self._post_process_table(
+                            rows, bbox_fitz, page_index, page_width, page_height,
+                            parser_name="pdfplumber", pdf_page=page,
+                            table_index=table_index,
                         )
+                        if chunk:
+                            chunks.append(chunk)
+                        continue  # 普通路径已处理完毕
 
-                    if not self._is_valid_table(normalized):
-                        continue
-
+                    # 几何路径：共用 _validate_and_fallback
                     bbox_raw = table_obj.bbox
-                    bbox = (
-                        float(bbox_raw[0]),
-                        page_height - float(bbox_raw[3]),
-                        float(bbox_raw[2]),
-                        page_height - float(bbox_raw[1]),
+                    bbox_fitz = (float(bbox_raw[0]), float(bbox_raw[1]),
+                                 float(bbox_raw[2]), float(bbox_raw[3]))
+                    chunk = self._validate_and_fallback(
+                        normalized, bbox_fitz, page_index, page_width, page_height,
+                        parser_name="pdfplumber", pdf_page=page,
+                        table_index=table_index,
                     )
-                    markdown = self._to_markdown(normalized)
-                    column = infer_column(page_width, bbox[0], bbox[2])
-
-                    chunks.append(
-                        LayoutChunk(
-                            content_type="table",
-                            raw_content=markdown,
-                            page=page_index,
-                            bbox=bbox,
-                            column=column,
-                            order_in_page=table_index,
-                            metadata={
-                                "parser": "pdfplumber",
-                                "rows": len(normalized),
-                                "cols": len(normalized[0]),
-                                "table_index": table_index,
-                            },
-                        )
-                    )
+                    if chunk:
+                        chunks.append(chunk)
 
         return chunks
 
@@ -573,14 +612,6 @@ class TableParser:
                     continue
 
                 for table_index, table in enumerate(tables):
-                    bbox_raw = table.bbox
-                    bbox = (
-                        float(bbox_raw[0]),
-                        float(bbox_raw[1]),
-                        float(bbox_raw[2]),
-                        float(bbox_raw[3]),
-                    )
-
                     try:
                         rows = table.extract()
                     except Exception as e:
@@ -590,31 +621,17 @@ class TableParser:
                     if not rows or not rows[0]:
                         continue
 
-                    normalized = self._truncate_at_body_text(
-                        TableParser._unsplit_twin_columns(self._normalize_table(rows))
+                    bbox_fitz = (
+                        float(table.bbox[0]), float(table.bbox[1]),
+                        float(table.bbox[2]), float(table.bbox[3]),
                     )
-                    if not self._is_valid_table(normalized):
-                        continue
-
-                    markdown = self._to_markdown(normalized)
-                    column = infer_column(page_width, bbox[0], bbox[2])
-
-                    chunks.append(
-                        LayoutChunk(
-                            content_type="table",
-                            raw_content=markdown,
-                            page=page_index,
-                            bbox=bbox,
-                            column=column,
-                            order_in_page=table_index,
-                            metadata={
-                                "parser": "pymupdf",
-                                "rows": len(normalized),
-                                "cols": len(normalized[0]),
-                                "table_index": table_index,
-                            },
-                        )
+                    chunk = self._post_process_table(
+                        self._normalize_table(rows), bbox_fitz,
+                        page_index, page_width, page_height,
+                        parser_name="pymupdf", table_index=table_index,
                     )
+                    if chunk:
+                        chunks.append(chunk)
 
         # 如果 PyMuPDF 也没检测到，尝试 camelot（对无边框表格更强）
         if not chunks:
@@ -636,11 +653,16 @@ class TableParser:
         chunks: list[LayoutChunk] = []
         pages_str = ",".join(str(p) for p in pages) if pages else "all"
 
-        try:
-            tables = camelot.read_pdf(self.pdf_path, pages=pages_str, flavor="stream")
-        except Exception as e:
-            logger.warning(f"camelot 提取失败: {e}")
-            return []
+        # 先试 lattice（显式线条表格如三线表），再回退 stream（无边框表格）
+        tables = []
+        for flavor in ("lattice", "stream"):
+            try:
+                tables = camelot.read_pdf(self.pdf_path, pages=pages_str, flavor=flavor)
+                if tables:
+                    logger.info("camelot %s: 检测到 %d 个表格", flavor, len(tables))
+                    break
+            except Exception as e:
+                logger.warning("camelot %s 提取失败: %s", flavor, e)
 
         with fitz.open(self.pdf_path) as doc:
             for table in tables:
@@ -653,40 +675,24 @@ class TableParser:
                 page_width = float(page.rect.width)
                 page_height = float(page.rect.height)
 
-                # camelot bbox: (x0, y0, x1, y1) PDF 标准坐标系（y 从页面底部向上）
-                # 与 pdfplumber / keyword_guided 存储格式一致，直接使用原值
-                x0, y0, x1, y1 = table._bbox
-                bbox = (float(x0), float(y0), float(x1), float(y1))
-
+                # camelot bbox: (x0, y0, x1, y1) PDF 标准坐标系（y 从底部向上）
+                # 转为 fitz 坐标系（y 从顶部向下）
+                cx0, cy0, cx1, cy1 = table._bbox
+                bbox_fitz = (
+                    float(cx0), page_height - float(cy1),
+                    float(cx1), page_height - float(cy0),
+                )
                 rows = table.data
                 if not rows:
                     continue
 
-                normalized = self._truncate_at_body_text(
-                    TableParser._unsplit_twin_columns(self._normalize_table(rows))
+                chunk = self._post_process_table(
+                    self._normalize_table(rows), bbox_fitz,
+                    page_index, page_width, page_height,
+                    parser_name="camelot", table_index=len(chunks),
                 )
-                if not self._is_valid_table(normalized):
-                    continue
-
-                markdown = self._to_markdown(normalized)
-                column = infer_column(page_width, bbox[0], bbox[2])
-
-                chunks.append(
-                    LayoutChunk(
-                        content_type="table",
-                        raw_content=markdown,
-                        page=page_index,
-                        bbox=bbox,
-                        column=column,
-                        order_in_page=len(chunks),
-                        metadata={
-                            "parser": "camelot",
-                            "rows": len(normalized),
-                            "cols": len(normalized[0]),
-                            "table_index": len(chunks),
-                        },
-                    )
-                )
+                if chunk:
+                    chunks.append(chunk)
 
         # 合并同一页面内被切割的表格
         if len(chunks) > 1:
@@ -896,24 +902,472 @@ class TableParser:
             if garbled / len(sample_cells) > 0.4:
                 return False
 
+        # 正文伪表格检测：双栏页面正文被 text 策略误识别为表格
+        # 用表头非空列数（非 padding 后的 num_cols），因数据行可能拉高 max_cols
+        # 真表格单元格短（参数名/数值），正文"单元格"是长句段
+        # 阈值在 config 中可调
+        header_nonempty = sum(1 for c in header if c.strip())
+        if header_nonempty <= 2:
+            long_cells = sum(
+                1 for c in sample_cells if len(c) >= CFG.BODY_TEXT_CELL_CHARS
+            )
+            if long_cells >= CFG.BODY_TEXT_MIN_CELLS:
+                logger.warning(
+                    "_is_valid_table: 拒绝正文伪表格 header_cols=%d long_cells=%d/%d",
+                    header_nonempty, long_cells, len(sample_cells),
+                )
+                return False
+
         return True
 
     @staticmethod
-    def _truncate_at_body_text(normalized: list[list[str]]) -> list[list[str]]:
-        """截断到第一个含超长单元格的行之前。
+    def _trim_tail_body_text(normalized: list[list[str]]) -> list[list[str]]:
+        """从尾部移除正文混入行：列数显著少于众数列或单元格含长句段。
 
-        pdfplumber 有时会把表格下方的正文一起框进来，导致末尾出现段落级长文本。
-        遇到第一个超过 MAX_CELL_CHARS 字符的单元格，截断该行及之后的内容，
-        保留上方的真实表格数据继续走验证流程。
+        在 _truncate_at_body_text 之后调用，处理其漏掉的尾部正文。
         """
+        if len(normalized) < 3:
+            return normalized
+
+        from collections import Counter
+        col_counts = [sum(1 for c in row if c.strip()) for row in normalized]
+        mode_cols = Counter(col_counts).most_common(1)[0][0]
+        if mode_cols < CFG.TAIL_TRIM_MIN_MODE_COLS:
+            return normalized
+
+        # 从尾部倒查，移除列数骤降 + 含长文本的行
+        while len(normalized) >= 3:
+            last = normalized[-1]
+            last_nonempty = sum(1 for c in last if c.strip())
+            if last_nonempty > mode_cols * 0.5:
+                break  # 列数正常，不是正文
+            # 检查是否有长句段特征的单元格
+            has_long = any(len(c.strip()) >= CFG.TAIL_TRIM_LONG_CELL_CHARS
+                          and TableParser._count_body_words(c) >= CFG.TAIL_TRIM_MIN_BODY_WORDS
+                          for c in last)
+            if has_long or last_nonempty <= 2:
+                normalized.pop()
+            else:
+                break
+        return normalized
+
+    @staticmethod
+    def _refine_table_bbox(
+        pdf_page, bbox: tuple, page_width: float, page_height: float,
+    ) -> tuple[float, float, float, float]:
+        """用列对齐法扩大 bbox，确保完整表格入镜。"""
+        # 在碎片上方搜索 "Table" 关键词来定位表格顶部
+        words = pdf_page.extract_words()
+        title_y = bbox[1] - page_height * CFG.REFINE_BBOX_SEARCH_UPWARD_RATIO
+        for w in words:
+            if w["text"].strip().lower().startswith(("table", "tab.")):
+                wy = float(w["bottom"])
+                if wy < bbox[1] and wy > title_y:
+                    title_y = wy
+
+        region_top = max(0.0, title_y)
+        region_bot, clip_x0, clip_x1 = TableParser._detect_columnar_table_bounds(
+            pdf_page, region_top, page_width, page_height,
+        )
+        # 列对齐失败时：保留扩大的起点，下边界至少扩展 400pt
+        if region_bot < bbox[3]:
+            region_bot = max(bbox[3], min(page_height, region_top + 400))
+        return (
+            min(bbox[0], clip_x0),
+            min(bbox[1], region_top),
+            max(bbox[2], clip_x1),
+            max(bbox[3], region_bot),
+        )
+
+    @staticmethod
+    def _structural_quality(normalized: list[list[str]]) -> dict:
+        """评估表格结构质量：列数一致性 + 填充率。
+
+        返回 dict 含 consistency_score(0-1), fill_rate(0-1), fallback_to_vision(bool)。
+        阈值在 config.py 中可调。
+        """
+        if not normalized or len(normalized) < 2:
+            return {"consistency_score": 0.0, "fill_rate": 0.0, "fallback_to_vision": True}
+
+        col_counts = [sum(1 for c in row if c.strip()) for row in normalized]
+        max_cols = max(col_counts)
+        if max_cols < 2:
+            return {"consistency_score": 0.0, "fill_rate": 0.0, "fallback_to_vision": True}
+
+        # 数据行数过少 → 很可能是片段，切 Vision
+        data_rows = len(normalized) - 1  # 除去表头
+        if data_rows < CFG.MIN_DATA_ROWS + 1:
+            logger.warning(
+                "_structural_quality: 数据行不足 rows=%d → fallback",
+                len(normalized),
+            )
+            return {"consistency_score": 1.0, "fill_rate": 1.0, "fallback_to_vision": True}
+
+        # 众数占比：最多行共享的列数占多大比例，比平均偏差更敏感
+        from collections import Counter
+        mode_count = Counter(col_counts).most_common(1)[0][1]
+        consistency_score = mode_count / len(col_counts)
+
+        total_cells = len(normalized) * max_cols
+        empty_cells = sum(1 for row in normalized for c in row if not c.strip())
+        fill_rate = 1.0 - empty_cells / total_cells if total_cells > 0 else 0.0
+
+        fallback = (
+            CFG.VISION_FALLBACK_ENABLED
+            and (
+                consistency_score < CFG.VISION_FALLBACK_MIN_CONSISTENCY
+                or fill_rate < CFG.VISION_FALLBACK_MIN_FILL_RATE
+            )
+        )
+
+        return {
+            "consistency_score": round(consistency_score, 2),
+            "fill_rate": round(fill_rate, 2),
+            "fallback_to_vision": fallback,
+        }
+
+    def _post_process_table(
+        self, raw_rows: list[list[str | None]], bbox: tuple, page_index: int,
+        page_width: float, page_height: float, *,
+        parser_name: str = "unknown", pdf_page=None, table_index: int = 0,
+    ) -> LayoutChunk | None:
+        """统一后处理（原始行入口）：标准化 → 截断 → 验证 → 质量 → Vision → 打包。"""
+        normalized = TableParser._truncate_at_body_text(
+            TableParser._unsplit_twin_columns(TableParser._normalize_table(raw_rows))
+        )
+        return self._validate_and_fallback(
+            normalized, bbox, page_index, page_width, page_height,
+            parser_name=parser_name, pdf_page=pdf_page, table_index=table_index,
+        )
+
+    def _validate_and_fallback(
+        self, normalized: list[list[str]], bbox: tuple, page_index: int,
+        page_width: float, page_height: float, *,
+        parser_name: str = "unknown", pdf_page=None, table_index: int = 0,
+    ) -> LayoutChunk | None:
+        """统一后处理（已规范化行入口）：验证 → 质量评估 → Vision fallback → 打包。"""
+        if not TableParser._is_valid_table(normalized):
+            return None
+
+        quality = TableParser._structural_quality(normalized)
+        logger.info(
+            "p%d 表格 #%d [%s]: consistency=%.2f fill=%.2f fallback=%s",
+            page_index, table_index, parser_name,
+            quality["consistency_score"], quality["fill_rate"],
+            quality["fallback_to_vision"],
+        )
+        if quality["fallback_to_vision"]:
+            if pdf_page is not None:
+                refined_bbox = TableParser._refine_table_bbox(
+                    pdf_page, bbox, page_width, page_height,
+                )
+            else:
+                refined_bbox = bbox
+            logger.warning(
+                "p%d 表格 #%d [%s]: 结构质量差，尝试 Vision fallback…",
+                page_index, table_index, parser_name,
+            )
+            vis_rows = TableParser._parse_table_with_vision(
+                self.pdf_path, page_index - 1, refined_bbox,
+            )
+            if vis_rows and len(vis_rows) >= 2:
+                normalized = vis_rows
+                logger.warning(
+                    "p%d 表格 #%d [%s]: Vision fallback 成功 %d行×%d列",
+                    page_index, table_index, parser_name,
+                    len(normalized), len(normalized[0]) if normalized[0] else 0,
+                )
+
+        column = infer_column(page_width, bbox[0], bbox[2])
+        markdown = TableParser._to_markdown(normalized)
+        return LayoutChunk(
+            content_type="table",
+            raw_content=markdown,
+            page=page_index,
+            bbox=bbox,
+            column=column,
+            order_in_page=table_index,
+            metadata={
+                "parser": parser_name,
+                "rows": len(normalized),
+                "cols": len(normalized[0]),
+                "table_index": table_index,
+            },
+        )
+
+    @staticmethod
+    def _parse_table_with_vision(
+        pdf_path: str, page_index: int, bbox_fitz: tuple[float, float, float, float],
+    ) -> list[list[str]]:
+        """用 DashScope Vision 解析表格区域，返回结构化行列表。
+
+        bbox_fitz: (x0, y0, x1, y1) 在 fitz 坐标系（top-left 原点）。
+        返回空列表表示 Vision 解析失败。
+        """
+        import base64
+        import io
+        import fitz as _fitz
+        from dashscope import MultiModalConversation
+
+        try:
+            doc = _fitz.open(pdf_path)
+            page = doc[page_index]
+            dpi = CFG.VISION_FALLBACK_DPI
+            mat = _fitz.Matrix(dpi / 72, dpi / 72)
+
+            x0, y0, x1, y1 = bbox_fitz
+            margin = CFG.VISION_CAPTURE_MARGIN
+            clip = _fitz.Rect(
+                max(0, x0 - margin),
+                max(0, y0 - margin),
+                min(page.rect.width, x1 + margin),
+                min(page.rect.height, y1 + margin),
+            )
+            pix = page.get_pixmap(matrix=mat, clip=clip)
+            img_bytes = pix.tobytes("png")
+            doc.close()
+
+            image_b64 = base64.b64encode(img_bytes).decode("utf-8")
+
+            prompt = (
+                "精确转录图片中的学术论文表格为 Markdown 格式。\n\n"
+                "规则：\n"
+                "1. 第一行为列名。\n"
+                "2. 保留原文中的上下标、斜体、希腊字母等排版格式（用 Markdown 表示）。\n"
+                "3. 每个逻辑行只对应表格中的一行，不要把多行数据错误合并。\n"
+                "4. 同一单元格内有多个数值（上下排列）时用 ' / ' 连接，保留括号或方括号中的单位/条件标注。\n"
+                "5. 空单元格填 '—'。\n"
+                "6. 表格底部的脚注或说明文字（以特殊符号开头的短行）原样保留。\n"
+                "7. 不要包含表格上方或下方的正文段落。\n"
+                "8. 不要编造、省略或改写任何数据。\n\n"
+                "只返回 Markdown 表格和注释，不加额外说明。"
+            )
+
+            response = MultiModalConversation.call(
+                model=CFG.VISION_FALLBACK_MODEL,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"image": f"data:image/png;base64,{image_b64}"},
+                        {"text": prompt},
+                    ],
+                }],
+                timeout=120,
+            )
+
+            http_status = getattr(response, "status_code", None)
+            if http_status is not None and http_status != 200:
+                logger.warning(
+                    "Vision fallback API error: %s %s",
+                    getattr(response, "code", ""), getattr(response, "message", ""),
+                )
+                return []
+
+            content = response.output.choices[0].message.content
+            if isinstance(content, list):
+                text = "\n".join(
+                    part.get("text", "") for part in content if isinstance(part, dict)
+                )
+            else:
+                text = str(content)
+
+            return TableParser._md_to_rows(text.strip())
+
+        except Exception:
+            logger.exception("Vision fallback failed")
+            return []
+
+    @staticmethod
+    def _md_to_rows(md: str) -> list[list[str]]:
+        """将 Vision 返回的 Markdown 表格文本转为行列表。"""
+        rows: list[list[str]] = []
+        for line in md.split("\n"):
+            line = line.strip()
+            if not line or not line.startswith("|"):
+                continue
+            cells = [c.strip() for c in line.split("|")]
+            if cells and not cells[0]:
+                cells = cells[1:]
+            if cells and not cells[-1]:
+                cells = cells[:-1]
+            if all(set(c) <= {"-", ":", " "} or c == "" for c in cells):
+                continue
+            if cells:
+                rows.append(cells)
+        return rows
+
+    # 常见英文虚词（用于正文检测，子串匹配不依赖词边界）
+    _BODY_WORDS_LIST = [
+        "the", "of", "and", "was", "were", "that", "this", "from",
+        "with", "for", "are", "not", "but", "had", "has", "have", "been",
+        "which", "their", "also", "between", "after", "during", "over",
+        "into", "than", "about", "more", "some", "these", "those", "each",
+        "both", "such", "only", "other", "they", "them", "then", "there",
+        "therefore", "however", "although", "because", "while", "where",
+        "when", "upon", "within", "without", "through", "under",
+        "significantly", "respectively", "additionally", "interestingly",
+    ]
+
+    @staticmethod
+    def _count_body_words(text: str) -> int:
+        """统计文本中英文虚词出现次数（子串匹配，兼容 PDF 无空格提取）。"""
+        t = text.lower()
+        count = 0
+        for w in TableParser._BODY_WORDS_LIST:
+            idx = 0
+            while True:
+                idx = t.find(w, idx)
+                if idx == -1:
+                    break
+                count += 1
+                idx += len(w)
+        return count
+
+    @staticmethod
+    def _truncate_at_body_text(normalized: list[list[str]]) -> list[list[str]]:
+        """截断正文混入：超长单元格 + 列数骤降 + 句子虚词三重检测。
+
+        pdfplumber / PyMuPDF 有时会把表格下方的正文一起框进来。
+        策略 1 — 超长单元格：超过 MAX_CELL_CHARS 字符的单元格 → 截断。
+        策略 2 — 列数骤降：非空列数骤降到 ≤2 且此前最多列数 ≥5 → 脚注豁免，否则截断。
+        策略 3 — 句子虚词：单元格含 ≥4 个英文虚词（子串匹配）→ 截断。
+        """
+        if not normalized:
+            return normalized
+
+        max_nonempty = 0  # 迄今为止一行中最多非空列数
+        logger.warning(
+            "_truncate_at_body_text: rows=%d",
+            len(normalized),
+        )
+
         for i, row in enumerate(normalized):
+            row_nonempty = sum(1 for c in row if c.strip())
+            if row_nonempty > max_nonempty:
+                max_nonempty = row_nonempty
+
+            # 策略 1：超长单元格
             if any(len(cell) > CFG.MAX_CELL_CHARS for cell in row):
                 logger.debug(
                     "截断正文混入 row=%d（单元格 %d 字符）: %.60s…",
                     i, max(len(c) for c in row), max(row, key=len),
                 )
                 return normalized[:i]
-        return normalized
+
+            # 策略 2：列数骤降
+            # 条件：非空列 ≤2 且此前已有 ≥5 列的行（说明是表格→正文过渡，非整个伪表格）
+            # 图注豁免：含脚注标记（* + − † ‡ § ¶ #）的低列数行跳过
+            if i >= 1 and len(normalized) >= 3 and max_nonempty >= CFG.TRUNCATE_SPARSE_COL_THRESHOLD and row_nonempty <= 2:
+                row_text = " ".join(c for c in row if c.strip())
+                if re.search(r'[+\-*†‡§¶#−‐‑‒–—―]|^[a-z]\)|^[a-z]\s', row_text):
+                    logger.debug(
+                        "跳过表格图注 row=%d（列数 %d→%d，含脚注标记）",
+                        i, max_nonempty, row_nonempty,
+                    )
+                    continue
+                logger.warning(
+                    "截断正文混入 row=%d（列数骤降 %d→%d）",
+                    i, max_nonempty, row_nonempty,
+                )
+                return normalized[:i]
+
+            # 策略 3：句子虚词密度检测
+            for cell in row:
+                cell = cell.strip()
+                if len(cell) < CFG.TRUNCATE_BODY_WORD_MIN_LEN:
+                    continue
+                matches = TableParser._count_body_words(cell)
+                if matches >= CFG.TRUNCATE_BODY_WORD_MIN_COUNT:
+                    logger.debug(
+                        "截断正文混入 row=%d（虚词=%d）: %.60s…",
+                        i, matches, cell,
+                    )
+                    return normalized[:i]
+
+        return TableParser._trim_tail_body_text(normalized)
+
+    # ── 无线条表格边界检测（列对齐） ─────────────────────────────────────────
+
+    @staticmethod
+    def _detect_columnar_table_bounds(
+        pdf_page,
+        region_top: float,
+        page_width: float,
+        page_height: float,
+    ) -> tuple[float, float, float]:
+        """无线条时，用跨行列对齐模式检测表格的实际边界。
+
+        表格行在连续行之间共享 ≥2 个列 x 位置（15pt 容差），
+        正文行即使单行有多个词，也不会在连续行间保持列对齐。
+
+        返回: (table_bottom, table_x0, table_x1) — pdfplumber 坐标
+        """
+        words = pdf_page.extract_words()
+        if not words:
+            return min(region_top + 100, page_height), 0.0, page_width
+
+        below = [w for w in words if w["top"] >= region_top]
+        if not below:
+            return min(region_top + 100, page_height), 0.0, page_width
+
+        # 按行分组
+        below.sort(key=lambda w: (w["top"], w["x0"]))
+        lines: list[list[dict]] = []
+        for w in below:
+            if not lines or abs(w["top"] - lines[-1][0]["top"]) > 3:
+                lines.append([w])
+            else:
+                lines[-1].append(w)
+
+        if len(lines) < 2:
+            return min(region_top + 100, page_height), 0.0, page_width
+
+        X_TOLERANCE = CFG.COLUMN_ALIGN_X_TOLERANCE
+        MIN_SHARED_COLS = CFG.COLUMN_ALIGN_MIN_SHARED
+
+        def _xsnap(line: list[dict]) -> set[int]:
+            return {round(w["x0"] / X_TOLERANCE) * X_TOLERANCE for w in line}
+
+        prev_xs = _xsnap(lines[0])
+        table_lines: list[list[dict]] = [lines[0]]
+        gap_count = 0
+
+        for line in lines[1:]:
+            cur_xs = _xsnap(line)
+            shared = sum(1 for px in prev_xs if any(abs(px - cx) <= X_TOLERANCE for cx in cur_xs))
+            if shared >= MIN_SHARED_COLS:
+                table_lines.append(line)
+                prev_xs = cur_xs
+                gap_count = 0
+            elif gap_count == 0 and table_lines and len(table_lines) >= 2:
+                # 容忍 1 行间隙：分区标题行（如 "PCR primers"）列数少但表格未完
+                table_lines.append(line)
+                gap_count = 1
+                # 不更新 prev_xs，下一行仍与间隙前的列位置对齐
+            elif table_lines and len(table_lines) >= 2:
+                break  # 连续 ≥2 行不对齐 → 表格结束
+            else:
+                prev_xs = cur_xs
+                table_lines = [line]
+
+        if len(table_lines) < 2:
+            logger.warning(
+                "_detect_columnar_table_bounds: 仅 %d 行 → fallback",
+                len(table_lines),
+            )
+            return min(region_top + 100, page_height), 0.0, page_width
+
+        table_bottom = max(w["bottom"] for line in table_lines for w in line)
+        all_x0 = [w["x0"] for line in table_lines for w in line]
+        all_x1 = [w["x1"] for line in table_lines for w in line]
+        table_x0 = max(0.0, min(all_x0) - 5)
+        table_x1 = min(page_width, max(all_x1) + 5)
+
+        logger.warning(
+            "_detect_columnar_table_bounds: region_top=%.0f table_bottom=%.0f lines=%d height=%.0f",
+            region_top, table_bottom, len(table_lines), table_bottom - region_top,
+        )
+        return min(table_bottom + 3, page_height), table_x0, table_x1
 
     # ── 三线表几何提取（词位置 + 横线坐标） ───────────────────────────────────
 

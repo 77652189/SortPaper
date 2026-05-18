@@ -320,6 +320,7 @@ def image_worker_node(state: PipelineState) -> dict:
     parser = VisionParser(state["pdf_path"])
     new_chunks, vis_timing = parser.parse()
 
+    failed_ids = _failed_ids(state.get("image_verdicts", []))
     if failed_ids:
         existing: dict[str, LayoutChunk] = {}
     else:
