@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 class VisionParser:
-    def __init__(self, pdf_path: str | Path, model: str = "qwen-vl-max") -> None:
+    def __init__(self, pdf_path: str | Path, model: str = CFG.VISION_MODEL) -> None:
         self.pdf_path = str(pdf_path)
         self.model = model
 
@@ -102,7 +102,7 @@ class VisionParser:
                 column=t["column"],
                 order_in_page=t["img_idx"],
                 metadata={
-                    "parser": "qwen-vl-max",
+                    "parser": self.model,
                     "caption": t["caption"],
                     "image_index": t["img_idx"],
                     "xref": t["xref"],

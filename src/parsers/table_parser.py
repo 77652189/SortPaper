@@ -41,20 +41,11 @@ class TableParser:
         提取 PDF 所有表格，返回 LayoutChunk 列表。
 
         strategy 可选值：
-          "all"           : 关键词引导 + pdfplumber + PyMuPDF + camelot（默认）
-          "hybrid"        : OpenCV检测 + 视觉模型(主) + pdfplumber交叉验证(副)
-                            适用于三线表等传统引擎无法解析的场景
+          "all"             : 关键词引导 + pdfplumber + PyMuPDF + camelot（默认）
           "pdfplumber_only" / "pymupdf_only" / "camelot_only" : 单引擎模式
         camelot_pages: 限制 camelot 扫描的页码（1-indexed），默认全文档。
         """
         all_chunks: list[LayoutChunk] = []
-
-        if strategy == "hybrid":
-            from src.parsers.hybrid_table_parser import HybridTableParser
-            chunks = HybridTableParser(self.pdf_path).parse()
-            if len(chunks) > 1:
-                chunks = self._deduplicate_chunks(chunks)
-            return chunks
 
         if strategy == "pdfplumber_only":
             chunks = self._parse_with_pdfplumber(feedback)
@@ -247,6 +238,60 @@ class TableParser:
                         )
                         continue
 
+                    # ── 几何优先：检测三线表 / 表头框 ────────────────────────────
+                    # 对整个裁剪区域做横线计数；因裁剪 bbox 包含标题行下方所有内容，
+                    # 能够捕获刚好在 region_top 之下的表头框横线（text+text 策略会漏掉）。
+                    clip_bbox_plumb = (clip_x0, region_top, clip_x1, region_bot)
+                    hc, hys, vc, lx0, lx1 = TableParser._count_threeline_lines(
+                        pdf_page, clip_bbox_plumb
+                    )
+                    geom_normalized: list[list[str]] | None = None
+                    if hc == 3 and vc == 0:
+                        tl = TableParser._extract_threeline(
+                            pdf_page, clip_bbox_plumb, hys, lx0, lx1
+                        )
+                        if tl and len(tl) >= 2:
+                            tl = TableParser._unsplit_twin_columns(tl)
+                            tl = self._truncate_at_body_text(tl)
+                        if tl and len(tl) >= 2:
+                            geom_normalized = tl
+                    elif (hc == 2 and vc == 0
+                          and len(hys) == 2
+                          and (hys[1] - hys[0]) < 30):
+                        tl = TableParser._extract_headerbox(
+                            pdf_page, clip_bbox_plumb, hys, lx0, lx1
+                        )
+                        if tl and len(tl) >= 2:
+                            tl = TableParser._unsplit_twin_columns(tl)
+                            tl = self._truncate_at_body_text(tl)
+                        if tl and len(tl) >= 2:
+                            geom_normalized = tl
+
+                    if geom_normalized is not None and self._is_valid_table(geom_normalized):
+                        # 几何提取成功，直接用裁剪区域 bbox
+                        bbox = (
+                            float(clip_x0),
+                            ph - float(region_bot),
+                            float(clip_x1),
+                            ph - float(region_top),
+                        )
+                        chunks.append(LayoutChunk(
+                            content_type="table",
+                            raw_content=self._to_markdown(geom_normalized),
+                            page=page_index + 1,
+                            bbox=bbox,
+                            column=infer_column(pw, clip_x0, clip_x1),
+                            order_in_page=0,
+                            metadata={
+                                "parser": "keyword_guided",
+                                "rows": len(geom_normalized),
+                                "cols": len(geom_normalized[0]),
+                                "table_index": 0,
+                            },
+                        ))
+                        continue  # 跳过 text+text 路径
+
+                    # ── text+text 路径（回退）──────────────────────────────────
                     try:
                         clipped = pdf_page.within_bbox(
                             (clip_x0, region_top, clip_x1, region_bot)
@@ -265,7 +310,9 @@ class TableParser:
                         rows = table_obj.extract()
                         if not rows:
                             continue
-                        normalized = self._truncate_at_body_text(self._normalize_table(rows))
+                        normalized = self._truncate_at_body_text(
+                            TableParser._unsplit_twin_columns(self._normalize_table(rows))
+                        )
                         if not self._is_valid_table(normalized):
                             continue
 
@@ -310,8 +357,23 @@ class TableParser:
                 found_tables = page.find_tables(table_settings=settings)
 
                 def _has_data(tbls: list) -> bool:
-                    """lines 策略只检测到 header 区域时（≤1 行），触发 fallback。"""
-                    return any(len(t.extract() or []) > 1 for t in tbls)
+                    """lines 策略只检测到 header 区域时（≤1 行），触发 fallback。
+                    特例：若 1 行的表格符合表头框（HDRBOX）几何特征，说明数据在框下方，
+                    不视为"无数据"，避免 fallback 用全页 text+text 垃圾表格替换它。
+                    """
+                    for t in tbls:
+                        rows = t.extract() or []
+                        if len(rows) > 1:
+                            return True
+                        if len(rows) == 1:
+                            hc, hys, vc, _, _ = TableParser._count_threeline_lines(
+                                page, t.bbox
+                            )
+                            if (hc == 2 and vc == 0
+                                    and len(hys) == 2
+                                    and (hys[1] - hys[0]) < 30):
+                                return True  # HDRBOX：数据在框下方
+                    return False
 
                 # 回退 1：text+lines 策略（无竖线表格）
                 # 触发条件：未检到表格，或只检到仅含 header 的 1 行区域
@@ -324,7 +386,8 @@ class TableParser:
 
                 # 回退 2：裁剪旋转边注 + text+text
                 # 适用于横版页面或期刊名旋转印于右侧导致列检测失效的情况。
-                # 用宽横线的 x 范围裁剪页面，排除旋转边注文字。
+                # 用宽横线 + 表头框列分隔竖线的联合 x 范围裁剪页面，
+                # 既排除旋转边注文字，又保留表格右侧列头（仅有竖线无横线的部分）。
                 if (not found_tables or not _has_data(found_tables)) and page_width > 0:
                     wide_h = [
                         e for e in page.edges
@@ -332,8 +395,26 @@ class TableParser:
                         and (e.get("x1", 0) - e.get("x0", 0)) > page_width * 0.2
                     ]
                     if wide_h:
-                        clip_x0 = max(0.0, min(e["x0"] for e in wide_h) - 2)
-                        clip_x1 = min(page_width, max(e["x1"] for e in wide_h) + 2)
+                        h_y_min = min(e.get("top", 0) for e in wide_h)
+                        h_y_max = max(e.get("top", 0) for e in wide_h)
+                        header_band_h = h_y_max - h_y_min + 5  # 表头框高度 + 容差
+
+                        # 表头框列分隔竖线：高度 ≤ 表头框高度+5pt 且在表头 y 范围内的竖线
+                        # 这类竖线是表头矩形框内的列分隔线，决定了表格真实的 x 宽度
+                        header_box_v_xs = [
+                            e.get("x0", 0)
+                            for e in page.edges
+                            if e.get("orientation") == "v"
+                            and (e.get("bottom", 0) - e.get("top", 0)) <= header_band_h + 5
+                            and e.get("top", 0) >= h_y_min - 3
+                        ]
+
+                        h_x0 = min(e["x0"] for e in wide_h)
+                        h_x1 = max(e["x1"] for e in wide_h)
+                        v_x_max = max(header_box_v_xs, default=h_x1)
+
+                        clip_x0 = max(0.0, min(h_x0, min(header_box_v_xs, default=h_x0)) - 2)
+                        clip_x1 = min(page_width, max(h_x1, v_x_max) + 2)
                         clipped = page.within_bbox((clip_x0, 0, clip_x1, page_height))
                         t2 = clipped.find_tables(table_settings={
                             "vertical_strategy": "text",
@@ -344,31 +425,102 @@ class TableParser:
                         if t2 and _has_data(t2):
                             found_tables = t2
 
+                # ── 回退 3：旋转表格（90° 旋转字符组成的表格，如 ACS 期刊 Table 3）──
+                # pdfplumber 对旋转字符的检测结果通常是错误的 1 列表格，需特殊处理。
+                # 若检测成功，将旋转表格 chunk 直接加入结果，并过滤掉 found_tables
+                # 中与旋转区域重叠的错误检测。
+                rot_table = TableParser._detect_rotated_table(page)
+                if rot_table:
+                    rot_norm = self._normalize_table(rot_table)
+                    if self._is_valid_table(rot_norm):
+                        rot_md = self._to_markdown(rot_norm)
+                        rot_chars = [
+                            c for c in page.chars
+                            if abs(c.get("matrix", [1, 0, 0, 1, 0, 0])[1]) > 0.1
+                        ]
+                        if rot_chars:
+                            rx0 = float(min(c["x0"] for c in rot_chars))
+                            rx1 = float(max(c.get("x1", c["x0"] + 10) for c in rot_chars))
+                            ry_top = float(min(c["top"] for c in rot_chars))
+                            ry_bot = float(max(c.get("bottom", c["top"] + 10) for c in rot_chars))
+                            rot_bbox = (
+                                rx0,
+                                page_height - ry_bot,
+                                rx1,
+                                page_height - ry_top,
+                            )
+                            rot_col = infer_column(page_width, rot_bbox[0], rot_bbox[2])
+                            chunks.append(LayoutChunk(
+                                content_type="table",
+                                raw_content=rot_md,
+                                page=page_index,
+                                bbox=rot_bbox,
+                                column=rot_col,
+                                order_in_page=0,
+                                metadata={
+                                    "parser": "pdfplumber_rotated",
+                                    "rows": len(rot_norm),
+                                    "cols": len(rot_norm[0]),
+                                    "rotated": True,
+                                },
+                            ))
+                            # 过滤 found_tables 中与旋转区域重叠的错误检测
+                            found_tables = [
+                                t for t in found_tables
+                                if not (t.bbox[0] < rx1 + 5 and t.bbox[2] > rx0 - 5)
+                            ]
+                            logger.info(
+                                "p%d 旋转表格: %d 行 × %d 列，filtered %d broken tables",
+                                page_index, len(rot_norm), len(rot_norm[0]),
+                                len(found_tables),
+                            )
+
                 for table_index, table_obj in enumerate(found_tables):
                     rows = table_obj.extract()
                     if not rows:
                         continue
 
-                    # 三线表检测：3条横线 + 0条竖线 → 用几何+词位置提取
+                    # 几何提取：识别三线表 / 表头框格式，走专用提取器
                     h_count, h_ys, v_count, lines_x0, lines_x1 = \
                         TableParser._count_threeline_lines(page, table_obj.bbox)
+
                     if h_count == 3 and v_count == 0:
+                        # 三线表：顶线 + 表头分隔线 + 底线，无竖线
                         tl = TableParser._extract_threeline(
                             page, table_obj.bbox, h_ys, lines_x0, lines_x1
                         )
                         if tl and len(tl) >= 2:
+                            tl = TableParser._unsplit_twin_columns(tl)
                             tl = self._truncate_at_body_text(tl)
                         normalized = tl if (tl and len(tl) >= 2) else \
                             self._truncate_at_body_text(self._normalize_table(rows))
                         logger.debug(
-                            "p%d 三线表检测: h=%d v=%d lines_x=[%.0f,%.0f] → %s (%d行)",
+                            "p%d 三线表: h=%d v=%d lines_x=[%.0f,%.0f] → %s (%d行)",
+                            page_index, h_count, v_count, lines_x0, lines_x1,
+                            "几何提取" if (tl and len(tl) >= 2) else "普通提取",
+                            len(normalized),
+                        )
+                    elif (h_count == 2 and v_count == 0
+                          and len(h_ys) == 2
+                          and (h_ys[1] - h_ys[0]) < 30):
+                        # 表头框：2条紧挨横线形成矩形表头 + 下方无边框数据行
+                        tl = TableParser._extract_headerbox(
+                            page, table_obj.bbox, h_ys, lines_x0, lines_x1
+                        )
+                        if tl and len(tl) >= 2:
+                            tl = TableParser._unsplit_twin_columns(tl)
+                            tl = self._truncate_at_body_text(tl)
+                        normalized = tl if (tl and len(tl) >= 2) else \
+                            self._truncate_at_body_text(self._normalize_table(rows))
+                        logger.debug(
+                            "p%d 表头框: h=%d v=%d lines_x=[%.0f,%.0f] → %s (%d行)",
                             page_index, h_count, v_count, lines_x0, lines_x1,
                             "几何提取" if (tl and len(tl) >= 2) else "普通提取",
                             len(normalized),
                         )
                     else:
                         normalized = self._truncate_at_body_text(
-                            self._normalize_table(rows)
+                            TableParser._unsplit_twin_columns(self._normalize_table(rows))
                         )
 
                     if not self._is_valid_table(normalized):
@@ -438,7 +590,9 @@ class TableParser:
                     if not rows or not rows[0]:
                         continue
 
-                    normalized = self._truncate_at_body_text(self._normalize_table(rows))
+                    normalized = self._truncate_at_body_text(
+                        TableParser._unsplit_twin_columns(self._normalize_table(rows))
+                    )
                     if not self._is_valid_table(normalized):
                         continue
 
@@ -499,20 +653,18 @@ class TableParser:
                 page_width = float(page.rect.width)
                 page_height = float(page.rect.height)
 
-                # camelot bbox: (x0, y0_top, x1, y1_top) 左上角坐标系
-                x0, y0_top, x1, y1_top = table._bbox
-                bbox = (
-                    float(x0),
-                    page_height - float(y1_top),  # 转换为 PyMuPDF 坐标系
-                    float(x1),
-                    page_height - float(y0_top),
-                )
+                # camelot bbox: (x0, y0, x1, y1) PDF 标准坐标系（y 从页面底部向上）
+                # 与 pdfplumber / keyword_guided 存储格式一致，直接使用原值
+                x0, y0, x1, y1 = table._bbox
+                bbox = (float(x0), float(y0), float(x1), float(y1))
 
                 rows = table.data
                 if not rows:
                     continue
 
-                normalized = self._truncate_at_body_text(self._normalize_table(rows))
+                normalized = self._truncate_at_body_text(
+                    TableParser._unsplit_twin_columns(self._normalize_table(rows))
+                )
                 if not self._is_valid_table(normalized):
                     continue
 
@@ -784,24 +936,32 @@ class TableParser:
         """
         x0, top, x1, bottom = bbox_plumb
         page_width = float(pdf_page.width) if pdf_page.width else 500.0
-        # 横线最短宽度：取 bbox 宽度 30% 与页面宽度 15% 中的较大值，
-        # 对 bbox 被旋转边注截窄的情况更鲁棒
-        min_h_width = max((x1 - x0) * 0.3, page_width * 0.15)
+        # 横线最短宽度：取 bbox 宽度 25% 与页面宽度 15% 中的较大值。
+        # 25% 能兼容双栏表格的表头框窄线（约占页面宽度的 24%）。
+        min_h_width = max((x1 - x0) * 0.25, page_width * 0.15)
 
-        seen_y_bins: dict[int, float] = {}  # 5pt 分箱去重
+        # 竖线最短高度阈值：过滤填充矩形的侧边、表头框的分隔竖线等短竖线。
+        # 使用 bbox 高度的 10% 与 20pt 的较大值，使阈值随表格尺寸自适应：
+        #   · 小 bbox（如 lines+lines 表头框，高≈21pt）→ 阈值≈20pt，保留真实竖线
+        #   · 大 bbox（如 text+text 全表，高≈500pt）→ 阈值≈50pt，可过滤 20pt 表头框侧边
+        bbox_height = bottom - top
+        v_height_min = max(20.0, bbox_height * 0.10)
+
+        seen_y_bins: dict[int, float] = {}  # 10pt 分箱去重
         v_count = 0
         h_x0_min = float("inf")
         h_x1_max = float("-inf")
 
         for edge in pdf_page.edges:
             ori = edge.get("orientation", "")
-            ey0 = float(edge.get("y0", 0))
-            ey1 = float(edge.get("y1", ey0))
+            # pdfplumber 边坐标字段：水平/垂直方向均使用 "top"/"bottom"（非 y0/y1）
+            ey0 = float(edge.get("top", 0))
+            ey1 = float(edge.get("bottom", ey0))
             ex0 = float(edge.get("x0", 0))
             ex1 = float(edge.get("x1", ex0))
 
             if ori == "h":
-                ey = ey0  # 水平线 y0 == y1
+                ey = ey0  # 水平线 top == bottom（或相差极小）
                 if not (top - 2 <= ey <= bottom + 2):
                     continue
                 if abs(ex1 - ex0) < min_h_width:
@@ -823,9 +983,12 @@ class TableParser:
                 v_bottom = max(ey0, ey1)
                 if v_top > bottom or v_bottom < top:
                     continue
-                # 忽略极短竖线（<5pt）：填充矩形横线的左/右侧边高度
-                # 仅为线宽（~1.5pt），不是真正的竖向分隔线
-                if (v_bottom - v_top) < 5:
+                # 忽略短竖线（< v_height_min）：
+                #   · 填充矩形横线的左/右侧边：~1.5pt
+                #   · ACS 期刊页眉装饰框角线：~11pt
+                #   · 表头矩形框列分隔线：与表头框等高（Pathway 论文中为 ~21pt）
+                # v_height_min = max(20, bbox_height*0.1)，大 bbox 时可过滤 21pt 竖线
+                if (v_bottom - v_top) < v_height_min:
                     continue
                 v_count += 1
 
@@ -941,6 +1104,161 @@ class TableParser:
         return result
 
     @staticmethod
+    def _merge_multiline_cells(data_rows: list[list[str]]) -> list[list[str]]:
+        """
+        合并折行产生的续行。
+
+        对于偶数列且列数 ≥ 4 的双栏表，左右两半各自独立追踪"最近有 key 的行"，
+        续行分别合并入对应的父行（即使同一 y 位置左续右新或左新右续）。
+
+        支持三种"伪新条目"检测（key 非空但实为续行）：
+          A. key 以 '(' 开头     → 括号续行，如 "(DE3)" "(CA,USA)"；丢弃 key，仅合并 source
+          B. 上一个 key 以 '-' 结尾 → 连字符续行，如 "pCDF-lgtA-" + "wbgO"；拼接入 key
+          C. char 为空 且 source 以 '(' 开头 → source 续行，如 "Kanr" + "(WI,USA)"；
+               key 移入 char，source 合并入 source
+
+        对于奇数列或列数 < 4，仅检测 col 0 为空 → 续行。
+        """
+        if not data_rows:
+            return data_rows
+        n = len(data_rows[0]) if data_rows else 0
+
+        if n >= 4 and n % 2 == 0:
+            half = n // 2
+            result: list[list[str]] = []
+            left_key_idx: int = -1   # 最近左侧有 key 的 result 行索引
+            right_key_idx: int = -1  # 最近右侧有 key 的 result 行索引
+            left_last_key: str = ""  # 最近左侧 key 值（用于连字符检测）
+            right_last_key: str = "" # 最近右侧 key 值
+
+            def _is_pseudo(key: str, char: str, source: str, prev_key: str) -> bool:
+                """key 非空但判断为伪新条目（实为续行）的条件。"""
+                if char:
+                    return False  # char 非空 = 真正的新条目
+                if key.startswith("("):
+                    return True   # A: 括号续行
+                if prev_key.endswith("-"):
+                    return True   # B: 连字符续行
+                if source.startswith("("):
+                    return True   # C: source 续行
+                return False
+
+            def _apply_pseudo(prev_row: list[str], offset: int,
+                               key: str, char: str, source: str,
+                               prev_key: str) -> None:
+                """将伪新条目内容合并入 prev_row（offset=0 左半, offset=half 右半）。"""
+                if key.startswith("("):
+                    # A: 丢弃 key，仅把 source 追加到 prev source
+                    if source:
+                        prev_row[offset + 2] = (prev_row[offset + 2] + " " + source).strip()
+                elif prev_key.endswith("-"):
+                    # B: 把 key 拼接到 prev key（补全连字符名称）
+                    prev_row[offset] = (prev_key + key).strip()
+                    if char:
+                        prev_row[offset + 1] = (prev_row[offset + 1] + " " + char).strip()
+                    if source:
+                        prev_row[offset + 2] = (prev_row[offset + 2] + " " + source).strip()
+                else:
+                    # C: key 移入 char，source 合并入 source
+                    if key:
+                        prev_row[offset + 1] = (prev_row[offset + 1] + " " + key).strip()
+                    if source:
+                        prev_row[offset + 2] = (prev_row[offset + 2] + " " + source).strip()
+
+            for row in data_rows:
+                left = row[:half]
+                right = row[half:]
+                lkey = left[0].strip()
+                rkey = right[0].strip()
+                lchar = left[1].strip() if half > 1 else ""
+                rchar = right[1].strip() if half > 1 else ""
+                lsource = left[2].strip() if half > 2 else ""
+                rsource = right[2].strip() if half > 2 else ""
+                l_has = any(c.strip() for c in left)
+                r_has = any(c.strip() for c in right)
+
+                # 伪新条目检测（key 非空但实为续行）
+                l_pseudo = bool(lkey) and _is_pseudo(lkey, lchar, lsource, left_last_key)
+                r_pseudo = bool(rkey) and _is_pseudo(rkey, rchar, rsource, right_last_key)
+
+                # 续行判定：key 为空 或 伪新条目
+                l_is_cont = not lkey or l_pseudo
+                r_is_cont = not rkey or r_pseudo
+
+                if not l_is_cont and not r_is_cont:
+                    # 双侧均为真正新条目
+                    result.append(list(row))
+                    left_key_idx = right_key_idx = len(result) - 1
+                    left_last_key = lkey
+                    right_last_key = rkey
+
+                elif not l_is_cont and r_is_cont:
+                    # 左侧新条目，右侧续行
+                    result.append(list(left) + [""] * half)
+                    left_key_idx = len(result) - 1
+                    left_last_key = lkey
+                    if r_has and right_key_idx >= 0:
+                        prev = result[right_key_idx]
+                        if r_pseudo:
+                            _apply_pseudo(prev, half, rkey, rchar, rsource, right_last_key)
+                            right_last_key = prev[half]  # 更新（连字符拼接后可能变化）
+                        else:
+                            for i, c in enumerate(right):
+                                if c.strip():
+                                    prev[half + i] = (prev[half + i] + " " + c).strip()
+
+                elif l_is_cont and not r_is_cont:
+                    # 左侧续行，右侧新条目
+                    if l_has and left_key_idx >= 0:
+                        prev = result[left_key_idx]
+                        if l_pseudo:
+                            _apply_pseudo(prev, 0, lkey, lchar, lsource, left_last_key)
+                            left_last_key = prev[0]
+                        else:
+                            for i, c in enumerate(left):
+                                if c.strip():
+                                    prev[i] = (prev[i] + " " + c).strip()
+                    result.append([""] * half + list(right))
+                    right_key_idx = len(result) - 1
+                    right_last_key = rkey
+
+                else:
+                    # 双侧均为续行（真正续行 或 伪新条目）
+                    if l_has and left_key_idx >= 0:
+                        prev = result[left_key_idx]
+                        if l_pseudo:
+                            _apply_pseudo(prev, 0, lkey, lchar, lsource, left_last_key)
+                            left_last_key = prev[0]
+                        else:
+                            for i, c in enumerate(left):
+                                if c.strip():
+                                    prev[i] = (prev[i] + " " + c).strip()
+                    if r_has and right_key_idx >= 0:
+                        prev = result[right_key_idx]
+                        if r_pseudo:
+                            _apply_pseudo(prev, half, rkey, rchar, rsource, right_last_key)
+                            right_last_key = prev[half]
+                        else:
+                            for i, c in enumerate(right):
+                                if c.strip():
+                                    prev[half + i] = (prev[half + i] + " " + c).strip()
+                    # 双续行不追加新 result 行
+
+            return result
+        else:
+            # 单栏：col 0 为空 → 续行
+            result2: list[list[str]] = []
+            for row in data_rows:
+                if not row[0].strip() and result2:
+                    prev = result2[-1]
+                    for i, c in enumerate(row):
+                        if c.strip() and i < len(prev):
+                            prev[i] = (prev[i] + " " + c).strip()
+                else:
+                    result2.append(list(row))
+            return result2
+
+    @staticmethod
     def _extract_threeline(
         pdf_page,
         bbox_plumb: tuple[float, float, float, float],
@@ -1003,8 +1321,9 @@ class TableParser:
             if 0 <= ci < num_cols:
                 header_row[ci] = (header_row[ci] + " " + w.get("text", "")).strip()
 
-        # 构建数据行
+        # 构建数据行；合并折行产生的续行（col 0 / col half 均空的行）
         data_rows = TableParser._build_data_rows(data_words, col_ranges)
+        data_rows = TableParser._merge_multiline_cells(data_rows)
 
         logger.debug(
             "_extract_threeline: 检测到 %d 列，表头=%s，数据行=%d",
@@ -1012,7 +1331,419 @@ class TableParser:
         )
         return [header_row] + data_rows
 
+    @staticmethod
+    def _extract_headerbox(
+        pdf_page,
+        bbox_plumb: tuple[float, float, float, float],
+        h_ys: list[float],
+        lines_x0: float = 0.0,
+        lines_x1: float = 0.0,
+    ) -> list[list[str]]:
+        """
+        表头框专用提取器：2条紧挨横线形成带边框表头 + 下方无边框数据行。
+
+        典型期刊格式：表头用矩形框装饰（有横线+竖线），数据行无任何边框线。
+        与三线表的区别：只有 2 条横线（组成表头矩形）而非 3 条（顶/分隔/底）。
+
+        h_ys              : [header_top_y, header_bottom_y]（pdfplumber 坐标系）
+        lines_x0/lines_x1 : 横线+竖线联合 x 范围（由 fallback 2 扩展后的裁剪保证）
+        """
+        x0, _top, x1, _bottom = bbox_plumb
+        margin = 1.5
+        ph = float(pdf_page.height)
+        # 页脚区不提取（页面底部 5%）
+        data_y_bottom = ph * 0.95
+
+        # 用横线+竖线联合 x 范围扩展提取区域，保证右侧列不被截断
+        if lines_x1 > 0:
+            eff_x0 = min(x0, lines_x0) - margin
+            eff_x1 = max(x1, lines_x1) + margin
+        else:
+            eff_x0, eff_x1 = x0 - margin, x1 + margin
+
+        # ── 向上查找更宽的外框顶线，仅扩展 x 范围 ─────────────────────────────
+        # 某些期刊（如 ACS）的表头框只是整张表顶/底线之间的子列分隔器。
+        # 真实表格左侧还有额外列（如 "strain"）没有子列线，只靠外框顶线约束。
+        # 找到外框顶线后：
+        #   - 将 eff_x0 扩展至该线左端（以覆盖遗漏的左侧列）
+        #   - 不改变 header_bbox 的 y 范围（避免把表格标题混入表头提取区）
+        # 遗漏的列标题（如 "strain"）通过后面 data_words 联合检测补全。
+        _above_lines = [
+            e for e in pdf_page.edges
+            if e.get("orientation") == "h"
+            and e.get("top", 0) < h_ys[0] - margin
+            and h_ys[0] - e.get("top", 0) < 150        # 顶线不超过 150pt 上方
+            and e.get("x0", float("inf")) <= x0 + 3    # 左端不超过 bbox 左边
+            and e.get("x1", 0.0)          >= x1 - 3    # 右端不短于 bbox 右边
+        ]
+        if _above_lines:
+            _top_line = min(_above_lines, key=lambda e: h_ys[0] - e.get("top", 0))
+            eff_x0 = min(eff_x0, _top_line.get("x0", eff_x0) - margin)
+            eff_x1 = max(eff_x1, _top_line.get("x1", eff_x1) + margin)
+
+            # 同样找底部边线：避免 data_bbox 把表格之后的正文段落全部纳入，
+            # 导致列检测时 x0 分布被正文词汇污染。
+            # 寻找在 h_ys[1] 下方、x 范围与外框顶线相近的第一条横线作为表格底线。
+            _below_lines = [
+                e for e in pdf_page.edges
+                if e.get("orientation") == "h"
+                and e.get("top", 0) > h_ys[1] + margin
+                and e.get("x0", float("inf")) <= eff_x0 + 10
+                and e.get("x1", 0.0)          >= eff_x1 - 10
+            ]
+            if _below_lines:
+                _bot_line = min(_below_lines, key=lambda e: e.get("top", 0))
+                data_y_bottom = _bot_line.get("top", data_y_bottom) - margin
+
+        header_bbox = (eff_x0, h_ys[0] + margin, eff_x1, h_ys[1] - margin)
+        data_bbox   = (eff_x0, h_ys[1] + margin, eff_x1, data_y_bottom)
+
+        try:
+            header_words = pdf_page.within_bbox(header_bbox).extract_words()
+            data_words   = pdf_page.within_bbox(data_bbox).extract_words()
+        except Exception:
+            logger.debug("_extract_headerbox: within_bbox 失败", exc_info=True)
+            return []
+
+        if not header_words and not data_words:
+            return []
+
+        # 列检测：
+        # 若检测到外框顶线（_above_lines），表头框只是子列分隔器，左侧还有
+        # 未覆盖的列（如 "strain"），需要合并数据词才能检测完整的列结构；
+        # 否则优先仅用表头词，必要时再合并数据词。
+        if _above_lines and data_words:
+            col_ranges = TableParser._find_col_ranges(
+                (header_words or []) + data_words, min_gap_pt=CFG.THREELINE_COL_GAP_PT
+            )
+        else:
+            col_ranges = TableParser._find_col_ranges(
+                header_words, min_gap_pt=CFG.THREELINE_COL_GAP_PT
+            )
+            if len(col_ranges) < 2 and data_words:
+                col_ranges = TableParser._find_col_ranges(
+                    header_words + data_words, min_gap_pt=CFG.THREELINE_COL_GAP_PT
+                )
+
+        if len(col_ranges) < CFG.MIN_COLS:
+            return []
+
+        num_cols = len(col_ranges)
+        header_row: list[str] = [""] * num_cols
+        for w in (header_words or []):
+            ci = TableParser._word_to_col(w, col_ranges)
+            if 0 <= ci < num_cols:
+                header_row[ci] = (header_row[ci] + " " + w.get("text", "")).strip()
+
+        # 构建数据行；合并折行产生的续行
+        data_rows = TableParser._build_data_rows(data_words, col_ranges)
+        data_rows = TableParser._merge_multiline_cells(data_rows)
+
+        logger.debug(
+            "_extract_headerbox: 检测到 %d 列，表头=%s，数据行=%d",
+            num_cols, header_row, len(data_rows),
+        )
+        return [header_row] + data_rows
+
+    # ── 旋转表格提取 ───────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _detect_rotated_table(pdf_page) -> list[list[str]]:
+        """
+        检测并提取页面上旋转 90° 的表格（常见于 ACS 等期刊，将宽表旋转以节省版面）。
+
+        pdfplumber / PyMuPDF 对旋转字符的解析结果通常是乱序的单列表格，无法直接使用。
+        本方法通过以下步骤重建正确的表格：
+
+          1. 提取旋转字符（matrix[1] != 0）并按 x0 精确分组
+             （每个 x0 组对应旋转表格的一行）
+          2. 识别标题行（text 以 'table' 开头）和表头行（含 ≥ 3 个列标题关键词）
+          3. 从表头行的大间距（> 15pt）推导列数和列名
+          4. 识别"主行"（字符覆盖最后一列的 top 范围）和"续行"
+          5. 从主行的列间隙（> 10pt）聚类推导列边界
+             边界 = (MIN(gap 前沿) + MAX(gap 后沿)) / 2，取最严格约束
+          6. 将每行字符按列边界分配，重建表格内容
+
+        返回：表格内容（首行为表头）；检测失败或旋转字符不足时返回 []。
+        """
+        from collections import defaultdict
+
+        HEADER_KWS = frozenset({
+            'host', 'characteristic', 'medium', 'titer', 'reference',
+            'strain', 'enzyme', 'substrate', 'product', 'yield',
+            'condition', 'temperature', 'concentration',
+        })
+        MIN_ROTATED  = 30     # 最少旋转字符数，低于此值跳过
+        MIN_GAP_PT   = 10.0   # 列间最小间隙（pt）
+        CLUSTER_TOL  = 8.0    # after_top 聚类容差（pt）
+        HEADER_GAP   = 15.0   # 表头内列标签之间的最小间隙（pt）
+
+        # ── 1. 提取旋转字符 ──────────────────────────────────────────────────
+        rotated = [
+            c for c in pdf_page.chars
+            if abs(c.get("matrix", [1, 0, 0, 1, 0, 0])[1]) > 0.1
+        ]
+        if len(rotated) < MIN_ROTATED:
+            return []
+
+        # ── 2. 按 x0 精确分组（±0.5pt 容差，通过 round×2/2 实现）────────────
+        groups: dict[float, list] = defaultdict(list)
+        for c in rotated:
+            key = round(c["x0"] * 2) / 2
+            groups[key].append(c)
+        sorted_keys = sorted(groups.keys())
+        if len(sorted_keys) < 3:
+            return []
+
+        # ── 3. 识别标题行（前两个 x0 组中 text 起始含 'table'）────────────────
+        title_key: float | None = None
+        for k in sorted_keys[:2]:
+            txt = "".join(
+                c["text"] for c in sorted(groups[k], key=lambda c: -c["top"])
+            ).lower()
+            if txt.startswith("table"):
+                title_key = k
+                break
+
+        # ── 4. 识别表头行（含 ≥ 3 个列标题关键词）──────────────────────────────
+        header_key: float | None = None
+        for k in sorted_keys:
+            if k == title_key:
+                continue
+            txt = "".join(
+                c["text"] for c in sorted(groups[k], key=lambda c: -c["top"])
+            ).lower()
+            if sum(1 for kw in HEADER_KWS if kw in txt) >= 3:
+                header_key = k
+                break
+        if header_key is None:
+            return []
+
+        # ── 5. 从表头行提取列名（top DESC 排列，间距 > HEADER_GAP 视为列分隔）──
+        hchars = sorted(groups[header_key], key=lambda c: -c["top"])
+        header_col_groups: list[list] = []
+        curr: list = [hchars[0]]
+        for i in range(1, len(hchars)):
+            gap = hchars[i - 1]["top"] - hchars[i]["top"]
+            if gap > HEADER_GAP:
+                header_col_groups.append(curr)
+                curr = []
+            curr.append(hchars[i])
+        header_col_groups.append(curr)
+
+        n_cols = len(header_col_groups)
+        if n_cols < 2:
+            return []
+
+        header_row = [
+            "".join(c["text"] for c in g) for g in header_col_groups
+        ]
+
+        # ── 6. 识别"主行"（min_top ≤ 最后列 max_top + 10）和"续行"──────────────
+        data_keys = [k for k in sorted_keys if k not in (title_key, header_key)]
+        if not data_keys:
+            return []
+
+        last_col_max_top = max(c["top"] for c in header_col_groups[-1])
+        main_thresh = last_col_max_top + 10.0
+
+        main_keys = [k for k in data_keys if min(c["top"] for c in groups[k]) <= main_thresh]
+        cont_keys = [k for k in data_keys if k not in main_keys]
+        if not main_keys:
+            return []
+
+        # 续行分配给最近的主行（x0 距离最小）
+        row_groups: dict[float, list[float]] = {k: [k] for k in main_keys}
+        for ck in cont_keys:
+            nearest = min(main_keys, key=lambda mk: abs(mk - ck))
+            row_groups[nearest].append(ck)
+
+        # ── 7. 从主行列间隙（> MIN_GAP_PT）推导列边界 ───────────────────────────
+        # 聚类策略：after_top 相近（± CLUSTER_TOL）的 gap 归为同一边界
+        # 边界 = (MIN(before_top) + MAX(after_top)) / 2
+        gap_pairs: list[tuple[float, float]] = []
+        for mk in main_keys:
+            chars = sorted(groups[mk], key=lambda c: -c["top"])
+            tops = [c["top"] for c in chars]
+            for i in range(len(tops) - 1):
+                gap = tops[i] - tops[i + 1]
+                if gap > MIN_GAP_PT:
+                    gap_pairs.append((tops[i], tops[i + 1]))
+
+        if len(gap_pairs) < n_cols - 1:
+            return []
+
+        # 聚类 gap_pairs by after_top（after_top 更稳定）
+        used: set[int] = set()
+        clusters: list[tuple[float, list[float], list[float]]] = []
+        for i, (bt, at) in enumerate(gap_pairs):
+            if i in used:
+                continue
+            cluster_bt: list[float] = [bt]
+            cluster_at: list[float] = [at]
+            for j in range(i + 1, len(gap_pairs)):
+                if j in used:
+                    continue
+                bt2, at2 = gap_pairs[j]
+                if abs(at - at2) <= CLUSTER_TOL:
+                    cluster_bt.append(bt2)
+                    cluster_at.append(at2)
+                    used.add(j)
+            used.add(i)
+            boundary = (min(cluster_bt) + max(cluster_at)) / 2.0
+            clusters.append((boundary, cluster_bt, cluster_at))
+
+        # 按 boundary 降序（top DESC = 从左列到右列的顺序）
+        clusters.sort(key=lambda x: -x[0])
+        if len(clusters) < n_cols - 1:
+            return []
+
+        # 取前 n_cols-1 个聚类作为列边界（高 top → 低 top，即左到右）
+        boundaries = sorted([c[0] for c in clusters[: n_cols - 1]], reverse=True)
+
+        # ── 8. 重建表格 ──────────────────────────────────────────────────────────
+        def _top_to_col(top: float) -> int:
+            """列索引 = 边界中 top ≤ boundary 的个数（即该 top 值跨越了几条边界线）。"""
+            return sum(1 for b in boundaries if top <= b)
+
+        result: list[list[str]] = [header_row]
+        for mk in sorted(main_keys):
+            # 逐 x0 子行处理，避免不同物理行的字符按 top 值混排（折行单元格问题）：
+            # 对每一列，先收集各子行（x0 升序）的字符片段，然后判断：
+            #   - 若某子行的 top 范围与已有片段存在 ≥ 5pt 的重叠
+            #     → 折行单元格（如"Glc-minimal medium," + "lactose..."），
+            #        按 x0 顺序拼接（不混排）
+            #   - 否则（top 范围不重叠，如 β 浮动字符）→ 全局 top 降序排序
+            col_subrows: list[list[list]] = [[] for _ in range(n_cols)]
+            for k in sorted(row_groups[mk]):
+                sub: list[list] = [[] for _ in range(n_cols)]
+                for c in groups[k]:
+                    ci = _top_to_col(c["top"])
+                    if 0 <= ci < n_cols:
+                        sub[ci].append(c)
+                for ci in range(n_cols):
+                    if sub[ci]:
+                        col_subrows[ci].append(sub[ci])
+
+            cols: list[str] = [""] * n_cols
+            for ci in range(n_cols):
+                subs = col_subrows[ci]
+                if not subs:
+                    continue
+                if len(subs) == 1:
+                    # 单子行：直接 top 降序
+                    cols[ci] = "".join(
+                        c["text"] for c in sorted(subs[0], key=lambda c: -c["top"])
+                    )
+                    continue
+                # 多子行：检测 top 范围是否重叠（重叠 → 折行，不重叠 → 浮动字符）
+                ranges = [
+                    (min(c["top"] for c in s), max(c["top"] for c in s))
+                    for s in subs
+                ]
+                # 检测是否有任意两子行的 top 范围重叠（容差 5pt）
+                def _overlaps(r1: tuple, r2: tuple) -> bool:
+                    lo1, hi1 = r1; lo2, hi2 = r2
+                    return hi1 > lo2 - 5 and hi2 > lo1 - 5
+                has_wrap = any(
+                    _overlaps(ranges[i], ranges[j])
+                    for i in range(len(ranges))
+                    for j in range(i + 1, len(ranges))
+                )
+                if has_wrap:
+                    # 折行单元格：按 x0 升序拼接各子行（top 降序）
+                    cols[ci] = "".join(
+                        "".join(c["text"] for c in sorted(s, key=lambda c: -c["top"]))
+                        for s in subs
+                    )
+                else:
+                    # 浮动字符（如 β）：全局 top 降序，字符落入正确位置
+                    all_c = [c for s in subs for c in s]
+                    cols[ci] = "".join(
+                        c["text"] for c in sorted(all_c, key=lambda c: -c["top"])
+                    )
+
+            if not any(col.strip() for col in cols):
+                continue
+            result.append(cols)
+
+        return result if len(result) >= 2 else []
+
     # ── 通用工具（normalize / markdown / validate）─────────────────────────────
+
+    @staticmethod
+    def _unsplit_twin_columns(normalized: list[list[str]]) -> list[list[str]]:
+        """
+        检测并折叠双栏同构表（ACS 等期刊空间节省排版）。
+
+        某些期刊为节省版面，将 N 列表格分左右两半并排，pdfplumber/PyMuPDF 提取时
+        得到 2N 列。检测信号：首 4 行中存在至少 1 行，其左半与右半内容完全相同
+        （且非全空）。满足条件时将右半数据追加到左半下方，折叠为 N 列。
+
+        多行表头（如 "strains or" / "plasmids" 分两行）会被合并为单行。
+        """
+        if not normalized:
+            return normalized
+        n_cols = len(normalized[0])
+        if n_cols < 4 or n_cols % 2 != 0:
+            return normalized
+
+        half = n_cols // 2
+        scan = min(4, len(normalized))
+
+        # 跳过前置标题行（camelot 会把表格标题文本合并进第一行）
+        # 判据：右半全空 且 左半仅 1 个单元格有内容 → 标题行，跳过
+        skip_start = 0
+        for ri, row in enumerate(normalized[:2]):
+            left  = [c.strip() for c in row[:half]]
+            right = [c.strip() for c in row[half:]]
+            if (not any(c for c in right)
+                    and sum(1 for c in left if c) == 1):
+                skip_start = ri + 1  # 标题行，跳过
+            else:
+                break
+
+        # 找对称表头行（左半 == 右半 且非全空）
+        header_rows_raw: list[list[str]] = []
+        data_start = skip_start
+        for ri, row in enumerate(normalized[skip_start:skip_start + scan]):
+            left  = [c.strip() for c in row[:half]]
+            right = [c.strip() for c in row[half:]]
+            if left == right and any(c for c in left):
+                header_rows_raw.append(list(row[:half]))
+                data_start = skip_start + ri + 1
+            else:
+                break  # 第一个不对称行 → 数据区起点
+
+        # 未检测到对称表头，或表格全为表头（无数据行）→ 不折叠
+        if not header_rows_raw or data_start >= len(normalized):
+            return normalized
+
+        # 多行表头合并为单行（"strains or" + "plasmids" → "strains or plasmids"）
+        if len(header_rows_raw) > 1:
+            merged_header = []
+            for i in range(half):
+                parts = [r[i].strip() for r in header_rows_raw if r[i].strip()]
+                merged_header.append(" ".join(parts))
+            header_row: list[str] = merged_header
+        else:
+            header_row = header_rows_raw[0]
+
+        # 数据行：左半行紧接右半行交替追加
+        result: list[list[str]] = [header_row]
+        for row in normalized[data_start:]:
+            left_part  = list(row[:half])
+            right_part = list(row[half:])
+            if any(c.strip() for c in left_part):
+                result.append(left_part)
+            if any(c.strip() for c in right_part):
+                result.append(right_part)
+
+        logger.debug(
+            "_unsplit_twin_columns: %d 列 → %d 列，%d 行",
+            n_cols, half, len(result),
+        )
+        return result
 
     @staticmethod
     def _normalize_table(table: list[list[str | None]]) -> list[list[str]]:

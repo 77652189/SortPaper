@@ -81,12 +81,28 @@ class PipelineState(TypedDict, total=False):
 STORE_DIR = "faiss_index"
 MAX_RETRIES = 1  # 全局上限（text 路径实际 0 次，见 retry_text）
 
+# 图片描述润色阈值：Judge 评分低于此值时触发 DeepSeek 文字润色。
+# 设为 0.9 意味着"绝大多数图片都会润色一次"，只有高质量描述才跳过。
+IMAGE_POLISH_THRESHOLD = 0.9
+
 
 # ─── 辅助函数 ──────────────────────────────────────────────────────────────────
 
 
 def _failed_ids(verdicts: list[dict]) -> set[str]:
     return {v["chunk_id"] for v in verdicts if not v["passed"] and v["chunk_id"]}
+
+
+def _needs_polish_ids(verdicts: list[dict]) -> set[str]:
+    """返回需要润色的图片 chunk_id（Judge 评分 < IMAGE_POLISH_THRESHOLD）。
+
+    与 _failed_ids 不同：即使 passed=True，只要分数未达到高质量阈值，
+    也会触发一次 DeepSeek 文字润色，利用 Judge 反馈提升描述质量。
+    """
+    return {
+        v["chunk_id"] for v in verdicts
+        if v.get("score", 1.0) < IMAGE_POLISH_THRESHOLD and v.get("chunk_id")
+    }
 
 
 def _page_from_chunk_id(chunk_id: str) -> int | None:
@@ -192,9 +208,9 @@ def table_worker_node(state: PipelineState) -> dict:
     print(f"[debug] table_worker_node: retries={retries}", flush=True)
 
     if not prev_verdicts:
-        # 首轮：OpenCV检测 + 视觉模型提取 + pdfplumber交叉验证
+        # 首轮：关键词引导 + pdfplumber（含三线表/表头框几何提取）+ PyMuPDF + camelot
         parser = TableParser(state["pdf_path"])
-        new_chunks = parser.parse(strategy="hybrid")
+        new_chunks = parser.parse(strategy="all")
         existing: dict[str, LayoutChunk] = {}
         for chunk in new_chunks:
             existing[chunk.chunk_id] = chunk
@@ -271,19 +287,21 @@ def image_worker_node(state: PipelineState) -> dict:
     import time
     t0 = time.time()
 
-    failed_ids = _failed_ids(state.get("image_verdicts", []))
-    feedback = _build_feedback(state.get("image_verdicts", [])) if failed_ids else None
+    polish_ids = _needs_polish_ids(state.get("image_verdicts", []))
     retries = state.get("image_retries", 0)
 
-    if failed_ids:
-        # 所有 retry 都走 DeepSeek 文字改写（不重读图）
-        logger.warning(
-            "image_worker retry (text rewrite) %d/%d | paper=%s | failed=%s",
-            retries + 1, MAX_RETRIES, state.get("paper_id", "?"), list(failed_ids),
+    if polish_ids:
+        # 润色路径：用 DeepSeek 根据 Judge 反馈改写描述（不重读图）。
+        # 触发条件：Judge 评分 < IMAGE_POLISH_THRESHOLD（默认 0.9），
+        # 即绝大多数图片都会经过一次润色，只有高质量描述才直接入库。
+        logger.info(
+            "image_worker polish %d/%d | paper=%s | polish=%d 张 (threshold=%.1f)",
+            retries + 1, MAX_RETRIES, state.get("paper_id", "?"),
+            len(polish_ids), IMAGE_POLISH_THRESHOLD,
         )
         existing = {c.chunk_id: c for c in state.get("image_chunks", [])}
         verdicts = state.get("image_verdicts", [])
-        for vid in failed_ids:
+        for vid in polish_ids:
             chunk = existing.get(vid)
             if chunk is None:
                 continue
@@ -555,7 +573,9 @@ def retry_table(state: PipelineState) -> Literal["table_worker", "merge_chunks"]
 
 
 def retry_image(state: PipelineState) -> Literal["image_worker", "merge_chunks"]:
-    if (any(not v["passed"] for v in state.get("image_verdicts", []))
+    # 有任意图片评分低于 IMAGE_POLISH_THRESHOLD 时触发润色（最多 1 次）。
+    # 高于阈值（≥0.9）的图片直接入库，不再花费 API 调用。
+    if (_needs_polish_ids(state.get("image_verdicts", []))
             and state.get("image_retries", 0) < MAX_RETRIES):
         return "image_worker"
     return "merge_chunks"

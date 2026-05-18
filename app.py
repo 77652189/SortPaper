@@ -158,7 +158,7 @@ def verdict_badge(passed: bool) -> str:
 
 @st.cache_data(show_spinner=False)
 def run_preview(pdf_bytes: bytes) -> dict:
-    """Quick preview: parsers + OpenCV detection + LLM Judge（无 VisionParser / Qwen-VL）。"""
+    """Quick preview: pdfplumber + PyMuPDF parsers + LLM Judge（无 camelot / Qwen-VL）。"""
     import sys
     sys.path.insert(0, ".")
     from src.parsers.pymupdf_parser import PyMuPDFParser
@@ -883,7 +883,7 @@ def render_overview(result: dict) -> None:
             c4.metric("Judge 通过", f"{passed} / {total_v}")
         else:
             c4.metric("模式", "快速预览")
-        st.info("ℹ️ 快速预览模式：PyMuPDF 文本 + pdfplumber 表格（跳过 camelot）+ OpenCV 检测 + LLM Judge，无 VisionParser / Qwen-VL / 向量索引写入")
+        st.info("ℹ️ 快速预览模式：PyMuPDF 文本 + pdfplumber 表格（跳过 camelot）+ LLM Judge，无 Qwen-VL / 向量索引写入")
 
         # 计时面板（快速预览）
         worker_timing = result.get("worker_timing", {})
@@ -906,7 +906,7 @@ def render_overview(result: dict) -> None:
                 total_elapsed = result.get("_elapsed", 0)
                 if total_elapsed:
                     accounted = wt_text + wt_table + jt_total
-                    st.caption(f"**总耗时 {total_elapsed:.0f} 秒** — 已统计 {accounted:.0f}s，其余为 OpenCV 检测 / 路由开销")
+                    st.caption(f"**总耗时 {total_elapsed:.0f} 秒** — 已统计 {accounted:.0f}s，其余为路由 / 网络开销")
 
 
 def render_text_tab(chunks: list[dict], verdicts: dict) -> None:
@@ -1753,7 +1753,7 @@ def main() -> None:
                         except FutureTimeoutError:
                             timeout_banner.error(
                                 f"⏰ **解析超时**（已等待 {PIPELINE_TIMEOUT // 60} 分钟）\n\n"
-                                "**可能原因：** DeepSeek / DashScope / Qwen-VL API 响应过慢或网络不稳定。\n\n"
+                                "**可能原因：** DeepSeek / DashScope API 响应过慢或网络不稳定。\n\n"
                                 "**建议：**\n"
                                 "- 确认 `.env` 中 `DEEPSEEK_API_KEY` 与 `DASHSCOPE_API_KEY` 均有效且有余额\n"
                                 "- 稍后重试，或改用「快速预览」模式跳过所有 LLM 调用"
@@ -1813,8 +1813,8 @@ def main() -> None:
                 4. 在各标签页查看解析结果
 
                 ---
-                **快速预览**：仅调用本地解析器（PyMuPDF + pdfplumber），即时出结果，无需 API 配额。  
-                **完整流水线**：调用 LLM Judge 评估质量，图片调用 VisionParser（qwen-vl-plus）生成描述，最终写入 Qdrant 向量索引，支持语义检索。
+                **快速预览**：仅调用本地解析器（PyMuPDF + pdfplumber），即时出结果，无需 API 配额。
+                **完整流水线**：调用 LLM Judge 评估质量，图片调用 VisionParser（qwen-vl-plus）生成图片描述，最终写入 Qdrant 向量索引，支持语义检索。
                 """
             )
         with welcome_tabs[1]:

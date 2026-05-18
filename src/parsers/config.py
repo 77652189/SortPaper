@@ -68,6 +68,7 @@ class LayoutConfig:
 class VisionParserConfig:
     """VisionParser 参数。"""
 
+    VISION_MODEL: str = "qwen3-vl-plus"   # DashScope 视觉模型（qwen-vl-max 已下线）
     MIN_AREA_PT2: float = 5000.0          # PDF 坐标面积阈值（pt²）
     MIN_PIXEL_AREA: int = 10000           # 像素面积阈值（px²）
     CAPTION_SEARCH_RANGE: float = 80.0    # 图注查找范围（pt）
@@ -85,56 +86,9 @@ class PyMuPDFParserConfig:
 
 
 # ──────────────────────────────────────────────
-# OpenCV混合表格解析器配置
-# ──────────────────────────────────────────────
-@dataclass
-class OpenCVTableConfig:
-    """HybridTableParser / OpenCVTableDetector / VisionTableExtractor 参数。"""
-
-    # ---- 检测阶段（OpenCV） ----
-    DETECT_DPI: int = 150                  # 渲染分辨率（检测用，低分辨率快速扫描）
-    BINARIZE_THRESHOLD: int = 200          # 二值化阈值（>此值视为白色背景）
-    H_KERNEL_MIN_WIDTH_PX: int = 50        # 水平形态学内核最小宽度（像素）
-    H_KERNEL_PAGE_RATIO: float = 0.20      # 水平内核宽度占页面宽度的最小比例
-    DILATE_H_PX: int = 15                  # 水平膨胀（弥合断线），像素
-    DILATE_V_PX: int = 1                   # 垂直膨胀（保持线条细）
-    MIN_LINE_WIDTH_PX: int = 30            # 最短有效横线（像素，绝对值下限）
-    MIN_LINE_WIDTH_RATIO: float = 0.15     # 最短有效横线占页面宽度比例
-    X_OVERLAP_RATIO: float = 0.50          # 两线段x重叠度 ≥ 此值才归为同一表格
-    MAX_TABLE_HEIGHT_PT: float = 500.0     # 一个表格允许的最大高度（PDF点）
-    MIN_TABLE_HEIGHT_PT: float = 20.0      # 有效表格区域最小高度（PDF点），过滤章节分隔线
-    MIN_LINES_PER_TABLE: int = 3           # 聚类内最少横线数（三线表必须=3，过滤双线边框）
-    HEADER_ZONE_RATIO: float = 0.08        # 页面顶部此比例内的横线不参与聚类（期刊页眉装饰线）
-    FOOTER_ZONE_RATIO: float = 0.05        # 页面底部此比例内的横线不参与聚类（页码/页脚线）
-    MIN_TEXT_CHARS: int = 20               # 检测到的区域内至少需要的字符数，否则判定为图片区域
-
-    # ---- 提取阶段（视觉模型） ----
-    EXTRACT_DPI: int = 300                 # 裁剪渲染分辨率（高分辨率，文字清晰）
-    MARGIN_RATIO: float = 0.05             # 裁剪边距（占bbox宽/高的比例）
-    MAX_IMAGE_DIM: int = 1536              # 发送给API前的最大边长（超出则等比缩放）
-    VISION_MODEL: str = "qwen-vl-max"     # DashScope视觉模型ID
-
-    # ---- 整合阶段（交叉验证） ----
-    ROW_TOLERANCE: int = 1                 # 行数差异容忍度（≤此值视为"一致"）
-    MIN_VALID_ROWS: int = 2               # LayoutChunk的最小有效行数
-    MIN_VALID_COLS: int = 2               # LayoutChunk的最小有效列数
-
-    # ---- 图片区域过滤 ----
-    IMAGE_OVERLAP_RATIO: float = 0.3       # 与嵌入栅格图片的重叠率 ≥ 此值 → 判定为图片区域
-
-    # ---- 并发 ----
-    MAX_WORKERS: int = 5                   # 视觉API并发数
-
-    # ---- 网格文字检验（Qwen-VL 调用前快速门控） ----
-    GRID_MIN_COLS: int = 2                 # 至少有多少个 x0 列箱含 ≥2 个词才视为表格
-    GRID_WORD_BIN_PT: float = 5.0          # x0 坐标分箱宽度（PDF点），越小越精确
-
-
-# ──────────────────────────────────────────────
 # 单例导出
 # ──────────────────────────────────────────────
 TABLE_PARSER = TableParserConfig()
 LAYOUT = LayoutConfig()
 VISION = VisionParserConfig()
 PYMUPDF = PyMuPDFParserConfig()
-OPENCV_TABLE = OpenCVTableConfig()
