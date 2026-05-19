@@ -101,7 +101,7 @@ streamlit run app.py
 
 1. **选择 PDF** — 上传任意 PDF，或从内置示例论文中选择；支持批量拖拽上传
 2. **选择模式：**
-   - **快速预览** — 仅调用本地解析器，秒级出结果，无 API 费用
+   - **快速预览** — PyMuPDF 文本 + pdfplumber 表格 + LLM Judge，跳过 Qwen-VL 和向量存储
    - **完整流水线** — 运行 Judge，质量评估和入库需手动触发
    - **一键入库** — 解析 → Judge → 质量评估 → Qdrant 入库 全自动
 3. **点击 🚀 开始解析**
@@ -114,7 +114,6 @@ streamlit run app.py
 ```
 SortPaper/
 ├── app.py                    # Streamlit 图形界面
-├── main.py                   # CLI 批量处理入口
 ├── src/
 │   ├── parsers/              # 各类解析器（PyMuPDF / pdfplumber / camelot / VL）
 │   ├── judge/                # LLM 裁判 + 论文质量评估

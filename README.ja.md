@@ -115,7 +115,6 @@ streamlit run app.py
 ```
 SortPaper/
 ├── app.py                    # Streamlit GUI
-├── main.py                   # CLIバッチ実行
 ├── src/
 │   ├── parsers/              # 各種パーサー（PyMuPDF/pdfplumber/camelot/VL）
 │   ├── judge/                # LLM裁判官 + プロンプト

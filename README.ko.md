@@ -106,7 +106,6 @@ streamlit run app.py
 ```
 SortPaper/
 ├── app.py                    # Streamlit GUI
-├── main.py                   # CLI 배치 실행
 ├── src/
 │   ├── parsers/              # 각종 파서 (PyMuPDF/pdfplumber/camelot/VL)
 │   ├── judge/                # LLM 심판 + 논문 품질 평가

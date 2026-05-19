@@ -115,7 +115,6 @@ Then open **http://localhost:8501** in your browser.
 ```
 SortPaper/
 ├── app.py                    # Streamlit GUI
-├── main.py                   # CLI batch runner
 ├── src/
 │   ├── parsers/              # PyMuPDF, pdfplumber, camelot, VisionParser
 │   ├── judge/                # LLMJudge + PaperQualityEvaluator + prompts

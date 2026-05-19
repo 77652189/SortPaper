@@ -1,5 +1,6 @@
 pymupdf
 pdfplumber
+camelot-py
 faiss-cpu
 dashscope
 langgraph
@@ -7,4 +8,8 @@ langchain-core
 python-dotenv
 numpy
 qdrant-client
-opencv-python
+streamlit
+openai
+pandas
+Pillow
+pytest

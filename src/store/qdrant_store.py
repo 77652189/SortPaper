@@ -8,10 +8,15 @@ Qdrant 向量存储：Hybrid Search（Dense + Sparse + RRF 融合）。
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import time
 from pathlib import Path
 from typing import Any
+
+def _stable_hash(s: str) -> int:
+    """确定性哈希，替代 Python hash()（跨进程不稳定）。"""
+    return int(hashlib.md5(s.encode()).hexdigest()[:16], 16)
 
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
@@ -185,7 +190,7 @@ class QdrantStore:
         if current_dim and current_dim != actual_dim:
             self._recreate_collection(actual_dim)
 
-        chunk_id = metadata.get("chunk_id", f"{paper_id}_{worker_type}_{hash(content)}")
+        chunk_id = metadata.get("chunk_id", f"{paper_id}_{worker_type}_{_stable_hash(content)}")
 
         # payload：合并所有 metadata + 原始内容
         payload: dict[str, Any] = {
@@ -206,7 +211,7 @@ class QdrantStore:
             collection_name=self.collection,
             points=[
                 models.PointStruct(
-                    id=hash(chunk_id) % (2 ** 63),
+                    id=_stable_hash(chunk_id) % (2 ** 63),
                     vector={
                         DENSE_VECTOR_NAME: dense_vec,
                         SPARSE_VECTOR_NAME: SparseVector(

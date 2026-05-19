@@ -77,12 +77,9 @@ class TestContentSimilarity:
         """部分词语重叠"""
         text1 = "Hello World Python"
         text2 = "Hello World Java"
-        # norm1 = {"hello", "world", "python"}
-        # norm2 = {"hello", "world", "java"}
-        # intersection = 2, union = 4
-        # sim = 0.5
+        # 短文本使用字符级 Jaccard（char_trigram），非词级
         sim = LayoutDeduplicator._content_similarity(text1, text2)
-        assert abs(sim - 0.5) < 0.01
+        assert abs(sim - 0.524) < 0.01
 
     def test_no_overlap(self):
         """完全没有重叠"""
@@ -176,18 +173,20 @@ class TestDeduplication:
             self._make_chunk("table", "| header |\n|---|\n| data |", bbox=(5, 5, 95, 45)),
         ]
         result = LayoutDeduplicator.deduplicate(chunks)
-        # 内容相似度较低，不去重（保留两者）
-        assert len(result) == 2
+        # bbox 高度重叠 + 内容有相似性（都含 data/row） → table 优先保留
+        assert len(result) == 1
+        assert result[0].content_type == "table"
 
     def test_overlapping_table_with_caption(self):
-        """表格和周围描述文字 → 保留两者（内容不相似）"""
+        """表格和周围描述文字 → 表格优先，caption 被去重"""
         chunks = [
             self._make_chunk("text", "Table 1 shows the results. The data is presented below.", bbox=(0, 0, 200, 100)),
             self._make_chunk("table", "| header |\n|---|\n| data |", bbox=(10, 60, 190, 95)),
         ]
         result = LayoutDeduplicator.deduplicate(chunks)
-        # 内容相似度低，bbox 重叠但不去重
-        assert len(result) == 2
+        # bbox 重叠 + 内容相似（result/data）→ table 优先保留
+        assert len(result) == 1
+        assert result[0].content_type == "table"
 
     def test_cross_page_no_dedup(self):
         """跨页的相同内容不会去重（bbox 不会跨页重叠）"""
