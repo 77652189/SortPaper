@@ -8,7 +8,7 @@
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.5+-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io)
 [![LangGraph](https://img.shields.io/badge/LangGraph-pipeline-4A90D9)](https://github.com/langchain-ai/langgraph)
 [![Qdrant](https://img.shields.io/badge/Qdrant-Hybrid--Search-DC382D)](https://qdrant.tech)
-[![DeepSeek](https://img.shields.io/badge/DeepSeek-chat%20%26%20v4--pro-4D6BFE)](https://deepseek.com)
+[![DeepSeek](https://img.shields.io/badge/DeepSeek V4 Pro%20%26%20v4--pro-4D6BFE)](https://deepseek.com)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
 **言語：**
@@ -31,8 +31,8 @@
 |---|---|
 | 📝 テキスト抽出 | PyMuPDFによるレイアウト対応テキスト分割（2段組み検出対応） |
 | 📋 表検出 | pdfplumber + PyMuPDF + camelot 3エンジン、枠線なし表にも対応 |
-| 🖼️ 画像キャプション | Qwen-VL-Maxがサブ図を独立識別し自然言語説明を生成 |
-| ⚖️ LLM判定 | DeepSeek-chatで各チャンクを品質評価、合格済みはリトライ時にスキップ |
+| 🖼️ 画像キャプション | qwen3-vl-plusがサブ図を独立識別し自然言語説明を生成 |
+| ⚖️ LLM判定 | DeepSeek V4 Proで各チャンクを品質評価、合格済みはリトライ時にスキップ |
 | 💾 Qdrantストレージ | Hybrid Search + qwen3-rerank二次ソートで高精度検索 |
 | 📉 降格ストレージ | 表の構造不良は「degraded」として保存、誤検出（参考文献等）は破棄 |
 | 🔁 スマートリトライ | 画像リトライはDeepSeek文章書換（再読込不要）、表リトライはパーサー切替 |
@@ -51,15 +51,15 @@ PDF
  ├──► Text Worker   ──► Judge (DeepSeek) ──┐
  ├──► Table Worker  ──► Judge (DeepSeek) ──┤──► Merge ──► Qdrant
  └──► Image Worker  ──► Judge (DeepSeek) ──┘
-  (Qwen-VL-Max)     ▲                      │
+  (qwen3-vl-plus)     ▲                      │
                      └── リトライ（書換）─────┘
 ```
 
 **レイヤー構造：**
 
-- **解析層** — PyMuPDFParser、TableParser（pdfplumber+PyMuPDF+camelot）、VisionParser（qwen-vl-max）
-- **判定層** — LLMJudge（DeepSeek-chat、セクション対応プロンプト）
-- **品質評価層** — PaperQualityEvaluator（分類→Map-Reduce）、ReduceはDeepSeek-v4-pro
+- **解析層** — PyMuPDFParser、TableParser（pdfplumber+PyMuPDF+camelot）、VisionParser（qwen3-vl-plus）
+- **判定層** — LLMJudge（DeepSeek V4 Pro、セクション対応プロンプト）
+- **品質評価層** — PaperQualityEvaluator（分類→Map-Reduce）、ReduceはDeepSeek V4 Pro
 - **ストレージ層** — QdrantStore（Hybrid Search + Rerank）
 - **オーケストレーション** — LangGraph 並列fan-out/fan-in + 合格スキップリトライ
          └──── リトライ（最大3回）────────────┘
@@ -85,7 +85,7 @@ pip install -r requirements.txt
 **2. DashScope APIキーの設定**
 
 ```bash
-echo "DASHSCOPE_API_KEY=sk-xxxxxxxxxxxxxxxx" > .env
+cp .env.example .env
 ```
 
 > [DashScopeコンソール](https://dashscope.aliyun.com)でAPIキーを取得してください。¥20のチャージで約10本の論文を処理できます。
@@ -121,7 +121,6 @@ SortPaper/
 │   ├── store/                # Qdrantストア（Hybrid Search）
 │   ├── agent/                # 文献検索Agent
 │   └── graph/                # LangGraphパイプライン
-├── scripts/                  # 検証・デバッグスクリプト
 └── data/sample_papers/       # サンプルPDF
 ```
 
@@ -131,9 +130,9 @@ SortPaper/
 |---|---|
 | テキスト解析 | PyMuPDF (fitz) |
 | 表解析 | pdfplumber + PyMuPDF + camelot（3エンジン） |
-| 画像キャプション | Qwen-VL-Max (DashScope) |
-| LLM判定 | DeepSeek-chat |
-| 品質評価 | DeepSeek-chat（分類/Map）+ DeepSeek-v4-pro（Reduce） |
+| 画像キャプション | qwen3-vl-plus (DashScope) |
+| LLM判定 | DeepSeek V4 Pro |
+| 品質評価 | DeepSeek V4 Pro（分類/Map）+ DeepSeek V4 Pro（Reduce） |
 | 埋め込み | text-embedding-v3 (DashScope, Dense+Sparse) |
 | リランカー | qwen3-rerank (DashScope) |
 | ベクトルストア | Qdrant（Hybrid Search: Dense + Sparse + RRF） |

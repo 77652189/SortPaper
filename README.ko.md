@@ -8,7 +8,7 @@
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.5+-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io)
 [![LangGraph](https://img.shields.io/badge/LangGraph-pipeline-4A90D9)](https://github.com/langchain-ai/langgraph)
 [![Qdrant](https://img.shields.io/badge/Qdrant-Hybrid--Search-DC382D)](https://qdrant.tech)
-[![DeepSeek](https://img.shields.io/badge/DeepSeek-chat%20%26%20v4--pro-4D6BFE)](https://deepseek.com)
+[![DeepSeek](https://img.shields.io/badge/DeepSeek V4 Pro%20%26%20v4--pro-4D6BFE)](https://deepseek.com)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
 **언어:**
@@ -31,8 +31,8 @@
 |---|---|
 | 📝 텍스트 추출 | PyMuPDF 레이아웃 인식 텍스트 청킹(2단 감지 포함) |
 | 📋 표 감지 | pdfplumber + PyMuPDF + camelot 3엔진, 테두리 없는 표 대응 |
-| 🖼️ 이미지 캡션 | Qwen-VL-Max 서브그림 독립 식별 및 설명 생성 |
-| ⚖️ LLM 심판 | DeepSeek-chat 품질 평가, 합격 청크 재시도 시 자동 스킵 |
+| 🖼️ 이미지 캡션 | qwen3-vl-plus 서브그림 독립 식별 및 설명 생성 |
+| ⚖️ LLM 심판 | DeepSeek V4 Pro 품질 평가, 합격 청크 재시도 시 자동 스킵 |
 | 💾 Qdrant 저장 | Hybrid Search(Dense+Sparse+RRF) + qwen3-rerank 2차 정렬 |
 | 📉 강등 저장 | 표 구조 불량 시 'degraded' 보존, 오탐(참고문헌 등)은 폐기 |
 | 🔁 스마트 재시도 | 이미지 재시도는 DeepSeek 텍스트 재작성, 표 재시도는 파서 전환 |
@@ -51,15 +51,15 @@ PDF
  ├──► 텍스트 워커  ──► Judge (DeepSeek) ──┐
  ├──► 표 워커      ──► Judge (DeepSeek) ──┤──► 병합 ──► Qdrant
  └──► 이미지 워커  ──► Judge (DeepSeek) ──┘
-  (Qwen-VL-Max)    ▲                      │
+  (qwen3-vl-plus)    ▲                      │
                     └── 재시도(재작성) ──────┘
 ```
 
 **레이어 구성:**
 
-- **파서 레이어** — PyMuPDFParser, TableParser(3엔진), VisionParser(qwen-vl-max)
-- **판정 레이어** — LLMJudge(DeepSeek-chat, 섹션 인식)
-- **품질 평가 레이어** — PaperQualityEvaluator(분류→Map-Reduce), Reduce는 DeepSeek-v4-pro
+- **파서 레이어** — PyMuPDFParser, TableParser(3엔진), VisionParser(qwen3-vl-plus)
+- **판정 레이어** — LLMJudge(DeepSeek V4 Pro, 섹션 인식)
+- **품질 평가 레이어** — PaperQualityEvaluator(분류→Map-Reduce), Reduce는 DeepSeek V4 Pro
 - **저장 레이어** — QdrantStore(Hybrid Search + Rerank)
 - **오케스트레이션** — LangGraph 병렬 fan-out/fan-in + 합격 스킵 재시도
 
@@ -76,7 +76,7 @@ pip install -r requirements.txt
 **2. DashScope API 키 설정**
 
 ```bash
-echo "DASHSCOPE_API_KEY=sk-xxxxxxxxxxxxxxxx" > .env
+cp .env.example .env
 ```
 
 > [DashScope 콘솔](https://dashscope.aliyun.com)에서 API 키를 발급받으세요. ¥20 충전으로 약 10편의 논문을 처리할 수 있습니다.
@@ -112,7 +112,6 @@ SortPaper/
 │   ├── store/                # Qdrant (Hybrid Search)
 │   ├── agent/                # 문헌 검색 Agent
 │   └── graph/                # LangGraph 파이프라인
-├── scripts/                  # 검증 및 디버그 스크립트
 └── data/sample_papers/       # 샘플 PDF
 ```
 
@@ -122,9 +121,9 @@ SortPaper/
 |---|---|
 | 텍스트 파싱 | PyMuPDF (fitz) |
 | 표 파싱 | pdfplumber + PyMuPDF + camelot (3엔진) |
-| 이미지 캡션 | Qwen-VL-Max (DashScope) |
-| LLM 심판 | DeepSeek-chat |
-| 품질 평가 | DeepSeek-chat(분류/Map) + DeepSeek-v4-pro(Reduce) |
+| 이미지 캡션 | qwen3-vl-plus (DashScope) |
+| LLM 심판 | DeepSeek V4 Pro |
+| 품질 평가 | DeepSeek V4 Pro(분류/Map) + DeepSeek V4 Pro(Reduce) |
 | 임베딩 | text-embedding-v3 (DashScope, Dense+Sparse) |
 | 재정렬 | qwen3-rerank (DashScope) |
 | 벡터 저장소 | Qdrant (Hybrid Search: Dense + Sparse + RRF) |

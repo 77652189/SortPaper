@@ -31,8 +31,9 @@
 |---|---|
 | 📝 文本提取 | 基于 PyMuPDF 的版面感知文本分块，支持双栏检测 |
 | 📋 表格检测 | pdfplumber + PyMuPDF + camelot 三引擎，自适应无边框表格 |
-| 🖼️ 图片描述 | Qwen-VL-Max 视觉模型，子图独立识别，禁止跨子图混淆数据 |
-| ⚖️ LLM 裁判 | DeepSeek-chat 评估每个块的质量，失败最多重试 1 次 |
+| 🖼️ 图片描述 | qwen3-vl-plus 视觉模型，子图独立识别 |
+| ⚖️ LLM 裁判 | DeepSeek V4 Pro 评估每个块的质量，失败最多重试 1 次 |
+| 🔮 Vision 兜底 | 表格结构质量差时自动截图→qwen3-vl-plus 重新解析 |
 | 💾 Qdrant 存储 | Hybrid Search（Dense + Sparse + RRF）+ qwen3-rerank 二次排序 |
 | 📉 降级存储 | 表格解析质量差时保留原始数据（标记 degraded），参考文献误检丢弃 |
 | 🔁 智能重试 | 已通过块自动跳过重判；图片重试用 DeepSeek 文字改写而非重读图 |
@@ -48,16 +49,16 @@ PDF
  ▼
 协调器
  │
- ├──► 文本 Worker  ──► Judge (DeepSeek-chat) ──┐
- ├──► 表格 Worker  ──► Judge (DeepSeek-chat) ──┤──► Merge ──► Qdrant
- └──► 图片 Worker  ──► Judge (DeepSeek-chat) ──┘
-  (Qwen-VL-Max)      ▲                        │
+ ├──► 文本 Worker  ──► Judge (DeepSeek V4 Pro) ──┐
+ ├──► 表格 Worker  ──► Judge (DeepSeek V4 Pro) ──┤──► Merge ──► Qdrant
+ └──► 图片 Worker  ──► Judge (DeepSeek V4 Pro) ──┘
+  (qwen3-vl-plus)      ▲                        │
                       └── Retry（文本改写）──────┘
 ```
 
 **分层架构：**
 
-- **解析层** — `PyMuPDFParser`、`TableParser`（pdfplumber + PyMuPDF + camelot）、`VisionParser`（qwen-vl-max）
+- **解析层** — `PyMuPDFParser`、`TableParser`（pdfplumber + PyMuPDF + camelot）、`VisionParser`（qwen3-vl-plus）
 - **评判层** — `LLMJudge`（DeepSeek-chat，章节感知提示词）
 - **质量评估层** — `PaperQualityEvaluator`（分类 → Map-Reduce → chunk 上下文），Reduce 阶段使用 DeepSeek-v4-pro
 - **存储层** — `QdrantStore`（Hybrid Search: Dense + Sparse + RRF，qwen3-rerank 二次排序）
@@ -76,11 +77,11 @@ pip install -r requirements.txt
 **2. 配置 API Keys**
 
 ```bash
-echo "DASHSCOPE_API_KEY=sk-xxxxxxxxxxxxxxxx" > .env
-echo "DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxx" >> .env
+cp .env.example .env
+# 编辑 .env，填入真实 API Key
 ```
 
-> - **DashScope**：用于 text-embedding-v3（向量化）/ qwen-vl-max（图片解析）/ qwen3-rerank（重排序）/ qwen-plus（Agent 检索）。在 [DashScope 控制台](https://dashscope.aliyun.com) 获取。
+> - **DashScope**：用于 text-embedding-v3（向量化）/ qwen3-vl-plus（图片解析）/ qwen3-rerank（重排序）/ qwen-plus（Agent 检索）。在 [DashScope 控制台](https://dashscope.aliyun.com) 获取。
 > - **DeepSeek**：用于 Judge 评判 + 质量评估 Map/Reduce。在 [DeepSeek Platform](https://platform.deepseek.com) 获取。
 
 **3. 启动 Qdrant**（默认连接 localhost:6333）
@@ -113,14 +114,18 @@ streamlit run app.py
 
 ```
 SortPaper/
-├── app.py                    # Streamlit 图形界面
+├── app.py                    # Streamlit 主入口
+├── app_utils.py              # 工具函数（保存/加载/检索）
+├── app_pipeline.py           # Pipeline 编排（预览/完整/一键入库）
+├── app_ui.py                 # UI 渲染组件
+├── app_sidebar.py            # 侧边栏
 ├── src/
 │   ├── parsers/              # 各类解析器（PyMuPDF / pdfplumber / camelot / VL）
 │   ├── judge/                # LLM 裁判 + 论文质量评估
 │   ├── store/                # Qdrant 向量存储（Hybrid Search）
 │   ├── agent/                # 文献检索 Agent（Qwen function calling）
 │   └── graph/                # LangGraph 流水线编排
-├── scripts/                  # 验证与调试脚本
+├── tests/                    # 单元测试
 └── data/
     ├── sample_papers/        # 示例 PDF
     └── results/              # 解析结果快照
@@ -132,9 +137,10 @@ SortPaper/
 |---|---|
 | 文本解析 | PyMuPDF (fitz) |
 | 表格解析 | pdfplumber + PyMuPDF + camelot（三引擎自适应） |
-| 图片描述 | Qwen-VL-Max（DashScope） |
-| LLM 裁判 | DeepSeek-chat |
-| 质量评估 | DeepSeek-chat（分类/Map）+ DeepSeek-v4-pro（Reduce） |
+| 图片描述 | qwen3-vl-plus（DashScope） |
+| Vision 兜底 | qwen3-vl-plus 截图重解析（表格结构差时自动） |
+| LLM 裁判 | DeepSeek V4 Pro |
+| 质量评估 | DeepSeek-chat（分类/Map）+ DeepSeek V4 Pro（Reduce） |
 | 文本嵌入 | text-embedding-v3（DashScope，Dense + Sparse 双路） |
 | 重排序 | qwen3-rerank（DashScope） |
 | 向量存储 | Qdrant（Hybrid Search: Dense + Sparse + RRF） |
