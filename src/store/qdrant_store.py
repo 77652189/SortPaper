@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,34 @@ def _stable_hash(s: str) -> int:
 
 def qdrant_point_id(paper_id: str, chunk_id: str) -> int:
     return _stable_hash(f"{paper_id}:{chunk_id}") % (2 ** 63)
+
+
+def openai_embedding_client_kwargs(api_key: str) -> dict[str, Any]:
+    """Build OpenAI embedding client kwargs without inheriting OPENAI_BASE_URL."""
+    kwargs: dict[str, Any] = {"api_key": api_key, "timeout": 60.0}
+    if OPENAI_EMBEDDING_BASE_URL:
+        kwargs["base_url"] = OPENAI_EMBEDDING_BASE_URL
+    return kwargs
+
+
+def _env_value(name: str, default: str = "") -> str:
+    return (os.getenv(name) or os.getenv(f"\ufeff{name}") or default).strip()
+
+
+def _payload_has_quality_enrichment(payload: dict[str, Any]) -> bool:
+    """Infer whether legacy payload already contains Map-Reduce quality metadata."""
+    quality_keys = (
+        "category",
+        "classify_status",
+        "paper_summary",
+        "classify_reason",
+        "target_products",
+        "organisms",
+        "credibility",
+        "fermentation_relevance",
+        "is_actionable",
+    )
+    return any(payload.get(key) not in (None, "", [], {}) for key in quality_keys)
 
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
@@ -34,6 +63,7 @@ from app_config import (
     EMBEDDING_DIM,
     EMBEDDING_MODEL,
     EMBEDDING_PROVIDER,
+    OPENAI_EMBEDDING_BASE_URL,
 )
 
 logger = logging.getLogger(__name__)
@@ -125,16 +155,15 @@ class QdrantStore:
         return self._embed_dashscope(text)
 
     def _embed_openai(self, text: str) -> list[float]:
-        import os
         from openai import OpenAI
 
-        api_key = os.getenv(EMBEDDING_API_KEY_ENV, "").strip()
+        api_key = _env_value(EMBEDDING_API_KEY_ENV)
         if not api_key:
             raise ValueError(f"{EMBEDDING_API_KEY_ENV} 未设置")
 
         from src.judge.llm_runtime import run_llm_call
 
-        client = OpenAI(api_key=api_key, timeout=60.0)
+        client = OpenAI(**openai_embedding_client_kwargs(api_key))
         response = run_llm_call(
             lambda: client.embeddings.create(
                 model=EMBEDDING_MODEL,
@@ -150,6 +179,11 @@ class QdrantStore:
     def _embed_dashscope(self, text: str) -> tuple[list[float], dict[int, float]]:
         from dashscope import TextEmbedding
 
+        api_key = _env_value(EMBEDDING_API_KEY_ENV)
+        if not api_key:
+            raise ValueError(f"{EMBEDDING_API_KEY_ENV} 未设置")
+        os.environ.setdefault(EMBEDDING_API_KEY_ENV, api_key)
+
         last_exc: Exception | None = None
         for attempt in range(3):
             try:
@@ -160,6 +194,7 @@ class QdrantStore:
                         model=EMBEDDING_MODEL,
                         input=text,
                         output_type="dense&sparse",
+                        api_key=api_key,
                     ),
                     label="dashscope-embedding",
                 )
@@ -488,12 +523,97 @@ class QdrantStore:
                         "paper_id": pid,
                         "paper_title": payload.get("paper_title", "?"),
                         "chunk_count": 0,
+                        "enrichment_status": "pending",
+                        "enrichment_status_note": "",
+                        "_has_pending_status": False,
+                        "_has_done_status": False,
+                        "_has_missing_status": False,
+                        "_has_quality_payload": False,
                     }
                 papers[pid]["chunk_count"] += 1
+                status = payload.get("enrichment_status")
+                if status == "pending":
+                    papers[pid]["_has_pending_status"] = True
+                elif status == "done":
+                    papers[pid]["_has_done_status"] = True
+                else:
+                    papers[pid]["_has_missing_status"] = True
+                if _payload_has_quality_enrichment(payload):
+                    papers[pid]["_has_quality_payload"] = True
             if next_offset is None:
                 break
             offset = next_offset
+        for paper in papers.values():
+            if paper.pop("_has_pending_status"):
+                paper["enrichment_status"] = "pending"
+                paper["enrichment_status_note"] = ""
+            elif paper.pop("_has_done_status") or paper.pop("_has_quality_payload"):
+                paper["enrichment_status"] = "done"
+                paper["enrichment_status_note"] = ""
+            elif paper.pop("_has_missing_status"):
+                paper["enrichment_status"] = "pending"
+                paper["enrichment_status_note"] = "旧数据缺少质量分析标记"
+            else:
+                paper["enrichment_status"] = "pending"
+                paper["enrichment_status_note"] = ""
         return sorted(papers.values(), key=lambda x: x["paper_title"])
+
+    def scroll_by_paper_id(self, paper_id: str, page_size: int = 500) -> list[Any]:
+        """Return all Qdrant points for one paper_id, following scroll pagination."""
+        points: list[Any] = []
+        offset = None
+        q_filter = models.Filter(
+            must=[models.FieldCondition(
+                key="paper_id", match=models.MatchValue(value=paper_id),
+            )],
+        )
+        while True:
+            batch, next_offset = self.client.scroll(
+                collection_name=self.collection,
+                scroll_filter=q_filter,
+                limit=page_size,
+                with_payload=True,
+                with_vectors=False,
+                offset=offset,
+            )
+            points.extend(batch)
+            if next_offset is None:
+                break
+            offset = next_offset
+        return points
+
+    def update_paper_payload(
+        self,
+        paper_id: str,
+        payload: dict[str, Any],
+        point_ids: list[int | str] | None = None,
+    ) -> int:
+        """Update payload for a paper. Use point_ids when already known."""
+        for key, value in list(payload.items()):
+            if isinstance(value, tuple):
+                payload[key] = list(value)
+        if point_ids:
+            self.client.set_payload(
+                collection_name=self.collection,
+                payload=payload,
+                points=point_ids,
+            )
+            return len(point_ids)
+
+        q_filter = models.Filter(
+            must=[models.FieldCondition(
+                key="paper_id", match=models.MatchValue(value=paper_id),
+            )],
+        )
+        self.client.set_payload(
+            collection_name=self.collection,
+            payload=payload,
+            points=q_filter,
+        )
+        return self.client.count(
+            collection_name=self.collection,
+            count_filter=q_filter,
+        ).count
 
     def delete_by_paper_id(self, paper_id: str) -> int:
         """删除指定 paper_id 的所有 points，返回删除数量。"""

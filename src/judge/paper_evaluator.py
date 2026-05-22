@@ -11,7 +11,6 @@ import logging
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from pathlib import Path
 from typing import Any
 
 from src.judge.prompts import (
@@ -46,11 +45,11 @@ class PaperQualityEvaluator:
     def __init__(self, model: str = DEEPSEEK_MODEL) -> None:
         self.model = model
 
-    def evaluate(self, merged_chunks: list, pdf_path: str) -> dict[str, Any]:
+    def evaluate(self, merged_chunks: list, title: str = "") -> dict[str, Any]:
         """完整四步评估入口。"""
 
         # ── Step 0: 提取分类用内容 ──────────────────────────────────────
-        title = self._extract_title(pdf_path, merged_chunks)
+        title = self._extract_title(title, merged_chunks)
         classify_content = self._extract_classify_content(merged_chunks)
 
         # ── Step 1: 分类（双 prompt + 自洽性验证）───────────────────────
@@ -212,19 +211,11 @@ class PaperQualityEvaluator:
     # ── 标题提取 ───────────────────────────────────────────────────────
 
     @staticmethod
-    def _extract_title(pdf_path: str, merged_chunks: list | None = None) -> str:
-        """提取标题：优先用文件名（有意义且非临时文件），否则取第一页顶部 text chunk 拼接。"""
-        filename_title = Path(pdf_path).stem
-        # 跳过临时文件名（如 tmpx8r0kccz）
-        is_temp = filename_title.startswith("tmp") and len(filename_title) < 20
-        # 文件名有意义（含字母/中文且长度>=10）
-        has_meaning = (
-            not is_temp
-            and len(filename_title) >= 10
-            and any(c.isalpha() or '\u4e00' <= c <= '\u9fff' for c in filename_title)
-        )
-        if has_meaning:
-            return filename_title
+    def _extract_title(title: str = "", merged_chunks: list | None = None) -> str:
+        """提取标题：优先用传入标题，否则取第一页顶部 text chunk 拼接。"""
+        title = (title or "").strip()
+        if title:
+            return title
         # 备选：取第一页顶部前 3 个 text chunk，按 y0 排序，拼接前 200 字符
         if merged_chunks:
             top_chunks = sorted(
@@ -235,7 +226,7 @@ class PaperQualityEvaluator:
                 candidate = " ".join(c.raw_content.strip() for c in top_chunks)[:200]
                 if candidate.strip():
                     return candidate
-        return filename_title
+        return ""
 
     # ── 分类用内容提取 ────────────────────────────────────────────────
 

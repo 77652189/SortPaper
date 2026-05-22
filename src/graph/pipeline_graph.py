@@ -451,32 +451,28 @@ def judge_text_node(state: PipelineState) -> dict:
     prev_verdicts = {v["chunk_id"]: v for v in state.get("text_verdicts", [])}
     noise_ids: set[str] = {c.chunk_id for c in chunks if _is_noise(c.raw_content)}
 
-    # 找出需要重判的 section（有未通过的非噪音 chunk）
-    pending: list[list] = []
-    for section_chunks in _group_by_section(chunks):
-        need = [c for c in section_chunks
-                if c.chunk_id not in noise_ids
-                and not prev_verdicts.get(c.chunk_id, {}).get("passed")]
-        if need:
-            pending.append(section_chunks)
+    # Text quality is judged per chunk so UI feedback remains specific.
+    pending = [
+        c for c in chunks
+        if c.chunk_id not in noise_ids
+        and not prev_verdicts.get(c.chunk_id, {}).get("passed")
+    ]
 
-    def _judge_section(section_chunks):
-        combined = "\n\n".join(c.raw_content for c in section_chunks)
-        v = LLMJudge().judge("text", combined, state["pdf_path"])
-        return section_chunks, v
+    def _judge_chunk(chunk):
+        v = LLMJudge().judge("text", chunk.raw_content, state["pdf_path"])
+        return chunk, v
 
     verdict_map: dict[str, dict] = dict(prev_verdicts)
     if pending:
         with ThreadPoolExecutor(max_workers=min(5, len(pending))) as pool:
-            for section_chunks, v in pool.map(_judge_section, pending):
-                for chunk in section_chunks:
-                    if chunk.chunk_id not in noise_ids:
-                        verdict_map[chunk.chunk_id] = {
-                            "chunk_id": chunk.chunk_id,
-                            "passed": v.passed,
-                            "score": v.score,
-                            "feedback": v.feedback,
-                        }
+            for chunk, v in pool.map(_judge_chunk, pending):
+                verdict_map[chunk.chunk_id] = {
+                    "chunk_id": chunk.chunk_id,
+                    "passed": v.passed,
+                    "score": v.score,
+                    "feedback": v.feedback,
+                    "judge_scope": "chunk",
+                }
 
     jt = state.get("judge_timing", {})
     jt["text"] = round(time.time() - t0, 1)
@@ -607,16 +603,15 @@ def merge_chunks_node(state: PipelineState) -> PipelineState:
 
 
 def quality_eval_node(state: PipelineState) -> dict:
-    """论文质量评估（分类 → Map-Reduce → chunk 上下文 → 入库）"""
+    """兼容质量评估节点；主入库流程不再依赖它。"""
     merged = state.get("merged_chunks", [])
-    pdf_path = state.get("pdf_path", "")
 
     if not merged:
         return {"quality_result": {"skip": True}}
 
     from src.judge.paper_evaluator import PaperQualityEvaluator
     evaluator = PaperQualityEvaluator()
-    result = evaluator.evaluate(merged, pdf_path)
+    result = evaluator.evaluate(merged, title="")
     return {"quality_result": result}
 
 

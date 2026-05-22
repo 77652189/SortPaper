@@ -830,7 +830,7 @@ def render_overview(result: dict) -> None:
             c4.metric("Judge 通过", f"{passed} / {total_v}")
         else:
             c4.metric("模式", "快速预览")
-        st.info("ℹ️ 快速预览模式：PyMuPDF 文本 + pdfplumber 表格区域发现/解析 + LLM Judge；不执行图片 VisionParser 或向量索引写入")
+        st.info("ℹ️ 快速预览模式：PyMuPDF 文本 + pdfplumber 表格区域发现/解析；仅表格质量诊断会调用 LLM Judge，不执行文本 Judge、图片 VisionParser 或向量索引写入")
 
         # 计时面板（快速预览）
         worker_timing = result.get("worker_timing", {})
@@ -848,7 +848,7 @@ def render_overview(result: dict) -> None:
 
                 jt_total = sum(judge_timing.values())
                 if jt_total:
-                    st.caption(f"**Judge 阶段**（文本+表格并行，含 DeepSeek 调用）: {jt_total:.1f}s")
+                    st.caption(f"**Judge 阶段**（仅表格，含 DeepSeek 调用）: {jt_total:.1f}s")
 
                 total_elapsed = result.get("_elapsed", 0)
                 if total_elapsed:

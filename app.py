@@ -27,7 +27,7 @@ from app_config import (
 )
 from app_pipeline import (
     run_preview, run_pipeline, store_parsed_chunks,
-    evaluate_parsed_chunks, _process_one_pdf,
+    evaluate_and_enrich_from_qdrant, _process_one_pdf,
 )
 from app_ui import (
     type_badge, verdict_badge, category_label,
@@ -77,7 +77,110 @@ def _existing_paper_reason(paper_id: str) -> str:
 
 
 def _embedding_api_ready() -> bool:
-    return bool(os.getenv(EMBEDDING_API_KEY_ENV, "").strip())
+    return bool((os.getenv(EMBEDDING_API_KEY_ENV) or os.getenv(f"\ufeff{EMBEDDING_API_KEY_ENV}") or "").strip())
+
+
+def _embedding_preflight_error() -> str:
+    if not _embedding_api_ready():
+        return f"缺少 {EMBEDDING_API_KEY_ENV}，无法生成向量入库"
+    try:
+        from src.store.qdrant_store import QdrantStore
+
+        QdrantStore().embed("SortPaper embedding preflight")
+    except Exception as exc:
+        return f"Embedding 预检失败：{type(exc).__name__}: {str(exc)[:300]}"
+    return ""
+
+
+def _process_batch_job(file_bytes: bytes, paper_id: str, filename: str, mode: str) -> dict:
+    t0 = time.time()
+    if mode == "快速预览":
+        result = run_preview(file_bytes)
+        result["filename"] = filename
+        chunks = (
+            len(result.get("text_chunks", []))
+            + len(result.get("table_chunks", []))
+            + len(result.get("image_chunks", []))
+        )
+        return {
+            "status": "ok",
+            "reason": "",
+            "category": "preview",
+            "chunks": chunks,
+            "stored": 0,
+            "degraded": 0,
+            "store_failed": 0,
+            "store_attempted": 0,
+            "excluded": 0,
+            "parse_seconds": round(time.time() - t0, 1),
+            "eval_seconds": 0,
+            "store_seconds": 0,
+            "total_seconds": round(time.time() - t0, 1),
+            "preview_result": result,
+        }
+
+    if mode == "完整流水线":
+        stage_start = time.time()
+        result = run_pipeline(file_bytes, paper_id, filename)
+        result["filename"] = filename
+        parse_seconds = time.time() - stage_start
+        save_result(build_snapshot(result, filename), filename)
+        return {
+            "status": "ok",
+            "reason": "",
+            "category": "parsed",
+            "credibility": 0,
+            "chunks": len(result.get("merged_chunks", [])),
+            "stored": 0,
+            "degraded": 0,
+            "store_failed": 0,
+            "store_attempted": 0,
+            "excluded": 0,
+            "parse_seconds": round(parse_seconds, 1),
+            "eval_seconds": 0,
+            "store_seconds": 0,
+            "total_seconds": round(time.time() - t0, 1),
+            "preview_result": result,
+        }
+
+    return _process_one_pdf(file_bytes, paper_id, filename)
+
+
+def _render_batch_preview_results() -> None:
+    previews = st.session_state.get("batch_preview_results", {})
+    if not previews:
+        return
+
+    st.divider()
+    st.markdown("## 预览内容")
+    options = sorted(previews.keys(), key=lambda pid: previews[pid].get("no", 0))
+    selected = st.selectbox(
+        "选择要查看的论文",
+        options=options,
+        format_func=lambda pid: f"{previews[pid].get('no', '?')}. {previews[pid].get('file', pid)}",
+        key="batch_preview_selected",
+    )
+    item = previews.get(selected)
+    if not item:
+        return
+
+    result = item["result"]
+    verdicts = result.get("verdicts", {})
+    st.caption(f"paper_id: `{result.get('paper_id', selected)}`")
+
+    tabs = st.tabs(["📊 概览", "📝 文本块", "🖼️ 图片", "📋 表格", "📐 PDF 重建"])
+    with tabs[0]:
+        render_overview(result)
+    with tabs[1]:
+        text_chunks = [c for c in result.get("merged_chunks", []) if c.get("content_type") == "text"]
+        render_text_tab(text_chunks, verdicts)
+    with tabs[2]:
+        render_image_tab(result)
+    with tabs[3]:
+        table_chunks = [c for c in result.get("merged_chunks", []) if c.get("content_type") == "table"]
+        render_table_tab(table_chunks, verdicts)
+    with tabs[4]:
+        render_reconstruction_tab(result)
 
 # ─── 主界面 ────────────────────────────────────────────────────────────────────
 
@@ -104,6 +207,8 @@ def main() -> None:
         st.session_state.save_success_msg = ""
     if "batch_results" not in st.session_state:
         st.session_state.batch_results: list[dict] = []
+    if "batch_preview_results" not in st.session_state:
+        st.session_state.batch_preview_results = {}
 
     if filename:
         st.session_state.orig_filename = filename
@@ -116,11 +221,13 @@ def main() -> None:
     # ── 批量模式 ──
     if batch_info and batch_info.get("pending"):
         batch_files = batch_info.get("files", [])
+        batch_mode = str(batch_info.get("mode") or mode)
         if batch_files:
-            progress = st.progress(0, "批量入库中…")
+            progress = st.progress(0, f"批量{batch_mode}中…")
             status = st.empty()
             results_view = st.empty()
             st.session_state.batch_results = []
+            st.session_state.batch_preview_results = {}
             success_n = skip_n = fail_n = 0
 
             prepared_jobs: list[dict] = []
@@ -139,7 +246,7 @@ def main() -> None:
                         progress.progress((i + 1) / len(batch_files), f"预检查 {i+1}/{len(batch_files)}")
                         continue
                     seen_paper_ids.add(pid)
-                    existing_reason = _existing_paper_reason(pid)
+                    existing_reason = _existing_paper_reason(pid) if batch_mode == "一键入库" else ""
                     if existing_reason:
                         skip_n += 1
                         st.session_state.batch_results.append({
@@ -170,9 +277,10 @@ def main() -> None:
                     hide_index=True,
                 )
 
-            if prepared_jobs and not _embedding_api_ready():
+            embedding_error = _embedding_preflight_error() if prepared_jobs and batch_mode == "一键入库" else ""
+            if prepared_jobs and embedding_error:
                 fail_n += len(prepared_jobs)
-                reason = f"缺少 {EMBEDDING_API_KEY_ENV}，无法生成向量入库"
+                reason = embedding_error
                 for job in prepared_jobs:
                     st.session_state.batch_results.append({
                         "no": job["no"],
@@ -192,7 +300,13 @@ def main() -> None:
                 )
                 with ThreadPoolExecutor(max_workers=max_workers) as pool:
                     future_jobs = {
-                        pool.submit(_process_one_pdf, job["bytes"], job["paper_id"], job["file"]): {
+                        pool.submit(
+                            _process_batch_job,
+                            job["bytes"],
+                            job["paper_id"],
+                            job["file"],
+                            batch_mode,
+                        ): {
                             **job,
                             "started_at": time.time(),
                         }
@@ -213,6 +327,13 @@ def main() -> None:
                                     skip_n += 1
                                 else:
                                     fail_n += 1
+                                preview_result = q_result.pop("preview_result", None)
+                                if preview_result:
+                                    st.session_state.batch_preview_results[job["paper_id"]] = {
+                                        "no": job["no"],
+                                        "file": job["file"],
+                                        "result": preview_result,
+                                    }
                                 st.session_state.batch_results.append({
                                     "no": job["no"],
                                     "file": job["file"],
@@ -270,13 +391,15 @@ def main() -> None:
             progress.empty()
             status.empty()
 
-            st.markdown(f"## ✅ 批量处理完成")
+            st.markdown(f"## ✅ 批量{batch_mode}完成")
             st.markdown(f"成功 **{success_n}** | 跳过（已入库）**{skip_n}** | 失败 **{fail_n}**")
 
             if st.session_state.batch_results:
                 import pandas as pd
                 df = pd.DataFrame(st.session_state.batch_results)
                 st.dataframe(df, width="stretch", hide_index=True)
+
+            _render_batch_preview_results()
 
             st.session_state.batch_trigger = False
         return
@@ -325,9 +448,9 @@ def main() -> None:
                     f"总超时 **{PIPELINE_TIMEOUT_SECONDS // 60} 分钟**。请勿刷新页面。",
                 )
                 pipeline_spinner = (
-                    "📄 阶段 1/3: 解析中（LLM Judge · VisionParser）…"
+                    "📄 阶段 1/2: 解析中（LLM Judge · VisionParser）…"
                     if mode == "一键入库"
-                    else "解析中（LLM Judge；不调用图片 VisionParser）…"
+                    else "解析中（LLM Judge · VisionParser）…"
                 )
                 with st.spinner(pipeline_spinner):
                     with ThreadPoolExecutor(max_workers=1) as pool:
@@ -352,12 +475,8 @@ def main() -> None:
 
             if mode == "一键入库":
                 steps = st.empty()
-                steps.info("📊 阶段 2/3: 质量评估中（Map-Reduce）…")
-                q_result = evaluate_parsed_chunks(result)
-                result["quality"] = q_result
-
-                steps.info("📥 阶段 3/3: 入库到 Qdrant…")
-                store_parsed_chunks(result)
+                steps.info("📥 阶段 2/2: 入库到 Qdrant…")
+                store_r = store_parsed_chunks(result)
 
                 steps.info("💾 保存解析结果…")
                 snapshot = build_snapshot(result, filename)
@@ -366,12 +485,9 @@ def main() -> None:
                 steps.empty()
                 result["_elapsed"] = time.time() - start_ts
                 stored_key = f"stored_{paper_id}"
-                st.session_state[stored_key] = True
+                st.session_state[stored_key] = store_r
                 st.success(
-                    f"✅ 一键入库完成 | "
-                    f"分类: {q_result.get('category', '?')} | "
-                    f"可信度: {q_result.get('credibility', '?')} | "
-                    f"已保存"
+                    "✅ 一键入库完成，可立即检索；质量分析状态：待分析"
                 )
 
             st.session_state.result = result
@@ -383,6 +499,10 @@ def main() -> None:
     result = st.session_state.result
 
     if result is None:
+        if st.session_state.get("batch_preview_results"):
+            _render_batch_preview_results()
+            st.divider()
+
         welcome_tabs = st.tabs(["🏠 欢迎", "🔍 语义检索", "💾 已保存"])
         with welcome_tabs[0]:
             st.markdown("## 欢迎使用 SortPaper 📄")
@@ -390,13 +510,14 @@ def main() -> None:
                 """
                 **使用步骤：**
                 1. 在左侧选择或上传 PDF 文件
-                2. 选择解析模式（快速预览 / 完整流水线）
+                2. 选择解析模式（快速预览 / 完整流水线 / 一键入库）
                 3. 点击 **🚀 开始解析**
                 4. 在各标签页查看解析结果
 
                 ---
-                **快速预览**：调用 PyMuPDF + pdfplumber 解析文本/表格，并使用 LLM Judge 做表格质量诊断；不调用图片 VisionParser，不写入向量索引。
-                **完整流水线**：在快速预览基础上补充图片 VisionParser、全量质量评估与 Qdrant 向量索引写入，支持语义检索。
+                **快速预览**：解析文本/表格；仅表格质量诊断会调用 LLM Judge，图片只生成占位信息，不写入向量库。
+                **完整流水线**：解析文本、表格和图片，并运行 chunk-level Judge；不自动入库，也不执行 Map-Reduce 质量分析。
+                **一键入库**：解析与 Judge 后立即写入 Qdrant，可马上检索；质量分析状态先标记为待分析，可之后单独补充。
                 """
             )
         with welcome_tabs[1]:
@@ -408,35 +529,26 @@ def main() -> None:
     # ── 结果展示 ──
     verdicts = result.get("verdicts", {})
     is_pipeline = result.get("mode") in ("pipeline", "auto")
-    is_manual_pipeline = result.get("mode") == "pipeline"
 
     tabs = st.tabs(["📊 概览", "📝 文本块", "🖼️ 图片", "📋 表格", "📐 PDF 重建", "🔍 语义检索", "💾 已保存"])
 
     with tabs[0]:
         render_overview(result)
 
-        if is_manual_pipeline:
+        if is_pipeline:
             quality = result.get("quality", {})
             has_quality = bool(quality.get("category"))
             stored_key = f"stored_{result.get('paper_id', '')}"
-            is_stored = bool(st.session_state.get(stored_key))
+            stored_state = st.session_state.get(stored_key)
+            try:
+                is_stored = bool(stored_state) or _qdrant_paper_count(result.get("paper_id", "")) > 0
+            except Exception:
+                is_stored = bool(stored_state)
 
             st.divider()
 
-            if not has_quality:
-                st.info("📊 请运行质量评估以获得分类、摘要和可信度")
-                col_btn, _ = st.columns([1, 3])
-                with col_btn:
-                    if st.button("📊 质量评估", width="stretch", type="primary",
-                                 key=f"eval_{result.get('paper_id', '')}"):
-                        with st.spinner("正在执行 Map-Reduce 质量评估（约 60~90 秒）…"):
-                            eval_result = evaluate_parsed_chunks(result)
-                        result["quality"] = eval_result
-                        st.session_state.result = result
-                        st.rerun()
-
-            elif not is_stored:
-                st.info("📥 质量评估已完成，请入库到 Qdrant")
+            if not is_stored:
+                st.info("📥 请先入库到 Qdrant；入库后可立即检索，质量分析可稍后补充")
                 col_btn, _ = st.columns([1, 3])
                 with col_btn:
                     if st.button("📥 入库到 Qdrant", width="stretch", type="primary",
@@ -446,12 +558,31 @@ def main() -> None:
                         st.session_state[stored_key] = store_r
                         st.rerun()
 
-            elif is_stored:
-                store_r = st.session_state[stored_key]
+            else:
+                store_r = stored_state if isinstance(stored_state, dict) else {}
                 if store_r.get("duplicate"):
                     st.warning(f"⚠️ 该论文已入库（{store_r.get('existing_count', '?')} 条记录），请删除后重新入库或使用覆盖功能。")
                 else:
-                    st.success(f"✅ 已入库 {store_r.get('stored', 0)} chunks + {store_r.get('degraded', 0)} degraded")
+                    if store_r:
+                        st.success(f"✅ 已入库 {store_r.get('stored', 0)} chunks + {store_r.get('degraded', 0)} degraded，可立即检索")
+                    else:
+                        st.success("✅ 已入库，可立即检索")
+
+                if has_quality:
+                    st.success(f"✅ 质量分析已完成：{quality.get('category', '?')} / credibility={quality.get('credibility', '?')}")
+                    eval_label = "🔁 重新质量评估"
+                else:
+                    st.info("📊 质量分析待完成，可单独运行 Map-Reduce 补充元数据")
+                    eval_label = "📊 一键质量评估"
+                col_btn, _ = st.columns([1, 3])
+                with col_btn:
+                    if st.button(eval_label, width="stretch", type="primary",
+                                 key=f"enrich_{result.get('paper_id', '')}"):
+                        with st.spinner("正在从 Qdrant 读取 chunks 并执行 Map-Reduce（约 60~90 秒）…"):
+                            eval_result = evaluate_and_enrich_from_qdrant(result.get("paper_id", ""))
+                        result["quality"] = eval_result
+                        st.session_state.result = result
+                        st.rerun()
 
             st.divider()
 
