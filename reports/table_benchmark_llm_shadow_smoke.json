@@ -1,0 +1,1479 @@
+{
+  "parsers": [
+    "region_guided",
+    "pdfplumber"
+  ],
+  "pdf_count": 5,
+  "pdf_reports": [
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\260413-文献-CXH\\26-Patent-recombinant vectors for expression of animal free milk protein and process for preparing the animal free milk protein.pdf",
+      "detect_ms": 111,
+      "regions": [],
+      "region_text_contexts": {},
+      "parser_summaries": {
+        "region_guided": {
+          "duration_ms": 0,
+          "chunks": 0,
+          "error": ""
+        },
+        "pdfplumber": {
+          "duration_ms": 0,
+          "chunks": 0,
+          "error": ""
+        }
+      },
+      "results": []
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\功能文献汇总\\临床实验\\Effects of Infant Formula With Human Milk Oligosaccharides on Growth and Morbidity A Randomized Multicenter Trial.pdf",
+      "detect_ms": 839,
+      "regions": [
+        {
+          "region_id": "table_region_p4_68.5_583.3_325.5_804.2",
+          "source": "table_region_detector",
+          "page": 4,
+          "bbox": [
+            68.535,
+            583.3052797999999,
+            325.48,
+            804.2265464999999
+          ],
+          "confidence": 1.0,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                76.5354,
+                587.3052797999999,
+                265.7200523,
+                595.2754798
+              ],
+              "details": {
+                "text": "TABLE1. Baselinecharacteristicsofstudyparticipants"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                68.535,
+                583.3052797999999,
+                325.48,
+                804.2265464999999
+              ],
+              "details": {
+                "count": 8
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                68.535,
+                583.3052797999999,
+                325.48,
+                804.2265464999999
+              ],
+              "details": {
+                "lines": 17
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.15,
+              "reason": "high_numeric_density",
+              "bbox": [
+                68.535,
+                583.3052797999999,
+                325.48,
+                804.2265464999999
+              ],
+              "details": {
+                "ratio": 0.568
+              }
+            }
+          ]
+        },
+        {
+          "region_id": "table_region_p5_68.5_104.9_584.9_370.0",
+          "source": "table_region_detector",
+          "page": 5,
+          "bbox": [
+            68.535,
+            104.93057980000003,
+            584.85,
+            369.9966545
+          ],
+          "confidence": 0.7,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                76.5354,
+                108.93057980000003,
+                400.23869683999993,
+                116.90077980000001
+              ],
+              "details": {
+                "text": "TABLE2. Comparisonofweightgainfromenrollmentto4monthsofagebetweengroups"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                68.535,
+                104.93057980000003,
+                584.85,
+                369.9966545
+              ],
+              "details": {
+                "count": 8
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                68.535,
+                104.93057980000003,
+                584.85,
+                369.9966545
+              ],
+              "details": {
+                "lines": 16
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.15,
+              "reason": "high_numeric_density",
+              "bbox": [
+                68.535,
+                104.93057980000003,
+                584.85,
+                369.9966545
+              ],
+              "details": {
+                "ratio": 0.222
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                68.535,
+                104.93057980000003,
+                584.85,
+                369.9966545
+              ],
+              "details": {
+                "ratio": 0.854
+              }
+            },
+            {
+              "source": "negative",
+              "score": -0.3,
+              "reason": "long_sentence_block",
+              "bbox": [
+                68.535,
+                104.93057980000003,
+                584.85,
+                369.9966545
+              ],
+              "details": {
+                "lines": 3
+              }
+            },
+            {
+              "source": "negative",
+              "score": -0.2,
+              "reason": "section_like_body_region",
+              "bbox": [
+                68.535,
+                104.93057980000003,
+                584.85,
+                369.9966545
+              ]
+            }
+          ]
+        }
+      ],
+      "region_text_contexts": {
+        "table_region_p4_68.5_583.3_325.5_804.2": {
+          "word_count": 39,
+          "line_count": 18,
+          "long_line_count": 0,
+          "body_word_hits": 13,
+          "numeric_tokens": 26,
+          "single_char_tokens": 0,
+          "avg_token_len": 15.56
+        },
+        "table_region_p5_68.5_104.9_584.9_370.0": {
+          "word_count": 124,
+          "line_count": 25,
+          "long_line_count": 7,
+          "body_word_hits": 80,
+          "numeric_tokens": 30,
+          "single_char_tokens": 2,
+          "avg_token_len": 12.33
+        }
+      },
+      "parser_summaries": {
+        "region_guided": {
+          "duration_ms": 166,
+          "chunks": 2,
+          "error": ""
+        },
+        "pdfplumber": {
+          "duration_ms": 174,
+          "chunks": 2,
+          "error": ""
+        }
+      },
+      "results": [
+        {
+          "pdf": "Effects of Infant Formula With Human Milk Oligosaccharides on Growth and Morbidity A Randomized Multicenter Trial.pdf",
+          "page": 4,
+          "table_label": "Table 1",
+          "caption": "TABLE1. Baselinecharacteristicsofstudyparticipants",
+          "region_id": "table_region_p4_68.5_583.3_325.5_804.2",
+          "region_bbox": [
+            68.535,
+            583.3052797999999,
+            325.48,
+            804.2265464999999
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 166,
+          "rows": 12,
+          "cols": 3,
+          "chunk_bbox": [
+            76.53381,
+            589.376057725,
+            298.81311999999997,
+            779.8914287
+          ],
+          "overlap": 1.0,
+          "rule_category": "ok",
+          "recommended_action": "accept",
+          "needs_llm_judge": false,
+          "rule_confidence": 0.9,
+          "rule_reasons": "parser_output_passed_quality_checks",
+          "retry_attempted": false,
+          "retry_succeeded": false,
+          "retry_action": "",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "would_retry": false,
+          "would_adjust_bbox": false,
+          "would_drop_candidate": false,
+          "safe_auto_action": false,
+          "human_review_required": false,
+          "auto_action_allowed": false,
+          "auto_decision_reason": "",
+          "failure_reason": "",
+          "preview": "| TABLE1. Baselinecharacteristicsofst | udyparticipants |  | | --- | --- | --- | | Infantcharacteristics Co | ntrol(n¼87) T | est(n¼8 | | Age,days | 7.7(cid:8)3.3 | 8.6(cid:8)3.3 | | Sex(n,%male) | 44(50.6) | 44(50.0) | | Gestationalage,wk "
+        },
+        {
+          "pdf": "Effects of Infant Formula With Human Milk Oligosaccharides on Growth and Morbidity A Randomized Multicenter Trial.pdf",
+          "page": 5,
+          "table_label": "Table 2",
+          "caption": "TABLE2. Comparisonofweightgainfromenrollmentto4monthsofagebetweengroups",
+          "region_id": "table_region_p5_68.5_104.9_584.9_370.0",
+          "region_bbox": [
+            68.535,
+            104.93057980000003,
+            584.85,
+            369.9966545
+          ],
+          "region_confidence": 0.7,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 166,
+          "rows": 9,
+          "cols": 2,
+          "chunk_bbox": [
+            76.53343,
+            108.93057980000003,
+            576.9073666,
+            365.9522544999999
+          ],
+          "overlap": 1.0,
+          "rule_category": "header_or_span_complexity",
+          "recommended_action": "retry_text_strategy",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "structural_quality:low_consistency",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "retry_text_strategy",
+          "retry_rows": 9,
+          "retry_cols": 2,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": true,
+          "llm_failure_category": "header_or_span_complexity",
+          "llm_recommended_action": "retry_text_strategy",
+          "llm_confidence": 0.65,
+          "llm_reason": "The table header spans multiple lines and contains merged column descriptors (e.g., 'Difference between groups (test control)') which the parser failed to separate correctly, resulting in a low-consistency structural quality and a garbled preview.",
+          "llm_error": "",
+          "rule_llm_agree": true,
+          "would_retry": true,
+          "would_adjust_bbox": false,
+          "would_drop_candidate": false,
+          "safe_auto_action": true,
+          "human_review_required": false,
+          "auto_action_allowed": false,
+          "auto_decision_reason": "shadow mode only; action is recorded but not applied",
+          "failure_reason": "",
+          "preview": "| TABLE2. Comparisonofweightgainfromenrollmentto4monthsofag | ebetweengroups | | --- | --- | |  | Differencebetweengroups (cid:2) | |  | (test(cid:3)control) | | Population Groups Weightgain,g/d | ayLSMean(SE) Estimate 95%CI | | PP Test(n¼7"
+        },
+        {
+          "pdf": "Effects of Infant Formula With Human Milk Oligosaccharides on Growth and Morbidity A Randomized Multicenter Trial.pdf",
+          "page": 4,
+          "table_label": "Table 1",
+          "caption": "TABLE1. Baselinecharacteristicsofstudyparticipants",
+          "region_id": "table_region_p4_68.5_583.3_325.5_804.2",
+          "region_bbox": [
+            68.535,
+            583.3052797999999,
+            325.48,
+            804.2265464999999
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 174,
+          "rows": 11,
+          "cols": 3,
+          "chunk_bbox": [
+            76.53381,
+            589.376057725,
+            298.81311999999997,
+            779.8914287
+          ],
+          "overlap": 1.0,
+          "rule_category": "ok",
+          "recommended_action": "accept",
+          "needs_llm_judge": false,
+          "rule_confidence": 0.9,
+          "rule_reasons": "parser_output_passed_quality_checks",
+          "retry_attempted": false,
+          "retry_succeeded": false,
+          "retry_action": "",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "would_retry": false,
+          "would_adjust_bbox": false,
+          "would_drop_candidate": false,
+          "safe_auto_action": false,
+          "human_review_required": false,
+          "auto_action_allowed": false,
+          "auto_decision_reason": "",
+          "failure_reason": "",
+          "preview": "| Infantcharacteristics | Control(n¼87) | Test(n¼88) | | --- | --- | --- | | Age,days | 7.7(cid:8)3.3 | 8.6(cid:8)3.3 | | Sex(n,%male) | 44(50.6) | 44(50.0) | | Gestationalage,wk | 39.2(cid:8)1.0 | 39.2(cid:8)1.1 | | Modeofdelivery(n,%cesar"
+        },
+        {
+          "pdf": "Effects of Infant Formula With Human Milk Oligosaccharides on Growth and Morbidity A Randomized Multicenter Trial.pdf",
+          "page": 5,
+          "table_label": "Table 2",
+          "caption": "TABLE2. Comparisonofweightgainfromenrollmentto4monthsofagebetweengroups",
+          "region_id": "table_region_p5_68.5_104.9_584.9_370.0",
+          "region_bbox": [
+            68.535,
+            104.93057980000003,
+            584.85,
+            369.9966545
+          ],
+          "region_confidence": 0.7,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 174,
+          "rows": 9,
+          "cols": 2,
+          "chunk_bbox": [
+            76.53343,
+            108.93057980000003,
+            576.9073666,
+            365.9522544999999
+          ],
+          "overlap": 1.0,
+          "rule_category": "header_or_span_complexity",
+          "recommended_action": "retry_text_strategy",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "structural_quality:low_consistency",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "retry_text_strategy",
+          "retry_rows": 9,
+          "retry_cols": 2,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "would_retry": false,
+          "would_adjust_bbox": false,
+          "would_drop_candidate": false,
+          "safe_auto_action": false,
+          "human_review_required": false,
+          "auto_action_allowed": false,
+          "auto_decision_reason": "",
+          "failure_reason": "",
+          "preview": "| TABLE2. Comparisonofweightgainfromenrollmentto4monthsofag | ebetweengroups | | --- | --- | |  | Differencebetweengroups (cid:2) | |  | (test(cid:3)control) | | Population Groups Weightgain,g/d | ayLSMean(SE) Estimate 95%CI | | PP Test(n¼7"
+        }
+      ]
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\功能文献汇总\\功能文献\\6-SL\\Potential effects of a human milk oligosaccharide 6′‑sialyllactoseon angiotensin II‑induced aortic aneurysm via p90RSKTGF‑βSMAD2signaling pathway.pdf",
+      "detect_ms": 5547,
+      "regions": [
+        {
+          "region_id": "table_region_p4_43.0_551.8_552.3_775.2",
+          "source": "table_region_detector",
+          "page": 4,
+          "bbox": [
+            43.023601531,
+            551.755801026,
+            552.251480102,
+            775.2392
+          ],
+          "confidence": 1.0,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                51.023601531,
+                555.755801026,
+                156.151601531,
+                566.261801026
+              ],
+              "details": {
+                "text": "Table 1 Primers used for qRT-"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                43.023601531,
+                551.755801026,
+                552.251480102,
+                775.2392
+              ],
+              "details": {
+                "count": 6
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                43.023601531,
+                551.755801026,
+                552.251480102,
+                775.2392
+              ],
+              "details": {
+                "lines": 13
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                43.023601531,
+                551.755801026,
+                552.251480102,
+                775.2392
+              ],
+              "details": {
+                "ratio": 0.983
+              }
+            }
+          ]
+        }
+      ],
+      "region_text_contexts": {
+        "table_region_p4_43.0_551.8_552.3_775.2": {
+          "word_count": 180,
+          "line_count": 14,
+          "long_line_count": 11,
+          "body_word_hits": 3,
+          "numeric_tokens": 6,
+          "single_char_tokens": 2,
+          "avg_token_len": 3.62
+        }
+      },
+      "parser_summaries": {
+        "region_guided": {
+          "duration_ms": 172,
+          "chunks": 1,
+          "error": ""
+        },
+        "pdfplumber": {
+          "duration_ms": 147,
+          "chunks": 1,
+          "error": ""
+        }
+      },
+      "results": [
+        {
+          "pdf": "Potential effects of a human milk oligosaccharide 6′‑sialyllactoseon angiotensin II‑induced aortic aneurysm via p90RSKTGF‑βSMAD2signaling pathway.pdf",
+          "page": 4,
+          "table_label": "Table 1",
+          "caption": "Table 1 Primers used for qRT-",
+          "region_id": "table_region_p4_43.0_551.8_552.3_775.2",
+          "region_bbox": [
+            43.023601531,
+            551.755801026,
+            552.251480102,
+            775.2392
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 172,
+          "rows": 12,
+          "cols": 4,
+          "chunk_bbox": [
+            43.023601531,
+            551.755801026,
+            552.251480102,
+            775.2392
+          ],
+          "overlap": 1.0,
+          "rule_category": "ok",
+          "recommended_action": "accept",
+          "needs_llm_judge": false,
+          "rule_confidence": 0.9,
+          "rule_reasons": "parser_output_passed_quality_checks",
+          "retry_attempted": false,
+          "retry_succeeded": false,
+          "retry_action": "",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "would_retry": false,
+          "would_adjust_bbox": false,
+          "would_drop_candidate": false,
+          "safe_auto_action": false,
+          "human_review_required": false,
+          "auto_action_allowed": false,
+          "auto_decision_reason": "",
+          "failure_reason": "",
+          "preview": "| Primers used for qRT- | Genes | Forward (5′-3′) | Reverse (5′-3′) | | --- | --- | --- | --- | |  |  | GCT CTC AAG GTC ATC CCA | GTTG TGT TTC CAC GCT TGG TTC ACT | |  |  | CCA ACT GAA CGT GAC CAA | AAA CCA GAA GGT GCT GGG TAG GGA AGT AGG C"
+        },
+        {
+          "pdf": "Potential effects of a human milk oligosaccharide 6′‑sialyllactoseon angiotensin II‑induced aortic aneurysm via p90RSKTGF‑βSMAD2signaling pathway.pdf",
+          "page": 4,
+          "table_label": "Table 1",
+          "caption": "Table 1 Primers used for qRT-",
+          "region_id": "table_region_p4_43.0_551.8_552.3_775.2",
+          "region_bbox": [
+            43.023601531,
+            551.755801026,
+            552.251480102,
+            775.2392
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 147,
+          "rows": 12,
+          "cols": 4,
+          "chunk_bbox": [
+            43.023601531,
+            551.755801026,
+            552.251480102,
+            775.2392
+          ],
+          "overlap": 1.0,
+          "rule_category": "ok",
+          "recommended_action": "accept",
+          "needs_llm_judge": false,
+          "rule_confidence": 0.9,
+          "rule_reasons": "parser_output_passed_quality_checks",
+          "retry_attempted": false,
+          "retry_succeeded": false,
+          "retry_action": "",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "would_retry": false,
+          "would_adjust_bbox": false,
+          "would_drop_candidate": false,
+          "safe_auto_action": false,
+          "human_review_required": false,
+          "auto_action_allowed": false,
+          "auto_decision_reason": "",
+          "failure_reason": "",
+          "preview": "| Primers used for qRT- | Genes | Forward (5′-3′) | Reverse (5′-3′) | | --- | --- | --- | --- | |  |  | GCT CTC AAG GTC ATC CCA | GTTG TGT TTC CAC GCT TGG TTC ACT | |  |  | CCA ACT GAA CGT GAC CAA | AAA CCA GAA GGT GCT GGG TAG GGA AGT AGG C"
+        }
+      ]
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\文献汇总整理（市场那边调研的文献）\\学习班\\蛋白质稳定性计算设计与定向进化前沿工具_阮青云.pdf",
+      "detect_ms": 5207,
+      "regions": [
+        {
+          "region_id": "table_region_p4_57.5_102.0_554.8_766.4",
+          "source": "table_region_detector",
+          "page": 4,
+          "bbox": [
+            57.4804,
+            101.98945679999997,
+            554.8034,
+            766.3514759
+          ],
+          "confidence": 0.95,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                226.1492687,
+                105.98945679999997,
+                386.16871440000006,
+                114.80935680000005
+              ],
+              "details": {
+                "text": "Table 1 Definitions of stability parameters"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                57.4804,
+                101.98945679999997,
+                554.8034,
+                766.3514759
+              ],
+              "details": {
+                "count": 3
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                57.4804,
+                101.98945679999997,
+                554.8034,
+                766.3514759
+              ],
+              "details": {
+                "lines": 33
+              }
+            }
+          ]
+        },
+        {
+          "region_id": "table_region_p9_57.3_101.8_555.1_767.0",
+          "source": "table_region_detector",
+          "page": 9,
+          "bbox": [
+            57.338499999999996,
+            101.84169839999993,
+            555.0654999999999,
+            766.9720391999999
+          ],
+          "confidence": 0.95,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                185.1647,
+                105.84169839999993,
+                427.1298366,
+                114.6615984
+              ],
+              "details": {
+                "text": "Table 2 Summary of software for protein stability rational design"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                57.338499999999996,
+                101.84169839999993,
+                555.0654999999999,
+                766.9720391999999
+              ],
+              "details": {
+                "count": 3
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                57.338499999999996,
+                101.84169839999993,
+                555.0654999999999,
+                766.9720391999999
+              ],
+              "details": {
+                "lines": 38
+              }
+            }
+          ]
+        }
+      ],
+      "region_text_contexts": {
+        "table_region_p4_57.5_102.0_554.8_766.4": {
+          "word_count": 143,
+          "line_count": 71,
+          "long_line_count": 0,
+          "body_word_hits": 2,
+          "numeric_tokens": 19,
+          "single_char_tokens": 27,
+          "avg_token_len": 10.78
+        },
+        "table_region_p9_57.3_101.8_555.1_767.0": {
+          "word_count": 159,
+          "line_count": 48,
+          "long_line_count": 0,
+          "body_word_hits": 4,
+          "numeric_tokens": 29,
+          "single_char_tokens": 9,
+          "avg_token_len": 11.42
+        }
+      },
+      "parser_summaries": {
+        "region_guided": {
+          "duration_ms": 429,
+          "chunks": 2,
+          "error": ""
+        },
+        "pdfplumber": {
+          "duration_ms": 482,
+          "chunks": 2,
+          "error": ""
+        }
+      },
+      "results": [
+        {
+          "pdf": "蛋白质稳定性计算设计与定向进化前沿工具_阮青云.pdf",
+          "page": 4,
+          "table_label": "Table 1",
+          "caption": "Table 1 Definitions of stability parameters",
+          "region_id": "table_region_p4_57.5_102.0_554.8_766.4",
+          "region_bbox": [
+            57.4804,
+            101.98945679999997,
+            554.8034,
+            766.3514759
+          ],
+          "region_confidence": 0.95,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 429,
+          "rows": 25,
+          "cols": 2,
+          "chunk_bbox": [
+            57.4804,
+            101.98945679999997,
+            554.8034,
+            766.3514759
+          ],
+          "overlap": 1.0,
+          "rule_category": "ok",
+          "recommended_action": "accept",
+          "needs_llm_judge": false,
+          "rule_confidence": 0.9,
+          "rule_reasons": "parser_output_passed_quality_checks",
+          "retry_attempted": false,
+          "retry_succeeded": false,
+          "retry_action": "",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "would_retry": false,
+          "would_adjust_bbox": false,
+          "would_drop_candidate": false,
+          "safe_auto_action": false,
+          "human_review_required": false,
+          "auto_action_allowed": false,
+          "auto_decision_reason": "",
+          "failure_reason": "",
+          "preview": "| column 1 | column 2 | | --- | --- | | 符号 | 稳定性类型 | | ΔG UN | 热力学 | | ΔG NU | 热力学 | | ΔΔG | 热力学 | | T m | 热力学 | | C 1/2 | 热力学 | | K U | 热力学 | | k f | 动力学 | | k u | 动力学 | | k d, obs | 动力学 | | T 50 | ― | | t | 动力学 | | 度量 | 定义 | | 折叠自由能 | 蛋白质"
+        },
+        {
+          "pdf": "蛋白质稳定性计算设计与定向进化前沿工具_阮青云.pdf",
+          "page": 9,
+          "table_label": "Table 2",
+          "caption": "Table 2 Summary of software for protein stability rational design",
+          "region_id": "table_region_p9_57.3_101.8_555.1_767.0",
+          "region_bbox": [
+            57.338499999999996,
+            101.84169839999993,
+            555.0654999999999,
+            766.9720391999999
+          ],
+          "region_confidence": 0.95,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 429,
+          "rows": 6,
+          "cols": 5,
+          "chunk_bbox": [
+            57.338499999999996,
+            101.84169839999993,
+            555.0654999999999,
+            766.9720391999999
+          ],
+          "overlap": 1.0,
+          "rule_category": "ok",
+          "recommended_action": "accept",
+          "needs_llm_judge": false,
+          "rule_confidence": 0.9,
+          "rule_reasons": "parser_output_passed_quality_checks",
+          "retry_attempted": false,
+          "retry_succeeded": false,
+          "retry_action": "",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "would_retry": false,
+          "would_adjust_bbox": false,
+          "would_drop_candidate": false,
+          "safe_auto_action": false,
+          "human_review_required": false,
+          "auto_action_allowed": false,
+          "auto_decision_reason": "",
+          "failure_reason": "",
+          "preview": "| 类别 | 软件名称 | 输入 | 网站/本地安装 | 参考文献 | | --- | --- | --- | --- | --- | | 基于结构分析 |  |  |  |  | | 优化蛋白质表面电荷 | TKSA-MC PHEPS | 结构 结构 | http://tksamc.df.ibilce.unesp.br http://pheps.orgchm.bas.bg/home.html | [47] [48] | | 基于温度因子 | B-FITTER | 结构 | "
+        },
+        {
+          "pdf": "蛋白质稳定性计算设计与定向进化前沿工具_阮青云.pdf",
+          "page": 4,
+          "table_label": "Table 1",
+          "caption": "Table 1 Definitions of stability parameters",
+          "region_id": "table_region_p4_57.5_102.0_554.8_766.4",
+          "region_bbox": [
+            57.4804,
+            101.98945679999997,
+            554.8034,
+            766.3514759
+          ],
+          "region_confidence": 0.95,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 482,
+          "rows": 25,
+          "cols": 2,
+          "chunk_bbox": [
+            57.4804,
+            101.98945679999997,
+            554.8034,
+            766.3514759
+          ],
+          "overlap": 1.0,
+          "rule_category": "ok",
+          "recommended_action": "accept",
+          "needs_llm_judge": false,
+          "rule_confidence": 0.9,
+          "rule_reasons": "parser_output_passed_quality_checks",
+          "retry_attempted": false,
+          "retry_succeeded": false,
+          "retry_action": "",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "would_retry": false,
+          "would_adjust_bbox": false,
+          "would_drop_candidate": false,
+          "safe_auto_action": false,
+          "human_review_required": false,
+          "auto_action_allowed": false,
+          "auto_decision_reason": "",
+          "failure_reason": "",
+          "preview": "| column 1 | column 2 | | --- | --- | | 符号 | 稳定性类型 | | ΔG UN | 热力学 | | ΔG NU | 热力学 | | ΔΔG | 热力学 | | T m | 热力学 | | C 1/2 | 热力学 | | K U | 热力学 | | k f | 动力学 | | k u | 动力学 | | k d, obs | 动力学 | | T 50 | ― | | t | 动力学 | | 度量 | 定义 | | 折叠自由能 | 蛋白质"
+        },
+        {
+          "pdf": "蛋白质稳定性计算设计与定向进化前沿工具_阮青云.pdf",
+          "page": 9,
+          "table_label": "Table 2",
+          "caption": "Table 2 Summary of software for protein stability rational design",
+          "region_id": "table_region_p9_57.3_101.8_555.1_767.0",
+          "region_bbox": [
+            57.338499999999996,
+            101.84169839999993,
+            555.0654999999999,
+            766.9720391999999
+          ],
+          "region_confidence": 0.95,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 482,
+          "rows": 6,
+          "cols": 5,
+          "chunk_bbox": [
+            57.338499999999996,
+            101.84169839999993,
+            555.0654999999999,
+            766.9720391999999
+          ],
+          "overlap": 1.0,
+          "rule_category": "ok",
+          "recommended_action": "accept",
+          "needs_llm_judge": false,
+          "rule_confidence": 0.9,
+          "rule_reasons": "parser_output_passed_quality_checks",
+          "retry_attempted": false,
+          "retry_succeeded": false,
+          "retry_action": "",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "would_retry": false,
+          "would_adjust_bbox": false,
+          "would_drop_candidate": false,
+          "safe_auto_action": false,
+          "human_review_required": false,
+          "auto_action_allowed": false,
+          "auto_decision_reason": "",
+          "failure_reason": "",
+          "preview": "| 类别 | 软件名称 | 输入 | 网站/本地安装 | 参考文献 | | --- | --- | --- | --- | --- | | 基于结构分析 |  |  |  |  | | 优化蛋白质表面电荷 | TKSA-MC PHEPS | 结构 结构 | http://tksamc.df.ibilce.unesp.br http://pheps.orgchm.bas.bg/home.html | [47] [48] | | 基于温度因子 | B-FITTER | 结构 | "
+        }
+      ]
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\文献汇总整理（市场那边调研的文献）\\徐惊东-SL文献\\19、两阶段pH控制对NeuAc产量的影响，Enhanced N‑acetyl‑d‑neuraminic production from glycerol and N‑acetyl‑d‑glucosamine by metabolically engineered Escherichia coli with a two‑stage pH‑shift control strategy.pdf",
+      "detect_ms": 1282,
+      "regions": [
+        {
+          "region_id": "table_region_p3_43.0_277.0_552.3_721.8",
+          "source": "table_region_detector",
+          "page": 3,
+          "bbox": [
+            43.023601531,
+            276.98260766699997,
+            552.251995086,
+            721.770006958
+          ],
+          "confidence": 0.8,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                51.023601531,
+                280.98260766699997,
+                248.42675153100004,
+                291.488607667
+              ],
+              "details": {
+                "text": "Table 1 Neu5Ac production with different energy sources"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.2,
+              "reason": "wide_horizontal_lines",
+              "bbox": [
+                43.023601531,
+                276.98260766699997,
+                552.251995086,
+                721.770006958
+              ],
+              "details": {
+                "count": 2
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                43.023601531,
+                276.98260766699997,
+                552.251995086,
+                721.770006958
+              ],
+              "details": {
+                "lines": 13
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.15,
+              "reason": "high_numeric_density",
+              "bbox": [
+                43.023601531,
+                276.98260766699997,
+                552.251995086,
+                721.770006958
+              ],
+              "details": {
+                "ratio": 0.216
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                43.023601531,
+                276.98260766699997,
+                552.251995086,
+                721.770006958
+              ],
+              "details": {
+                "ratio": 1.0
+              }
+            },
+            {
+              "source": "negative",
+              "score": -0.3,
+              "reason": "long_sentence_block",
+              "bbox": [
+                43.023601531,
+                276.98260766699997,
+                552.251995086,
+                721.770006958
+              ],
+              "details": {
+                "lines": 3
+              }
+            }
+          ]
+        },
+        {
+          "region_id": "table_region_p6_91.4_50.4_253.0_723.6",
+          "source": "table_region_detector",
+          "page": 6,
+          "bbox": [
+            91.397598266,
+            50.38022656299995,
+            252.954703447174,
+            723.6087009100004
+          ],
+          "confidence": 0.65,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "rotated_table_caption",
+              "bbox": [
+                97.397598266,
+                465.03865,
+                111.903598266,
+                717.5778
+              ],
+              "details": {
+                "text": "Table 2  Neu5Ac production with different initial GlcNAc concentrations"
+              }
+            },
+            {
+              "source": "rotation",
+              "score": 0.3,
+              "reason": "rotated_text_block",
+              "bbox": [
+                91.397598266,
+                50.38022656299995,
+                252.954703447174,
+                723.6087009100004
+              ],
+              "details": {
+                "chars": 832
+              }
+            }
+          ]
+        }
+      ],
+      "region_text_contexts": {
+        "table_region_p3_43.0_277.0_552.3_721.8": {
+          "word_count": 176,
+          "line_count": 17,
+          "long_line_count": 7,
+          "body_word_hits": 36,
+          "numeric_tokens": 38,
+          "single_char_tokens": 33,
+          "avg_token_len": 4.62
+        },
+        "table_region_p6_91.4_50.4_253.0_723.6": {
+          "word_count": 173,
+          "line_count": 80,
+          "long_line_count": 0,
+          "body_word_hits": 1,
+          "numeric_tokens": 78,
+          "single_char_tokens": 38,
+          "avg_token_len": 4.22
+        }
+      },
+      "parser_summaries": {
+        "region_guided": {
+          "duration_ms": 349,
+          "chunks": 1,
+          "error": ""
+        },
+        "pdfplumber": {
+          "duration_ms": 457,
+          "chunks": 1,
+          "error": ""
+        }
+      },
+      "results": [
+        {
+          "pdf": "19、两阶段pH控制对NeuAc产量的影响，Enhanced N‑acetyl‑d‑neuraminic production from glycerol and N‑acetyl‑d‑glucosamine by metabolically engineered Escherichia coli with a two‑stage pH‑shift control strategy.pdf",
+          "page": 3,
+          "table_label": "Table 1",
+          "caption": "Table 1 Neu5Ac production with different energy sources",
+          "region_id": "table_region_p3_43.0_277.0_552.3_721.8",
+          "region_bbox": [
+            43.023601531,
+            276.98260766699997,
+            552.251995086,
+            721.770006958
+          ],
+          "region_confidence": 0.8,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 349,
+          "rows": 22,
+          "cols": 6,
+          "chunk_bbox": [
+            51.00708383200009,
+            281.98560766699995,
+            530.0840796755001,
+            719.27179657
+          ],
+          "overlap": 1.0,
+          "rule_category": "header_or_span_complexity",
+          "recommended_action": "retry_text_strategy",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "structural_quality:low_consistency",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "retry_text_strategy",
+          "retry_rows": 22,
+          "retry_cols": 6,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "would_retry": false,
+          "would_adjust_bbox": false,
+          "would_drop_candidate": false,
+          "safe_auto_action": false,
+          "human_review_required": false,
+          "auto_action_allowed": false,
+          "auto_decision_reason": "",
+          "failure_reason": "",
+          "preview": "| Energy sou | rce | Neu5Ac (g | L −1) | Productivity | (g Biomass | | --- | --- | --- | --- | --- | --- | |  |  |  |  | L−1 h−1) |  | | Glucose |  | 11.90 ± 0. | 24 | 0.175 | 10.29 ± | | Glycerol |  | 13.97 ± 0. | 27 | 0.205 | 10.49 ± | | "
+        },
+        {
+          "pdf": "19、两阶段pH控制对NeuAc产量的影响，Enhanced N‑acetyl‑d‑neuraminic production from glycerol and N‑acetyl‑d‑glucosamine by metabolically engineered Escherichia coli with a two‑stage pH‑shift control strategy.pdf",
+          "page": 6,
+          "table_label": "Table 2",
+          "caption": "Table 2  Neu5Ac production with different initial GlcNAc concentrations",
+          "region_id": "table_region_p6_91.4_50.4_253.0_723.6",
+          "region_bbox": [
+            91.397598266,
+            50.38022656299995,
+            252.954703447174,
+            723.6087009100004
+          ],
+          "region_confidence": 0.65,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": false,
+          "duration_ms": 349,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "rule_category": "no_parser_output",
+          "recommended_action": "retry_text_strategy",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.6,
+          "rule_reasons": "region_confidence=0.65 | words=173 | strong_caption_region_without_parser_output",
+          "retry_attempted": true,
+          "retry_succeeded": false,
+          "retry_action": "retry_text_strategy",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "retry produced no overlapping table chunk",
+          "llm_judge_attempted": true,
+          "llm_failure_category": "no_parser_output",
+          "llm_recommended_action": "retry_text_strategy",
+          "llm_confidence": 0.7,
+          "llm_reason": "The parser produced no output for a region with a strong caption and 173 words, indicating a text layer fragmentation or strategy mismatch; retrying with a different text extraction strategy may recover the table.",
+          "llm_error": "",
+          "rule_llm_agree": true,
+          "would_retry": true,
+          "would_adjust_bbox": false,
+          "would_drop_candidate": false,
+          "safe_auto_action": true,
+          "human_review_required": false,
+          "auto_action_allowed": false,
+          "auto_decision_reason": "shadow mode only; action is recorded but not applied",
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        },
+        {
+          "pdf": "19、两阶段pH控制对NeuAc产量的影响，Enhanced N‑acetyl‑d‑neuraminic production from glycerol and N‑acetyl‑d‑glucosamine by metabolically engineered Escherichia coli with a two‑stage pH‑shift control strategy.pdf",
+          "page": 3,
+          "table_label": "Table 1",
+          "caption": "Table 1 Neu5Ac production with different energy sources",
+          "region_id": "table_region_p3_43.0_277.0_552.3_721.8",
+          "region_bbox": [
+            43.023601531,
+            276.98260766699997,
+            552.251995086,
+            721.770006958
+          ],
+          "region_confidence": 0.8,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 457,
+          "rows": 22,
+          "cols": 6,
+          "chunk_bbox": [
+            51.00708383200009,
+            281.98560766699995,
+            530.0840796755001,
+            719.27179657
+          ],
+          "overlap": 1.0,
+          "rule_category": "header_or_span_complexity",
+          "recommended_action": "retry_text_strategy",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "structural_quality:low_consistency",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "retry_text_strategy",
+          "retry_rows": 22,
+          "retry_cols": 6,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "would_retry": false,
+          "would_adjust_bbox": false,
+          "would_drop_candidate": false,
+          "safe_auto_action": false,
+          "human_review_required": false,
+          "auto_action_allowed": false,
+          "auto_decision_reason": "",
+          "failure_reason": "",
+          "preview": "| Energy sou | rce | Neu5Ac (g | L −1) | Productivity | (g Biomass | | --- | --- | --- | --- | --- | --- | |  |  |  |  | L−1 h−1) |  | | Glucose |  | 11.90 ± 0. | 24 | 0.175 | 10.29 ± | | Glycerol |  | 13.97 ± 0. | 27 | 0.205 | 10.49 ± | | "
+        },
+        {
+          "pdf": "19、两阶段pH控制对NeuAc产量的影响，Enhanced N‑acetyl‑d‑neuraminic production from glycerol and N‑acetyl‑d‑glucosamine by metabolically engineered Escherichia coli with a two‑stage pH‑shift control strategy.pdf",
+          "page": 6,
+          "table_label": "Table 2",
+          "caption": "Table 2  Neu5Ac production with different initial GlcNAc concentrations",
+          "region_id": "table_region_p6_91.4_50.4_253.0_723.6",
+          "region_bbox": [
+            91.397598266,
+            50.38022656299995,
+            252.954703447174,
+            723.6087009100004
+          ],
+          "region_confidence": 0.65,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": false,
+          "duration_ms": 457,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "rule_category": "no_parser_output",
+          "recommended_action": "retry_text_strategy",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.6,
+          "rule_reasons": "region_confidence=0.65 | words=173 | strong_caption_region_without_parser_output",
+          "retry_attempted": true,
+          "retry_succeeded": false,
+          "retry_action": "retry_text_strategy",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "retry produced no overlapping table chunk",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "would_retry": false,
+          "would_adjust_bbox": false,
+          "would_drop_candidate": false,
+          "safe_auto_action": false,
+          "human_review_required": false,
+          "auto_action_allowed": false,
+          "auto_decision_reason": "",
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        }
+      ]
+    }
+  ],
+  "llm_judge_sample": {
+    "requested_max_regions": 2,
+    "selected_regions": 2,
+    "attempted": 2,
+    "model": "deepseek-chat",
+    "decision_mode": "shadow"
+  },
+  "llm_judge_summary": {
+    "attempted_rows": 2,
+    "agree_count": 2,
+    "agreement_rate": 1.0,
+    "errors": {},
+    "rule_categories": {
+      "header_or_span_complexity": 1,
+      "no_parser_output": 1
+    },
+    "rule_actions": {
+      "retry_text_strategy": 2
+    },
+    "llm_categories": {
+      "header_or_span_complexity": 1,
+      "no_parser_output": 1
+    },
+    "llm_actions": {
+      "retry_text_strategy": 2
+    },
+    "safe_auto_actions": 2,
+    "human_review_required": 0,
+    "would_retry": 2,
+    "would_adjust_bbox": 0,
+    "would_drop_candidate": 0
+  }
+}

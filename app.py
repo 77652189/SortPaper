@@ -5,9 +5,9 @@ SortPaper — Streamlit 前端
 from __future__ import annotations
 
 import logging
+import os
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
-from pathlib import Path
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, TimeoutError as FutureTimeoutError, wait
 
 import streamlit as st
 from dotenv import load_dotenv
@@ -15,8 +15,15 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from app_utils import (
-    build_paper_id, _chunk_to_dict, build_snapshot, save_result, overwrite_result,
-    qdrant_search, RESULTS_DIR,
+    build_paper_id, build_snapshot, save_result, overwrite_result,
+    qdrant_search,
+)
+from app_config import (
+    BATCH_MAX_PAPER_WORKERS,
+    EMBEDDING_API_KEY_ENV,
+    PIPELINE_TIMEOUT_SECONDS,
+    RESULTS_DIR,
+    SAMPLE_DIR,
 )
 from app_pipeline import (
     run_preview, run_pipeline, store_parsed_chunks,
@@ -44,8 +51,33 @@ st.set_page_config(
 
 # ─── 常量 ──────────────────────────────────────────────────────────────────────
 
-SAMPLE_DIR = Path("data/sample_papers")
 LOGO = "📄"
+
+
+def _qdrant_paper_count(paper_id: str) -> int:
+    from qdrant_client.http import models as qdrant_models
+    from src.store.qdrant_store import QdrantStore
+
+    store = QdrantStore()
+    return store.client.count(
+        collection_name=store.collection,
+        count_filter=qdrant_models.Filter(
+            must=[qdrant_models.FieldCondition(
+                key="paper_id", match=qdrant_models.MatchValue(value=paper_id),
+            )],
+        ),
+    ).count
+
+
+def _existing_paper_reason(paper_id: str) -> str:
+    qdrant_count = _qdrant_paper_count(paper_id)
+    if qdrant_count > 0:
+        return f"已入库 {qdrant_count} 条记录"
+    return ""
+
+
+def _embedding_api_ready() -> bool:
+    return bool(os.getenv(EMBEDDING_API_KEY_ENV, "").strip())
 
 # ─── 主界面 ────────────────────────────────────────────────────────────────────
 
@@ -81,76 +113,159 @@ def main() -> None:
         st.session_state.current_paper = paper_id
         st.session_state.selected_saved = None
 
-    PIPELINE_TIMEOUT = 900
-
     # ── 批量模式 ──
     if batch_info and batch_info.get("pending"):
         batch_files = batch_info.get("files", [])
         if batch_files:
             progress = st.progress(0, "批量入库中…")
             status = st.empty()
+            results_view = st.empty()
             st.session_state.batch_results = []
             success_n = skip_n = fail_n = 0
 
+            prepared_jobs: list[dict] = []
+            seen_paper_ids: set[str] = set()
             for i, pdf_file in enumerate(batch_files):
-                pct = (i + 1) / len(batch_files)
-                status.info(f"({i+1}/{len(batch_files)}) 处理: {pdf_file.name}")
-
+                status.info(f"({i+1}/{len(batch_files)}) 预检查: {pdf_file.name}")
                 try:
                     file_bytes = pdf_file.read()
                     pid = build_paper_id(file_bytes)
-
-                    from src.store.qdrant_store import QdrantStore
-                    from qdrant_client.http import models as qdrant_models
-                    dup_store = QdrantStore()
-                    dup_count = dup_store.client.count(
-                        collection_name=dup_store.collection,
-                        count_filter=qdrant_models.Filter(
-                            must=[qdrant_models.FieldCondition(
-                                key="paper_id", match=qdrant_models.MatchValue(value=pid),
-                            )],
-                        ),
-                    ).count
-                    if dup_count > 0:
+                    if pid in seen_paper_ids:
                         skip_n += 1
                         st.session_state.batch_results.append({
-                            "file": pdf_file.name, "paper_id": pid, "status": "skip",
-                            "reason": f"已存在 {dup_count} 条记录",
+                            "no": i + 1, "file": pdf_file.name, "paper_id": pid,
+                            "status": "skip", "reason": "本批次重复",
                         })
-                        progress.progress(pct, f"({i+1}/{len(batch_files)}) {pdf_file.name} — 跳过（已入库）")
+                        progress.progress((i + 1) / len(batch_files), f"预检查 {i+1}/{len(batch_files)}")
                         continue
-
-                    t_start = time.time()
-                    with ThreadPoolExecutor(max_workers=1) as pool:
-                        fut = pool.submit(_process_one_pdf, file_bytes, pid, pdf_file.name)
-                        try:
-                            q_result = fut.result(timeout=PIPELINE_TIMEOUT)
-                        except FutureTimeoutError:
-                            fail_n += 1
-                            st.session_state.batch_results.append({
-                                "file": pdf_file.name, "paper_id": pid, "status": "fail",
-                                "reason": "超时",
-                            })
-                            progress.progress(pct, f"({i+1}/{len(batch_files)}) {pdf_file.name} — 超时")
-                            continue
-
-                    elapsed = time.time() - t_start
-                    success_n += 1
-                    st.session_state.batch_results.append({
-                        "file": pdf_file.name, "paper_id": pid,
-                        "status": "ok",
-                        "category": q_result.get("category", "?"),
-                        "chunks": q_result.get("chunks", 0),
-                        "time": f"{elapsed:.0f}s",
+                    seen_paper_ids.add(pid)
+                    existing_reason = _existing_paper_reason(pid)
+                    if existing_reason:
+                        skip_n += 1
+                        st.session_state.batch_results.append({
+                            "no": i + 1, "file": pdf_file.name, "paper_id": pid,
+                            "status": "skip", "reason": existing_reason,
+                        })
+                        progress.progress((i + 1) / len(batch_files), f"预检查 {i+1}/{len(batch_files)}")
+                        continue
+                    prepared_jobs.append({
+                        "no": i + 1,
+                        "file": pdf_file.name,
+                        "paper_id": pid,
+                        "bytes": file_bytes,
                     })
                 except Exception as exc:
                     fail_n += 1
                     st.session_state.batch_results.append({
-                        "file": pdf_file.name, "paper_id": pid if 'pid' in dir() else "?",
-                        "status": "fail", "reason": str(exc)[:200],
+                        "no": i + 1, "file": pdf_file.name, "paper_id": "?",
+                        "status": "fail", "reason": f"预检查失败: {str(exc)[:160]}",
                     })
+                progress.progress((i + 1) / len(batch_files), f"预检查 {i+1}/{len(batch_files)}")
 
-                progress.progress(pct)
+            if st.session_state.batch_results:
+                import pandas as pd
+                results_view.dataframe(
+                    pd.DataFrame(sorted(st.session_state.batch_results, key=lambda row: row.get("no", 0))),
+                    width="stretch",
+                    hide_index=True,
+                )
+
+            if prepared_jobs and not _embedding_api_ready():
+                fail_n += len(prepared_jobs)
+                reason = f"缺少 {EMBEDDING_API_KEY_ENV}，无法生成向量入库"
+                for job in prepared_jobs:
+                    st.session_state.batch_results.append({
+                        "no": job["no"],
+                        "file": job["file"],
+                        "paper_id": job["paper_id"],
+                        "status": "fail",
+                        "reason": reason,
+                    })
+                prepared_jobs = []
+                st.error(reason)
+
+            if prepared_jobs:
+                max_workers = min(BATCH_MAX_PAPER_WORKERS, len(prepared_jobs))
+                status.info(
+                    f"开始并行处理 {len(prepared_jobs)} 篇；论文并发 {max_workers}，"
+                    f"LLM 全局并发由配置控制"
+                )
+                with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                    future_jobs = {
+                        pool.submit(_process_one_pdf, job["bytes"], job["paper_id"], job["file"]): {
+                            **job,
+                            "started_at": time.time(),
+                        }
+                        for job in prepared_jobs
+                    }
+                    pending = set(future_jobs)
+                    while pending:
+                        done, pending = wait(pending, timeout=1, return_when=FIRST_COMPLETED)
+                        for fut in done:
+                            job = future_jobs[fut]
+                            try:
+                                q_result = fut.result()
+                                elapsed = float(q_result.get("total_seconds", 0) or 0)
+                                result_status = str(q_result.get("status", "ok") or "ok")
+                                if result_status in {"ok", "partial"}:
+                                    success_n += 1
+                                elif result_status == "skip":
+                                    skip_n += 1
+                                else:
+                                    fail_n += 1
+                                st.session_state.batch_results.append({
+                                    "no": job["no"],
+                                    "file": job["file"],
+                                    "paper_id": job["paper_id"],
+                                    "status": result_status,
+                                    "category": q_result.get("category", "?"),
+                                    "chunks": q_result.get("chunks", 0),
+                                    "stored": q_result.get("stored", 0),
+                                    "degraded": q_result.get("degraded", 0),
+                                    "store_failed": q_result.get("store_failed", 0),
+                                    "store_attempted": q_result.get("store_attempted", 0),
+                                    "excluded": q_result.get("excluded", 0),
+                                    "parse": f"{float(q_result.get('parse_seconds', 0) or 0):.0f}s",
+                                    "eval": f"{float(q_result.get('eval_seconds', 0) or 0):.0f}s",
+                                    "store": f"{float(q_result.get('store_seconds', 0) or 0):.0f}s",
+                                    "time": f"{elapsed:.0f}s",
+                                    "reason": q_result.get("reason", ""),
+                                })
+                            except Exception as exc:
+                                fail_n += 1
+                                st.session_state.batch_results.append({
+                                    "no": job["no"],
+                                    "file": job["file"],
+                                    "paper_id": job["paper_id"],
+                                    "status": "fail",
+                                    "reason": str(exc)[:200],
+                                })
+
+                        completed = success_n + skip_n + fail_n
+                        partial = sum(
+                            min(0.9, (time.time() - future_jobs[fut]["started_at"]) / max(PIPELINE_TIMEOUT_SECONDS, 1))
+                            for fut in pending
+                        )
+                        progress.progress(
+                            min(1.0, (completed + partial) / len(batch_files)),
+                            f"完成 {completed}/{len(batch_files)}；运行中 {len(pending)}",
+                        )
+                        if pending:
+                            running = sorted(
+                                (
+                                    f"{future_jobs[fut]['no']}. {future_jobs[fut]['file']} "
+                                    f"({time.time() - future_jobs[fut]['started_at']:.0f}s)"
+                                    for fut in pending
+                                )
+                            )
+                            status.info("运行中：\n" + "\n".join(running[:5]))
+                        if st.session_state.batch_results:
+                            import pandas as pd
+                            results_view.dataframe(
+                                pd.DataFrame(sorted(st.session_state.batch_results, key=lambda row: row.get("no", 0))),
+                                width="stretch",
+                                hide_index=True,
+                            )
 
             progress.empty()
             status.empty()
@@ -161,7 +276,7 @@ def main() -> None:
             if st.session_state.batch_results:
                 import pandas as pd
                 df = pd.DataFrame(st.session_state.batch_results)
-                st.dataframe(df, use_container_width=True, hide_index=True)
+                st.dataframe(df, width="stretch", hide_index=True)
 
             st.session_state.batch_trigger = False
         return
@@ -207,21 +322,25 @@ def main() -> None:
             else:
                 timeout_banner = st.info(
                     "⏳ 解析进行中…每次 API 调用最长等待 60 秒，"
-                    f"总超时 **{PIPELINE_TIMEOUT // 60} 分钟**。请勿刷新页面。",
+                    f"总超时 **{PIPELINE_TIMEOUT_SECONDS // 60} 分钟**。请勿刷新页面。",
                 )
-                pipeline_spinner = "📄 阶段 1/3: 解析中（LLM Judge · VisionParser）…" if mode == "一键入库" else "解析中（LLM Judge · VisionParser）…"
+                pipeline_spinner = (
+                    "📄 阶段 1/3: 解析中（LLM Judge · VisionParser）…"
+                    if mode == "一键入库"
+                    else "解析中（LLM Judge；不调用图片 VisionParser）…"
+                )
                 with st.spinner(pipeline_spinner):
                     with ThreadPoolExecutor(max_workers=1) as pool:
                         fut = pool.submit(run_pipeline, pdf_bytes, paper_id, filename)
                         try:
-                            result = fut.result(timeout=PIPELINE_TIMEOUT)
+                            result = fut.result(timeout=PIPELINE_TIMEOUT_SECONDS)
                         except FutureTimeoutError:
                             timeout_banner.error(
-                                f"⏰ **解析超时**（已等待 {PIPELINE_TIMEOUT // 60} 分钟）\n\n"
-                                "**可能原因：** DeepSeek / DashScope API 响应过慢或网络不稳定。\n\n"
+                                f"⏰ **解析超时**（已等待 {PIPELINE_TIMEOUT_SECONDS // 60} 分钟）\n\n"
+                                "**可能原因：** DeepSeek / OpenAI API 响应过慢或网络不稳定。\n\n"
                                 "**建议：**\n"
-                                "- 确认 `.env` 中 `DEEPSEEK_API_KEY` 与 `DASHSCOPE_API_KEY` 均有效且有余额\n"
-                                "- 稍后重试，或改用「快速预览」模式跳过所有 LLM 调用"
+                                f"- 确认 `.env` 中 `DEEPSEEK_API_KEY` 与 `{EMBEDDING_API_KEY_ENV}` 均有效且有余额\n"
+                                "- 稍后重试，或改用「快速预览」模式跳过图片 VisionParser 与入库流程；表格质量仍会调用 LLM Judge"
                             )
                             return
                 timeout_banner.empty()
@@ -276,8 +395,8 @@ def main() -> None:
                 4. 在各标签页查看解析结果
 
                 ---
-                **快速预览**：仅调用本地解析器（PyMuPDF + pdfplumber），即时出结果，无需 API 配额。
-                **完整流水线**：调用 LLM Judge 评估质量，图片调用 VisionParser 生成图片描述，最终写入 Qdrant 向量索引，支持语义检索。
+                **快速预览**：调用 PyMuPDF + pdfplumber 解析文本/表格，并使用 LLM Judge 做表格质量诊断；不调用图片 VisionParser，不写入向量索引。
+                **完整流水线**：在快速预览基础上补充图片 VisionParser、全量质量评估与 Qdrant 向量索引写入，支持语义检索。
                 """
             )
         with welcome_tabs[1]:
@@ -308,7 +427,7 @@ def main() -> None:
                 st.info("📊 请运行质量评估以获得分类、摘要和可信度")
                 col_btn, _ = st.columns([1, 3])
                 with col_btn:
-                    if st.button("📊 质量评估", use_container_width=True, type="primary",
+                    if st.button("📊 质量评估", width="stretch", type="primary",
                                  key=f"eval_{result.get('paper_id', '')}"):
                         with st.spinner("正在执行 Map-Reduce 质量评估（约 60~90 秒）…"):
                             eval_result = evaluate_parsed_chunks(result)
@@ -320,7 +439,7 @@ def main() -> None:
                 st.info("📥 质量评估已完成，请入库到 Qdrant")
                 col_btn, _ = st.columns([1, 3])
                 with col_btn:
-                    if st.button("📥 入库到 Qdrant", use_container_width=True, type="primary",
+                    if st.button("📥 入库到 Qdrant", width="stretch", type="primary",
                                  key=f"store_{result.get('paper_id', '')}"):
                         with st.spinner("正在检查重复并写入 Qdrant…"):
                             store_r = store_parsed_chunks(result)
@@ -341,7 +460,7 @@ def main() -> None:
             if quality.get("category"):
                 col_save, _ = st.columns([1, 3])
                 with col_save:
-                    if st.button("💾 保存解析结果", use_container_width=True,
+                    if st.button("💾 保存解析结果", width="stretch",
                                  key=f"save_{result.get('paper_id', '')}"):
                         fname = st.session_state.orig_filename or result.get("paper_id", "result")
                         snapshot = build_snapshot(result, fname)

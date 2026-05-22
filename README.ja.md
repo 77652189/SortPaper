@@ -69,7 +69,7 @@ PDF
 
 - **パーサー層** — `PyMuPDFParser`、`TableParser`、`VisionParser`
 - **判定層** — `LLMJudge`（qwen-max、セクション対応プロンプト）
-- **ストア層** — `FAISSStore`（text-embedding-v3、1024次元）
+- **ストア層** — `QdrantStore`（text-embedding-3-large、3072次元）
 - **オーケストレーション** — LangGraphファンアウト/ファインイン状態機械
 
 ## 🚀 クイックスタート
@@ -133,7 +133,7 @@ SortPaper/
 | 画像キャプション | qwen3-vl-plus (DashScope) |
 | LLM判定 | DeepSeek V4 Pro |
 | 品質評価 | DeepSeek V4 Pro（分類/Map）+ DeepSeek V4 Pro（Reduce） |
-| 埋め込み | text-embedding-v3 (DashScope, Dense+Sparse) |
+| 埋め込み | text-embedding-3-large (OpenAI, 3072d dense) |
 | リランカー | qwen3-rerank (DashScope) |
 | ベクトルストア | Qdrant（Hybrid Search: Dense + Sparse + RRF） |
 | Agent | Qwen-plus (DashScope Function Calling) |

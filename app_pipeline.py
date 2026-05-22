@@ -5,15 +5,16 @@ SortPaper Pipeline — 解析、评估、入库编排。
 from __future__ import annotations
 
 import logging
-import sys
+import os
 import tempfile
+import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from pathlib import Path
 
 from dotenv import load_dotenv
 load_dotenv()
 
+from app_config import EMBEDDING_API_KEY_ENV
 from app_utils import (
     build_paper_id, _chunk_to_dict, _generate_chunk_description,
     build_snapshot, save_result, overwrite_result,
@@ -23,13 +24,41 @@ from app_utils import (
 
 logger = logging.getLogger(__name__)
 
+_STORE_LOCKS: dict[str, threading.Lock] = {}
+_STORE_LOCKS_GUARD = threading.Lock()
+
+
+def _paper_store_lock(paper_id: str) -> threading.Lock:
+    with _STORE_LOCKS_GUARD:
+        lock = _STORE_LOCKS.get(paper_id)
+        if lock is None:
+            lock = threading.Lock()
+            _STORE_LOCKS[paper_id] = lock
+        return lock
+
+
+def _embedding_content_for_chunk(chunk: dict) -> str:
+    raw_content = str(chunk.get("raw_content", "") or "")
+    if chunk.get("content_type") != "table":
+        return raw_content
+    try:
+        from src.judge.table_judge import build_table_embedding_text
+        return build_table_embedding_text(
+            raw_content=raw_content,
+            metadata=chunk.get("metadata", {}) or {},
+        ) or raw_content
+    except Exception:
+        return raw_content
+
 def run_preview(pdf_bytes: bytes) -> dict:
-    """Quick preview: pdfplumber + PyMuPDF parsers + LLM Judge（无 camelot / Qwen-VL）。"""
+    """Preview parses full text/table structure and marks Vision work without calling it."""
     import sys
     sys.path.insert(0, ".")
+    from src.graph.pipeline_graph import _group_by_section, _is_noise
+    from src.judge.llm_judge import LLMJudge
+    from src.parsers.layout_chunk import LayoutMerger
     from src.parsers.pymupdf_parser import PyMuPDFParser
     from src.parsers.table_parser import TableParser
-    from src.parsers.layout_chunk import LayoutMerger
 
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
         tmp.write(pdf_bytes)
@@ -41,108 +70,156 @@ def run_preview(pdf_bytes: bytes) -> dict:
         wt_text = round(time.time() - t0_text, 1)
 
         t0_table = time.time()
-        # 快速预览只跑 pdfplumber，跳过 camelot（camelot 全文档耗时15-30s）
-        table_chunks = TableParser(tmp_path).parse(strategy="pdfplumber_only")
+        table_chunks = TableParser(
+            tmp_path,
+            enable_vision_fallback=False,
+        ).parse(strategy="all")
         wt_table = round(time.time() - t0_table, 1)
 
-        print(f"[preview] before merge: {len(text_chunks)} text + {len(table_chunks)} table")
-        for c in (text_chunks + table_chunks)[:5]:
-            print(f"  p{c.page} col{c.column} y{c.bbox[1]:.1f}-{c.bbox[3]:.1f} | {c.raw_content[:50]}")
-        merged_chunks = LayoutMerger.merge(text_chunks + table_chunks)
-        print(f"[preview] after merge: {len(merged_chunks)} chunks")
-
-        # 图片元数据（本地操作，无额外 API 费用）
-        import fitz  # type: ignore
-        doc = fitz.open(str(tmp_path))
-        images = []
-        for page_index in range(len(doc)):
-            page = doc[page_index]
-            img_list = page.get_images(full=True)
-            for img_info in img_list:
-                xref = img_info[0]
-                bbox_list = page.get_image_rects(xref)
-                bbox = tuple(bbox_list[0]) if bbox_list else None
-                images.append({
-                    "page": page_index + 1,
-                    "xref": xref,
-                    "width": img_info[2],
-                    "height": img_info[3],
-                    "bbox": bbox,
-                })
-        doc.close()
-
-        # LLM Judge（DeepSeek，文本 section + 表格 chunk 全部并行）
-        from concurrent.futures import ThreadPoolExecutor
-        from src.judge.llm_judge import LLMJudge
-        from src.graph.pipeline_graph import _is_noise, _group_by_section
+        image_chunks, images = _extract_image_placeholders(tmp_path)
+        merged_chunks = LayoutMerger.merge(text_chunks + table_chunks + image_chunks)
 
         verdicts: dict[str, dict] = {}
         t0_judge = time.time()
         pdf_path_str = str(tmp_path)
-
         noise_ids = {c.chunk_id for c in text_chunks if _is_noise(c.raw_content)}
 
-        # 构建所有任务（text section 和 table chunk 混合，统一并发）
         tasks: list[tuple] = []
         for sec in _group_by_section(text_chunks):
             if any(c.chunk_id not in noise_ids for c in sec):
                 tasks.append(("text", sec))
         for chunk in table_chunks:
-            tasks.append(("table", chunk))
+            if chunk.metadata.get("table_region_discovery_only"):
+                verdicts[chunk.chunk_id] = {
+                    "chunk_id": chunk.chunk_id,
+                    "passed": True,
+                    "score": chunk.metadata.get("table_region", {}).get("confidence", 1.0),
+                    "feedback": "table region discovery only; structure is not judged",
+                    "issue_type": "none",
+                }
+            else:
+                tasks.append(("table", chunk))
 
         def _run_judge(task):
             kind, obj = task
             if kind == "text":
                 section_chunks = obj
                 combined = "\n\n".join(c.raw_content for c in section_chunks)
-                v = LLMJudge().judge("text", combined, pdf_path_str)
+                verdict = LLMJudge().judge("text", combined, pdf_path_str)
                 return [
-                    (c.chunk_id, {"chunk_id": c.chunk_id, "passed": v.passed,
-                                  "score": v.score, "feedback": v.feedback})
+                    (c.chunk_id, {
+                        "chunk_id": c.chunk_id,
+                        "passed": verdict.passed,
+                        "score": verdict.score,
+                        "feedback": verdict.feedback,
+                    })
                     for c in section_chunks if c.chunk_id not in noise_ids
                 ]
-            else:
-                chunk = obj
-                v = LLMJudge().judge("table", chunk.raw_content, pdf_path_str)
-                return [(chunk.chunk_id, {"chunk_id": chunk.chunk_id, "passed": v.passed,
-                                          "score": v.score, "feedback": v.feedback,
-                                          "issue_type": v.issue_type})]
+
+            chunk = obj
+            verdict = LLMJudge().judge("table", chunk.raw_content, pdf_path_str)
+            return [(chunk.chunk_id, {
+                "chunk_id": chunk.chunk_id,
+                "passed": verdict.passed,
+                "score": verdict.score,
+                "feedback": verdict.feedback,
+                "issue_type": verdict.issue_type,
+            })]
 
         if tasks:
+            from concurrent.futures import ThreadPoolExecutor
             with ThreadPoolExecutor(max_workers=min(5, len(tasks))) as pool:
                 for pairs in pool.map(_run_judge, tasks):
-                    for cid, v in pairs:
-                        verdicts[cid] = v
+                    for cid, verdict in pairs:
+                        verdicts[cid] = verdict
 
         jt_judge = round(time.time() - t0_judge, 1)
-
     finally:
         tmp_path.unlink(missing_ok=True)
 
     return {
+        "paper_id": build_paper_id(pdf_bytes),
+        "_pdf_path": "",
         "text_chunks": [_chunk_to_dict(c) for c in text_chunks],
         "table_chunks": [_chunk_to_dict(c) for c in table_chunks],
+        "image_chunks": [_chunk_to_dict(c) for c in image_chunks],
         "merged_chunks": [_chunk_to_dict(c) for c in merged_chunks],
         "images": images,
         "verdicts": verdicts,
-        "mode": "preview",
-        # 计时（供耗时面板展示）
-        "worker_timing": {"text": wt_text, "table": wt_table},
+        "status": "preview",
+        "quality": {},
+        "worker_timing": {"text": wt_text, "table": wt_table, "image": 0},
         "judge_timing": {"text_table": jt_judge},
+        "merge_timing": 0,
+        "desc_timing": 0,
+        "mode": "preview",
     }
 
 
-def run_pipeline(pdf_bytes: bytes, paper_id: str, filename: str = "") -> dict:
+def _extract_image_placeholders(pdf_path: Path) -> tuple[list, list[dict]]:
+    """Return image placeholder chunks and metadata without calling Vision."""
+    import fitz  # type: ignore
+    from src.parsers.layout_chunk import LayoutChunk, infer_column
+
+    chunks = []
+    images: list[dict] = []
+    with fitz.open(str(pdf_path)) as doc:
+        for page_index, page in enumerate(doc, start=1):
+            page_width = float(page.rect.width)
+            for image_index, info in enumerate(page.get_images(full=True)):
+                xref = info[0]
+                rects = page.get_image_rects(xref)
+                if rects:
+                    bbox = tuple(float(v) for v in rects[0])
+                else:
+                    bbox = (0.0, 0.0, 0.0, 0.0)
+                width = int(info[2])
+                height = int(info[3])
+                images.append({
+                    "page": page_index,
+                    "xref": xref,
+                    "width": width,
+                    "height": height,
+                    "bbox": bbox,
+                    "vision_needed": True,
+                })
+                chunks.append(LayoutChunk(
+                    content_type="image",
+                    raw_content="[Preview placeholder] Image detected; GPT Vision parsing is needed here.",
+                    page=page_index,
+                    bbox=bbox,
+                    column=infer_column(page_width, bbox[0], bbox[2]),
+                    order_in_page=image_index,
+                    metadata={
+                        "parser": "preview_placeholder",
+                        "image_index": image_index,
+                        "xref": xref,
+                        "width": width,
+                        "height": height,
+                        "vision_needed": True,
+                    },
+                ))
+    return chunks, images
+
+
+def run_pipeline(
+    pdf_bytes: bytes,
+    paper_id: str,
+    filename: str = "",
+    persist_pdf: bool = True,
+) -> dict:
     """Parse pipeline: parsers + judge + merge（quality 和 store 由 Streamlit 按钮手动触发）。"""
     import sys
     sys.path.insert(0, ".")
     from src.graph.pipeline_graph import build_graph
 
     # 保存 PDF 副本供后续质量评估使用（用原始文件名，不用 hash）
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    safe_name = (filename or paper_id).replace("/", "_").replace("\\", "_")
-    persistent_pdf = RESULTS_DIR / f"{safe_name}.pdf"
-    persistent_pdf.write_bytes(pdf_bytes)
+    persistent_pdf: Path | None = None
+    if persist_pdf:
+        RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+        safe_name = (filename or paper_id).replace("/", "_").replace("\\", "_")
+        persistent_pdf = RESULTS_DIR / f"{safe_name}.pdf"
+        persistent_pdf.write_bytes(pdf_bytes)
 
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
         tmp.write(pdf_bytes)
@@ -183,17 +260,17 @@ def run_pipeline(pdf_bytes: bytes, paper_id: str, filename: str = "") -> dict:
 
             if node_name == "text_worker":
                 n = len(node_data.get("text_chunks", []))
-                print(f"  [text]   parsed {n} chunks ({t:.1f}s){retry_tag}", flush=True)
+                logger.info("[text] parsed %d chunks (%.1fs)%s", n, t, retry_tag)
             elif node_name == "table_worker":
                 n = len(node_data.get("table_chunks", []))
-                print(f"  [table]  parsed {n} tables ({t:.1f}s){retry_tag}", flush=True)
+                logger.info("[table] parsed %d tables (%.1fs)%s", n, t, retry_tag)
             elif node_name == "image_worker":
                 n = len(node_data.get("image_chunks", []))
-                print(f"  [image]  described {n} images ({t:.1f}s){retry_tag}", flush=True)
+                logger.info("[image] described %d images (%.1fs)%s", n, t, retry_tag)
             elif node_name == "judge_text":
                 v = node_data.get("text_verdicts", [])
                 p = sum(1 for x in v if x.get("passed"))
-                print(f"  [judge]  text: {p}/{len(v)} passed{retry_tag}", flush=True)
+                logger.info("[judge] text: %d/%d passed%s", p, len(v), retry_tag)
             elif node_name == "judge_table":
                 v = node_data.get("table_verdicts", [])
                 p = sum(1 for x in v if x.get("passed"))
@@ -201,17 +278,17 @@ def run_pipeline(pdf_bytes: bytes, paper_id: str, filename: str = "") -> dict:
                 for x in v:
                     it = x.get("issue_type", "?")
                     types[it] = types.get(it, 0) + 1
-                print(f"  [judge]  table: {p}/{len(v)} passed{retry_tag} | issue_types: {types}", flush=True)
+                logger.info("[judge] table: %d/%d passed%s | issue_types=%s", p, len(v), retry_tag, types)
             elif node_name == "judge_image":
                 v = node_data.get("image_verdicts", [])
                 p = sum(1 for x in v if x.get("passed"))
-                print(f"  [judge]  image: {p}/{len(v)} passed{retry_tag}", flush=True)
+                logger.info("[judge] image: %d/%d passed%s", p, len(v), retry_tag)
             elif node_name == "merge_chunks":
                 n = len(node_data.get("merged_chunks", []))
-                print(f"  [merge]  {n} merged chunks", flush=True)
+                logger.info("[merge] %d merged chunks", n)
             elif node_name == "finalize":
                 status = node_data.get("status", "done")
-                print(f"  [pipeline] {status}", flush=True)
+                logger.info("[pipeline] %s", status)
     finally:
         tmp_path.unlink(missing_ok=True)
 
@@ -242,7 +319,7 @@ def run_pipeline(pdf_bytes: bytes, paper_id: str, filename: str = "") -> dict:
 
     return {
         "paper_id": paper_id,
-        "_pdf_path": str(persistent_pdf),
+        "_pdf_path": str(persistent_pdf) if persistent_pdf else "",
         "text_chunks": [_chunk_to_dict(c) for c in final.get("text_chunks", [])],
         "table_chunks": [_chunk_to_dict(c) for c in final.get("table_chunks", [])],
         "image_chunks": [_chunk_to_dict(c) for c in final.get("image_chunks", [])],
@@ -273,6 +350,28 @@ def store_parsed_chunks(result: dict) -> dict:
     merged = result.get("merged_chunks", [])
     chunk_contexts = quality.get("chunk_contexts", {})
 
+    if not os.getenv(EMBEDDING_API_KEY_ENV, "").strip():
+        attempted = 0
+        for chunk in merged:
+            verdict = verdicts.get(chunk.get("chunk_id", ""))
+            if not verdict:
+                continue
+            if verdict.get("passed") or (
+                chunk.get("content_type") == "table"
+                and verdict.get("issue_type") != "false_positive"
+            ):
+                attempted += 1
+        return {
+            "stored": 0,
+            "degraded": 0,
+            "failed": attempted,
+            "excluded": 0,
+            "duplicate": False,
+            "attempted": attempted,
+            "missing_verdicts": 0,
+            "error": f"缺少 {EMBEDDING_API_KEY_ENV}，无法生成向量入库",
+        }
+
     # ── 重复检测 ──
     existing_count = store.client.count(
         collection_name=store.collection,
@@ -285,17 +384,43 @@ def store_parsed_chunks(result: dict) -> dict:
             "重复入库被阻止 | paper_id=%s | 已存在 %d 条记录 | 将跳过 %d 条新记录",
             paper_id, existing_count, len([c for c in merged if verdicts.get(c.get("chunk_id", ""), {}).get("passed")]),
         )
-        return {"stored": 0, "failed": 0, "duplicate": True, "existing_count": existing_count}
+        return {
+            "stored": 0,
+            "degraded": 0,
+            "failed": 0,
+            "excluded": 0,
+            "duplicate": True,
+            "existing_count": existing_count,
+            "attempted": 0,
+        }
 
     stored = 0
     degraded = 0
     failed = 0
+    excluded = 0
+    excluded_tables = 0
+    excluded_reasons: dict[str, int] = {}
+
+    def _record_excluded(chunk: dict) -> None:
+        nonlocal excluded, excluded_tables
+        excluded += 1
+        if chunk.get("content_type") == "table":
+            excluded_tables += 1
+        metadata = chunk.get("metadata", {}) or {}
+        reason = str(
+            metadata.get("storage_exclusion_reason")
+            or metadata.get("unparseable_reason")
+            or "excluded_from_storage"
+        )
+        excluded_reasons[reason] = excluded_reasons.get(reason, 0) + 1
 
     def _build_metadata(chunk: dict, v: dict, quality_label: str = "clean") -> dict:
         context = chunk_contexts.get(chunk.get("chunk_id", ""), "")
         raw_content = chunk.get("raw_content", "")
         display_content = f"{context}\n\n{raw_content}" if context else raw_content
+        chunk_metadata = dict(chunk.get("metadata", {}) or {})
         return {
+            **chunk_metadata,
             "page": chunk.get("page"),
             "bbox": chunk.get("bbox"),
             "column": chunk.get("column"),
@@ -318,21 +443,42 @@ def store_parsed_chunks(result: dict) -> dict:
             "context": context,
         }, display_content
 
+    attempted = 0
+    missing_verdicts = 0
+
     for chunk in merged:
         cid = chunk.get("chunk_id", "")
+        metadata = chunk.get("metadata", {}) or {}
+        if chunk.get("content_type") == "table":
+            try:
+                from src.judge.table_judge import build_storage_decision
+                storage_decision = build_storage_decision(
+                    content_type="table",
+                    metadata=metadata,
+                )
+                metadata.update(storage_decision)
+                chunk["metadata"] = metadata
+            except Exception:
+                pass
+        if metadata.get("excluded_from_storage"):
+            _record_excluded(chunk)
+            continue
+
         v = verdicts.get(cid)
         if not v:
+            missing_verdicts += 1
             continue
         ct = chunk.get("content_type", "text")
 
         if v.get("passed"):
             # 通过 → 正常存储
+            attempted += 1
             meta, display = _build_metadata(chunk, v, "clean")
             try:
                 store.add(
                     paper_id=paper_id, worker_type=ct,
                     content=display,
-                    embed_content=chunk.get("raw_content", ""),
+                    embed_content=_embedding_content_for_chunk(chunk),
                     metadata=meta,
                 )
                 stored += 1
@@ -342,13 +488,14 @@ def store_parsed_chunks(result: dict) -> dict:
 
         elif ct == "table" and v.get("issue_type") != "false_positive":
             # 表格解析质量差但非误检 → 降级存储（保留原始数据）
+            attempted += 1
             meta, display = _build_metadata(chunk, v, "degraded")
             meta["judge_feedback"] = v.get("feedback", "")
             try:
                 store.add(
                     paper_id=paper_id, worker_type=ct,
                     content=display,
-                    embed_content=chunk.get("raw_content", ""),
+                    embed_content=_embedding_content_for_chunk(chunk),
                     metadata=meta,
                 )
                 degraded += 1
@@ -356,44 +503,26 @@ def store_parsed_chunks(result: dict) -> dict:
                 logger.error("降级入库失败 chunk_id=%s: %s", cid, e)
                 failed += 1
 
-        # false_positive → 丢弃（参考文献/图注等）
+        elif ct == "table" and v.get("issue_type") == "false_positive":
+            metadata.setdefault("excluded_from_storage", True)
+            metadata.setdefault("storage_exclusion_reason", "quality judge marked table as false positive")
+            chunk["metadata"] = metadata
+            _record_excluded(chunk)
+
+        # false_positive → 不入库（参考文献/图注等），解析候选仍保留在结果中
 
     store.save("")
-    return {"stored": stored, "degraded": degraded, "failed": failed}
+    return {
+        "stored": stored,
+        "degraded": degraded,
+        "failed": failed,
+        "excluded": excluded,
+        "excluded_tables": excluded_tables,
+        "excluded_reasons": excluded_reasons,
+        "attempted": attempted,
+        "missing_verdicts": missing_verdicts,
+    }
 
-
-def _generate_chunk_description(content_type: str, raw_content: str) -> str:
-    """用 DeepSeek 为表格/图片生成一句英文描述（用于嵌入前缀）。
-
-    table → 描述表中数据的内容和维度
-    image → 描述图中的关键信息
-    """
-    import os
-    from openai import OpenAI
-
-    client = OpenAI(
-        api_key=os.getenv("DEEPSEEK_API_KEY"),
-        base_url="https://api.deepseek.com",
-    )
-    
-    type_label = "table" if content_type == "table" else "figure/image"
-    prompt = (
-        f"Write ONE short English sentence summarizing what this {type_label} is about. "
-        f"Focus on key concepts, entities, and data dimensions. Be specific.\n\n"
-        f"Content:\n{raw_content[:2000]}"
-    )
-
-    try:
-        resp = client.chat.completions.create(
-            model="deepseek-chat",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=80,
-            temperature=0.3,
-        )
-        return resp.choices[0].message.content.strip()
-    except Exception as e:
-        logger.warning("生成 %s 描述失败: %s", content_type, e)
-        return ""
 
 
 def evaluate_parsed_chunks(result: dict) -> dict:
@@ -414,19 +543,56 @@ def evaluate_parsed_chunks(result: dict) -> dict:
 
 def _process_one_pdf(file_bytes: bytes, paper_id: str, filename: str) -> dict:
     """一条龙：解析 → 质量评估 → 入库。返回 quality dict。"""
-    import sys
     t0 = time.time()
-    print(f"\n[batch] {filename} | pipeline start", flush=True); sys.stdout.flush()
+    stage_start = t0
+    logger.info("[batch] %s | pipeline start", filename)
     pipe_result = run_pipeline(file_bytes, paper_id, filename)
-    print(f"[batch] {filename} | pipeline done ({time.time()-t0:.0f}s) | quality eval start", flush=True); sys.stdout.flush()
+    parse_seconds = time.time() - stage_start
+    logger.info("[batch] %s | pipeline done (%.0fs) | quality eval start", filename, parse_seconds)
+
+    stage_start = time.time()
     q_result = evaluate_parsed_chunks(pipe_result)
-    print(f"[batch] {filename} | quality eval done ({time.time()-t0:.0f}s) | store start", flush=True); sys.stdout.flush()
+    eval_seconds = time.time() - stage_start
+    logger.info("[batch] %s | quality eval done (%.0fs) | store start", filename, time.time() - t0)
+
+    stage_start = time.time()
     pipe_result["quality"] = q_result
-    store_parsed_chunks(pipe_result)
-    print(f"[batch] {filename} | store done ({time.time()-t0:.0f}s)", flush=True); sys.stdout.flush()
+    with _paper_store_lock(paper_id):
+        store_result = store_parsed_chunks(pipe_result)
+    store_seconds = time.time() - stage_start
+    logger.info("[batch] %s | store done (%.0fs)", filename, time.time() - t0)
+    stored = int(store_result.get("stored", 0) or 0)
+    degraded = int(store_result.get("degraded", 0) or 0)
+    store_failed = int(store_result.get("failed", 0) or 0)
+    excluded = int(store_result.get("excluded", 0) or 0)
+    attempted = int(store_result.get("attempted", 0) or 0)
+    duplicate = bool(store_result.get("duplicate", False))
+    if duplicate:
+        status = "skip"
+        reason = f"已入库 {store_result.get('existing_count', 0)} 条记录"
+    elif store_failed:
+        status = "partial" if stored or degraded else "fail"
+        reason = str(store_result.get("error") or f"入库失败 {store_failed}/{attempted}")
+    elif attempted == 0 and not excluded:
+        status = "no_store"
+        reason = f"没有可入库 chunk；缺少 verdict {store_result.get('missing_verdicts', 0)}"
+    else:
+        status = "ok"
+        reason = ""
     return {
+        "status": status,
+        "reason": reason,
         "category": q_result.get("category", "?"),
         "credibility": q_result.get("credibility", 0),
         "chunks": len(pipe_result.get("merged_chunks", [])),
+        "stored": stored,
+        "degraded": degraded,
+        "store_failed": store_failed,
+        "excluded": excluded,
+        "store_attempted": attempted,
+        "parse_seconds": round(parse_seconds, 1),
+        "eval_seconds": round(eval_seconds, 1),
+        "store_seconds": round(store_seconds, 1),
+        "total_seconds": round(time.time() - t0, 1),
     }
 

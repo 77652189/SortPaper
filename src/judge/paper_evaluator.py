@@ -21,6 +21,7 @@ from src.judge.prompts import (
     MAP_CHUNK_PROMPT_LITE,
     REDUCE_PROMPT,
 )
+from src.judge.llm_runtime import run_llm_call
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,8 @@ MAX_CLASSIFY_CHUNKS = 25
 CONSISTENCY_THRESHOLD = 0.75
 # Map 阶段并发数
 MAX_MAP_WORKERS = 5
+MAX_MAP_BATCH_CHUNKS = 4
+MAX_MAP_BATCH_CHARS = 9000
 
 
 class PaperQualityEvaluator:
@@ -99,21 +102,30 @@ class PaperQualityEvaluator:
         t_map_start = time.time()
         map_results: list[dict] = [{}] * total
         completed = 0
-        with ThreadPoolExecutor(max_workers=min(MAX_MAP_WORKERS, total)) as pool:
-            futures = {
-                pool.submit(self._map_chunk, text_chunks[i].raw_content, i + 1, total, lite=use_lite): i
-                for i in range(total)
-            }
-            for future in as_completed(futures):
-                idx = futures[future]
-                try:
-                    map_results[idx] = future.result()
-                except Exception as exc:
-                    logger.warning("Map chunk %d/%d failed: %s", idx + 1, total, exc)
-                    map_results[idx] = {"key_points": [], "entities": []}
-                completed += 1
-                if completed % 10 == 0 or completed == total:
-                    print(f"  [eval] Map {completed}/{total} chunks ({time.time() - t_map_start:.0f}s)", flush=True)
+        map_batches = self._build_map_batches(text_chunks)
+        if map_batches:
+            with ThreadPoolExecutor(max_workers=min(MAX_MAP_WORKERS, len(map_batches))) as pool:
+                futures = {
+                    pool.submit(self._map_chunk_batch, batch, total, use_lite): batch
+                    for batch in map_batches
+                }
+                for future in as_completed(futures):
+                    batch = futures[future]
+                    try:
+                        batch_results = future.result()
+                    except Exception as exc:
+                        first_idx = batch[0][0] + 1 if batch else 0
+                        last_idx = batch[-1][0] + 1 if batch else 0
+                        logger.warning("Map batch chunks %d-%d/%d failed: %s", first_idx, last_idx, total, exc)
+                        batch_results = [
+                            (idx, {"key_points": [], "entities": []})
+                            for idx, _chunk in batch
+                        ]
+                    for idx, result in batch_results:
+                        map_results[idx] = result
+                    completed += len(batch)
+                    if completed % 10 == 0 or completed == total:
+                        print(f"  [eval] Map {completed}/{total} chunks ({time.time() - t_map_start:.0f}s)", flush=True)
         t_map = time.time() - t_map_start
         print(f"  [eval] Map done ({t_map:.0f}s)", flush=True)
 
@@ -322,6 +334,112 @@ class PaperQualityEvaluator:
             logger.warning("Map JSON 解析失败: chunk=%d/%d, msg=%s", chunk_index, total, message[:100])
             return {"key_points": [], "entities": []}
 
+    @staticmethod
+    def _build_map_batches(text_chunks: list[Any]) -> list[list[tuple[int, Any]]]:
+        batches: list[list[tuple[int, Any]]] = []
+        current: list[tuple[int, Any]] = []
+        current_chars = 0
+        for idx, chunk in enumerate(text_chunks):
+            content_len = len(str(getattr(chunk, "raw_content", "") or ""))
+            would_exceed_count = len(current) >= MAX_MAP_BATCH_CHUNKS
+            would_exceed_chars = bool(current) and current_chars + content_len > MAX_MAP_BATCH_CHARS
+            if would_exceed_count or would_exceed_chars:
+                batches.append(current)
+                current = []
+                current_chars = 0
+            current.append((idx, chunk))
+            current_chars += content_len
+        if current:
+            batches.append(current)
+        return batches
+
+    def _map_chunk_batch(
+        self,
+        batch: list[tuple[int, Any]],
+        total: int,
+        lite: bool = False,
+    ) -> list[tuple[int, dict[str, Any]]]:
+        if not batch:
+            return []
+        if len(batch) == 1:
+            idx, chunk = batch[0]
+            return [(idx, self._map_chunk(chunk.raw_content, idx + 1, total, lite=lite))]
+
+        blocks = []
+        for idx, chunk in batch:
+            blocks.append(
+                f'<chunk index="{idx + 1}" total="{total}">\n'
+                f"{chunk.raw_content}\n"
+                "</chunk>"
+            )
+        prompt = (
+            "你是论文关键信息提取员。下面是同一篇论文中的多个文本片段。"
+            "请分别提取每个 chunk 的核心信息，不要合并不同 chunk 的结果。\n\n"
+            "返回严格 JSON 数组，不要输出额外文字。数组中每一项格式为：\n"
+            "[{\n"
+            "  \"chunk_index\": 1,\n"
+            "  \"key_points\": [\"关键要点列表，每点一句话\"],\n"
+            "  \"contains_claim\": true,\n"
+            "  \"claim_detail\": \"如包含实验或方法声明，简要描述；否则为空字符串\",\n"
+            "  \"entities\": [\"提及的实体名称\"]\n"
+            "}]\n\n"
+            "如果某个 chunk 没有可用信息，也必须为它返回一项，key_points 和 entities 可为空数组。\n\n"
+            + "\n\n".join(blocks)
+        )
+        if lite:
+            prompt = prompt.replace(
+                "  \"contains_claim\": true,\n"
+                "  \"claim_detail\": \"如包含实验或方法声明，简要描述；否则为空字符串\",\n",
+                "",
+            )
+
+        message = self._call_deepseek(prompt)
+        try:
+            parsed = json.loads(message)
+        except json.JSONDecodeError:
+            logger.warning(
+                "Map batch JSON parse failed: chunks=%s, msg=%s",
+                [idx + 1 for idx, _chunk in batch],
+                message[:100],
+            )
+            return [
+                (idx, self._map_chunk(chunk.raw_content, idx + 1, total, lite=lite))
+                for idx, chunk in batch
+            ]
+
+        if isinstance(parsed, dict):
+            parsed = parsed.get("chunks") or parsed.get("results") or []
+        if not isinstance(parsed, list):
+            return [
+                (idx, self._map_chunk(chunk.raw_content, idx + 1, total, lite=lite))
+                for idx, chunk in batch
+            ]
+
+        by_index: dict[int, dict[str, Any]] = {}
+        for item in parsed:
+            if not isinstance(item, dict):
+                continue
+            try:
+                chunk_index = int(item.get("chunk_index", 0))
+            except (TypeError, ValueError):
+                continue
+            key_points = item.get("key_points", [])
+            entities = item.get("entities", [])
+            by_index[chunk_index] = {
+                "key_points": key_points if isinstance(key_points, list) else [],
+                "contains_claim": bool(item.get("contains_claim", False)),
+                "claim_detail": str(item.get("claim_detail", "") or ""),
+                "entities": entities if isinstance(entities, list) else [],
+            }
+
+        results: list[tuple[int, dict[str, Any]]] = []
+        for idx, chunk in batch:
+            result = by_index.get(idx + 1)
+            if result is None:
+                result = self._map_chunk(chunk.raw_content, idx + 1, total, lite=lite)
+            results.append((idx, result))
+        return results
+
     # ── Step 2 Reduce: 聚合 ───────────────────────────────────────────
 
     def _reduce(
@@ -369,10 +487,13 @@ class PaperQualityEvaluator:
             raise ValueError("DEEPSEEK_API_KEY 未设置")
 
         client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com/v1", timeout=60.0)
-        response = client.chat.completions.create(
-            model=model or self.model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.2,
-            max_tokens=4096,
+        response = run_llm_call(
+            lambda: client.chat.completions.create(
+                model=model or self.model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.2,
+                max_tokens=4096,
+            ),
+            label="deepseek-evaluator",
         )
         return response.choices[0].message.content or ""

@@ -1,0 +1,1980 @@
+{
+  "parsers": [
+    "region_guided",
+    "pdfplumber"
+  ],
+  "pdf_count": 5,
+  "llm_judge_enabled": false,
+  "bbox_candidates_enabled": true,
+  "pdf_reports": [
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\2026-04-10-毕赤酵母合成乳蛋白相关参考文献-郭施琪\\毕赤酵母（及组学）相关\\2009 Genome, secretome and glucose transport highlight unique.pdf",
+      "detect_ms": 328,
+      "caption_scan": {
+        "error": "",
+        "anchored_pages": [
+          3,
+          5
+        ],
+        "broad_pages": [
+          3,
+          5,
+          6
+        ],
+        "anchored_count": 2,
+        "broad_count": 3
+      },
+      "regions": [
+        {
+          "region_id": "table_region_p3_47.1_434.6_562.0_792.0",
+          "source": "table_region_detector",
+          "page": 3,
+          "bbox": [
+            47.14,
+            434.6057599999999,
+            562.0397720000001,
+            792.0
+          ],
+          "confidence": 1.0,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                55.14,
+                438.6057599999999,
+                554.0397720000001,
+                448.3257599999999
+              ],
+              "details": {
+                "text": "Table 1: Genome statistics overview similar methods for K. lactis [15] and C. albicans [16]"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                47.14,
+                434.6057599999999,
+                562.0397720000001,
+                792.0
+              ],
+              "details": {
+                "count": 4
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                47.14,
+                434.6057599999999,
+                562.0397720000001,
+                792.0
+              ],
+              "details": {
+                "lines": 42
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                47.14,
+                434.6057599999999,
+                562.0397720000001,
+                792.0
+              ],
+              "details": {
+                "ratio": 0.991
+              }
+            }
+          ]
+        },
+        {
+          "region_id": "table_region_p5_47.1_106.7_562.0_769.3",
+          "source": "table_region_detector",
+          "page": 5,
+          "bbox": [
+            47.14,
+            106.73540000000003,
+            562.04,
+            769.26
+          ],
+          "confidence": 1.0,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                55.14,
+                110.73540000000003,
+                202.114044,
+                118.71540000000005
+              ],
+              "details": {
+                "text": "Table 2: Secreted proteins of P. pastoris"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                47.14,
+                106.73540000000003,
+                562.04,
+                769.26
+              ],
+              "details": {
+                "count": 44
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                47.14,
+                106.73540000000003,
+                562.04,
+                769.26
+              ],
+              "details": {
+                "lines": 30
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.15,
+              "reason": "high_numeric_density",
+              "bbox": [
+                47.14,
+                106.73540000000003,
+                562.04,
+                769.26
+              ],
+              "details": {
+                "ratio": 0.345
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                47.14,
+                106.73540000000003,
+                562.04,
+                769.26
+              ],
+              "details": {
+                "ratio": 0.936
+              }
+            }
+          ]
+        }
+      ],
+      "region_text_contexts": {
+        "table_region_p3_47.1_434.6_562.0_792.0": {
+          "word_count": 328,
+          "line_count": 44,
+          "long_line_count": 4,
+          "body_word_hits": 75,
+          "numeric_tokens": 50,
+          "single_char_tokens": 16,
+          "avg_token_len": 5.36
+        },
+        "table_region_p5_47.1_106.7_562.0_769.3": {
+          "word_count": 235,
+          "line_count": 38,
+          "long_line_count": 1,
+          "body_word_hits": 15,
+          "numeric_tokens": 81,
+          "single_char_tokens": 32,
+          "avg_token_len": 6.81
+        }
+      },
+      "parser_summaries": {
+        "region_guided": {
+          "duration_ms": 304,
+          "chunks": 1,
+          "error": ""
+        },
+        "pdfplumber": {
+          "duration_ms": 241,
+          "chunks": 1,
+          "error": ""
+        }
+      },
+      "results": [
+        {
+          "pdf": "2009 Genome, secretome and glucose transport highlight unique.pdf",
+          "page": 3,
+          "table_label": "Table 1",
+          "caption": "Table 1: Genome statistics overview similar methods for K. lactis [15] and C. albicans [16]",
+          "region_id": "table_region_p3_47.1_434.6_562.0_792.0",
+          "region_bbox": [
+            47.14,
+            434.6057599999999,
+            562.0397720000001,
+            792.0
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": false,
+          "duration_ms": 304,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "rule_category": "body_text_contamination",
+          "recommended_action": "shrink_bbox",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "region_confidence=1.00 | words=328 | many_long_lines_or_body_words",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "shrink_bbox",
+          "retry_rows": 16,
+          "retry_cols": 7,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "would_retry": false,
+          "would_adjust_bbox": false,
+          "would_drop_candidate": false,
+          "safe_auto_action": false,
+          "human_review_required": false,
+          "auto_action_allowed": false,
+          "auto_decision_reason": "",
+          "candidate_score": 0.02,
+          "candidate_tier": "failed",
+          "candidate_reasons": "no_parser_output | too_few_rows | too_few_cols | text_context_body_heavy",
+          "retry_candidate_score": 0.805,
+          "retry_score_delta": 0.785,
+          "retry_score_verdict": "improved",
+          "retry_adoptable": true,
+          "excluded_from_storage": true,
+          "storage_exclusion_reason": "failed table self-check with no usable parser output",
+          "storage_decision_source": "failed_self_check_no_structure",
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        },
+        {
+          "pdf": "2009 Genome, secretome and glucose transport highlight unique.pdf",
+          "page": 5,
+          "table_label": "Table 2",
+          "caption": "Table 2: Secreted proteins of P. pastoris",
+          "region_id": "table_region_p5_47.1_106.7_562.0_769.3",
+          "region_bbox": [
+            47.14,
+            106.73540000000003,
+            562.04,
+            769.26
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 304,
+          "rows": 3,
+          "cols": 5,
+          "chunk_bbox": [
+            59.099999999999966,
+            128.7305,
+            497.369028,
+            733.710702
+          ],
+          "overlap": 1.0,
+          "rule_category": "ok",
+          "recommended_action": "accept",
+          "needs_llm_judge": false,
+          "rule_confidence": 0.9,
+          "rule_reasons": "parser_output_passed_quality_checks",
+          "retry_attempted": false,
+          "retry_succeeded": false,
+          "retry_action": "",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "would_retry": false,
+          "would_adjust_bbox": false,
+          "would_drop_candidate": false,
+          "safe_auto_action": false,
+          "human_review_required": false,
+          "auto_action_allowed": false,
+          "auto_decision_reason": "",
+          "candidate_score": 0.97,
+          "candidate_tier": "strong",
+          "candidate_reasons": "too_few_data_rows | text_context_body_heavy",
+          "retry_candidate_score": 0.0,
+          "retry_score_delta": 0.0,
+          "retry_score_verdict": "",
+          "retry_adoptable": false,
+          "excluded_from_storage": false,
+          "storage_exclusion_reason": "",
+          "storage_decision_source": "table_self_check_passed_or_repairable",
+          "failure_reason": "",
+          "preview": "| PIPA ID | Predicted function theoret | ical pI/MW [kDa] Predicted | N-glycosylation | Predicted | | --- | --- | --- | --- | --- | |  |  |  | sites |  | | PIPA00211 | Covalently-bound cell wall protein of | 5.01/45.73 | 1 | secreted |"
+        },
+        {
+          "pdf": "2009 Genome, secretome and glucose transport highlight unique.pdf",
+          "page": 3,
+          "table_label": "Table 1",
+          "caption": "Table 1: Genome statistics overview similar methods for K. lactis [15] and C. albicans [16]",
+          "region_id": "table_region_p3_47.1_434.6_562.0_792.0",
+          "region_bbox": [
+            47.14,
+            434.6057599999999,
+            562.0397720000001,
+            792.0
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": false,
+          "duration_ms": 241,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "rule_category": "body_text_contamination",
+          "recommended_action": "shrink_bbox",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "region_confidence=1.00 | words=328 | many_long_lines_or_body_words",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "shrink_bbox",
+          "retry_rows": 16,
+          "retry_cols": 7,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "would_retry": false,
+          "would_adjust_bbox": false,
+          "would_drop_candidate": false,
+          "safe_auto_action": false,
+          "human_review_required": false,
+          "auto_action_allowed": false,
+          "auto_decision_reason": "",
+          "candidate_score": 0.02,
+          "candidate_tier": "failed",
+          "candidate_reasons": "no_parser_output | too_few_rows | too_few_cols | text_context_body_heavy",
+          "retry_candidate_score": 0.805,
+          "retry_score_delta": 0.785,
+          "retry_score_verdict": "improved",
+          "retry_adoptable": true,
+          "excluded_from_storage": true,
+          "storage_exclusion_reason": "failed table self-check with no usable parser output",
+          "storage_decision_source": "failed_self_check_no_structure",
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        },
+        {
+          "pdf": "2009 Genome, secretome and glucose transport highlight unique.pdf",
+          "page": 5,
+          "table_label": "Table 2",
+          "caption": "Table 2: Secreted proteins of P. pastoris",
+          "region_id": "table_region_p5_47.1_106.7_562.0_769.3",
+          "region_bbox": [
+            47.14,
+            106.73540000000003,
+            562.04,
+            769.26
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 241,
+          "rows": 3,
+          "cols": 5,
+          "chunk_bbox": [
+            59.099999999999966,
+            128.7305,
+            497.369028,
+            733.710702
+          ],
+          "overlap": 1.0,
+          "rule_category": "ok",
+          "recommended_action": "accept",
+          "needs_llm_judge": false,
+          "rule_confidence": 0.9,
+          "rule_reasons": "parser_output_passed_quality_checks",
+          "retry_attempted": false,
+          "retry_succeeded": false,
+          "retry_action": "",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "would_retry": false,
+          "would_adjust_bbox": false,
+          "would_drop_candidate": false,
+          "safe_auto_action": false,
+          "human_review_required": false,
+          "auto_action_allowed": false,
+          "auto_decision_reason": "",
+          "candidate_score": 0.97,
+          "candidate_tier": "strong",
+          "candidate_reasons": "too_few_data_rows | text_context_body_heavy",
+          "retry_candidate_score": 0.0,
+          "retry_score_delta": 0.0,
+          "retry_score_verdict": "",
+          "retry_adoptable": false,
+          "excluded_from_storage": false,
+          "storage_exclusion_reason": "",
+          "storage_decision_source": "table_self_check_passed_or_repairable",
+          "failure_reason": "",
+          "preview": "| PIPA ID | Predicted function theoret | ical pI/MW [kDa] Predicted | N-glycosylation | Predicted | | --- | --- | --- | --- | --- | |  |  |  | sites |  | | PIPA00211 | Covalently-bound cell wall protein of | 5.01/45.73 | 1 | secreted |"
+        }
+      ]
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\文献汇总整理（市场那边调研的文献）\\学习班\\j.mimet.2011.04.018.pdf",
+      "detect_ms": 403,
+      "caption_scan": {
+        "error": "",
+        "anchored_pages": [
+          2,
+          6
+        ],
+        "broad_pages": [
+          1,
+          2,
+          6
+        ],
+        "anchored_count": 2,
+        "broad_count": 3
+      },
+      "regions": [
+        {
+          "region_id": "table_region_p2_34.5_53.4_569.5_713.0",
+          "source": "table_region_detector",
+          "page": 2,
+          "bbox": [
+            34.5197,
+            53.375747219999994,
+            569.5443437,
+            713.0288135999999
+          ],
+          "confidence": 1.0,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                42.5197,
+                57.375747219999994,
+                561.5443437,
+                65.34594721999997
+              ],
+              "details": {
+                "text": "Table1 laboratory media (Davis et al., 2005). Moreover, this study also"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                34.5197,
+                53.375747219999994,
+                569.5443437,
+                713.0288135999999
+              ],
+              "details": {
+                "count": 12
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                34.5197,
+                53.375747219999994,
+                569.5443437,
+                713.0288135999999
+              ],
+              "details": {
+                "lines": 56
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                34.5197,
+                53.375747219999994,
+                569.5443437,
+                713.0288135999999
+              ],
+              "details": {
+                "ratio": 0.819
+              }
+            }
+          ]
+        },
+        {
+          "region_id": "table_region_p2_34.5_559.9_569.5_793.7",
+          "source": "table_region_detector",
+          "page": 2,
+          "bbox": [
+            34.5197,
+            559.882936,
+            569.543,
+            793.701
+          ],
+          "confidence": 0.95,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                310.507,
+                563.882936,
+                332.4098352,
+                570.2589360000001
+              ],
+              "details": {
+                "text": "Table3"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                34.5197,
+                559.882936,
+                569.543,
+                793.701
+              ],
+              "details": {
+                "count": 12
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                34.5197,
+                559.882936,
+                569.543,
+                793.701
+              ],
+              "details": {
+                "lines": 14
+              }
+            }
+          ]
+        }
+      ],
+      "region_text_contexts": {
+        "table_region_p2_34.5_53.4_569.5_713.0": {
+          "word_count": 468,
+          "line_count": 104,
+          "long_line_count": 6,
+          "body_word_hits": 284,
+          "numeric_tokens": 23,
+          "single_char_tokens": 8,
+          "avg_token_len": 11.67
+        },
+        "table_region_p2_34.5_559.9_569.5_793.7": {
+          "word_count": 45,
+          "line_count": 29,
+          "long_line_count": 0,
+          "body_word_hits": 65,
+          "numeric_tokens": 4,
+          "single_char_tokens": 0,
+          "avg_token_len": 31.96
+        }
+      },
+      "parser_summaries": {
+        "region_guided": {
+          "duration_ms": 385,
+          "chunks": 1,
+          "error": ""
+        },
+        "pdfplumber": {
+          "duration_ms": 351,
+          "chunks": 1,
+          "error": ""
+        }
+      },
+      "results": [
+        {
+          "pdf": "j.mimet.2011.04.018.pdf",
+          "page": 2,
+          "table_label": "Table 1",
+          "caption": "Table1 laboratory media (Davis et al., 2005). Moreover, this study also",
+          "region_id": "table_region_p2_34.5_53.4_569.5_713.0",
+          "region_bbox": [
+            34.5197,
+            53.375747219999994,
+            569.5443437,
+            713.0288135999999
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 385,
+          "rows": 10,
+          "cols": 2,
+          "chunk_bbox": [
+            48.47169600000001,
+            57.375747219999994,
+            561.6120904,
+            705.4972339999999
+          ],
+          "overlap": 1.0,
+          "rule_category": "ok",
+          "recommended_action": "accept",
+          "needs_llm_judge": false,
+          "rule_confidence": 0.9,
+          "rule_reasons": "parser_output_passed_quality_checks",
+          "retry_attempted": false,
+          "retry_succeeded": false,
+          "retry_action": "",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "would_retry": false,
+          "would_adjust_bbox": false,
+          "would_drop_candidate": false,
+          "safe_auto_action": false,
+          "human_review_required": false,
+          "auto_action_allowed": false,
+          "auto_decision_reason": "",
+          "candidate_score": 0.773,
+          "candidate_tier": "usable",
+          "candidate_reasons": "text_context_body_heavy",
+          "retry_candidate_score": 0.0,
+          "retry_score_delta": 0.0,
+          "retry_score_verdict": "",
+          "retry_adoptable": false,
+          "excluded_from_storage": false,
+          "storage_exclusion_reason": "",
+          "storage_decision_source": "table_self_check_passed_or_repairable",
+          "failure_reason": "",
+          "preview": "| column 1 | column 2 | | --- | --- | | ble1 me interacting factors influencing gene expression, the viable but not | cultural | | BNC)state,microbialsurvivalandlossofviabilityintheenvironment. |  | | Soiltexture |  | | pH Temperature |  | "
+        },
+        {
+          "pdf": "j.mimet.2011.04.018.pdf",
+          "page": 2,
+          "table_label": "Table 3",
+          "caption": "Table3",
+          "region_id": "table_region_p2_34.5_559.9_569.5_793.7",
+          "region_bbox": [
+            34.5197,
+            559.882936,
+            569.543,
+            793.701
+          ],
+          "region_confidence": 0.95,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 385,
+          "rows": 10,
+          "cols": 2,
+          "chunk_bbox": [
+            48.47169600000001,
+            57.375747219999994,
+            561.6120904,
+            705.4972339999999
+          ],
+          "overlap": 0.597,
+          "rule_category": "ok",
+          "recommended_action": "accept",
+          "needs_llm_judge": false,
+          "rule_confidence": 0.9,
+          "rule_reasons": "parser_output_passed_quality_checks",
+          "retry_attempted": false,
+          "retry_succeeded": false,
+          "retry_action": "",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "would_retry": false,
+          "would_adjust_bbox": false,
+          "would_drop_candidate": false,
+          "safe_auto_action": false,
+          "human_review_required": false,
+          "auto_action_allowed": false,
+          "auto_decision_reason": "",
+          "candidate_score": 0.693,
+          "candidate_tier": "usable",
+          "candidate_reasons": "bbox_much_larger_than_region | text_context_body_heavy",
+          "retry_candidate_score": 0.0,
+          "retry_score_delta": 0.0,
+          "retry_score_verdict": "",
+          "retry_adoptable": false,
+          "excluded_from_storage": false,
+          "storage_exclusion_reason": "",
+          "storage_decision_source": "table_self_check_passed_or_repairable",
+          "failure_reason": "",
+          "preview": "| column 1 | column 2 | | --- | --- | | ble1 me interacting factors influencing gene expression, the viable but not | cultural | | BNC)state,microbialsurvivalandlossofviabilityintheenvironment. |  | | Soiltexture |  | | pH Temperature |  | "
+        },
+        {
+          "pdf": "j.mimet.2011.04.018.pdf",
+          "page": 2,
+          "table_label": "Table 1",
+          "caption": "Table1 laboratory media (Davis et al., 2005). Moreover, this study also",
+          "region_id": "table_region_p2_34.5_53.4_569.5_713.0",
+          "region_bbox": [
+            34.5197,
+            53.375747219999994,
+            569.5443437,
+            713.0288135999999
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 351,
+          "rows": 10,
+          "cols": 2,
+          "chunk_bbox": [
+            48.47169600000001,
+            57.375747219999994,
+            561.6120904,
+            705.4972339999999
+          ],
+          "overlap": 1.0,
+          "rule_category": "ok",
+          "recommended_action": "accept",
+          "needs_llm_judge": false,
+          "rule_confidence": 0.9,
+          "rule_reasons": "parser_output_passed_quality_checks",
+          "retry_attempted": false,
+          "retry_succeeded": false,
+          "retry_action": "",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "would_retry": false,
+          "would_adjust_bbox": false,
+          "would_drop_candidate": false,
+          "safe_auto_action": false,
+          "human_review_required": false,
+          "auto_action_allowed": false,
+          "auto_decision_reason": "",
+          "candidate_score": 0.773,
+          "candidate_tier": "usable",
+          "candidate_reasons": "text_context_body_heavy",
+          "retry_candidate_score": 0.0,
+          "retry_score_delta": 0.0,
+          "retry_score_verdict": "",
+          "retry_adoptable": false,
+          "excluded_from_storage": false,
+          "storage_exclusion_reason": "",
+          "storage_decision_source": "table_self_check_passed_or_repairable",
+          "failure_reason": "",
+          "preview": "| column 1 | column 2 | | --- | --- | | ble1 me interacting factors influencing gene expression, the viable but not | cultural | | BNC)state,microbialsurvivalandlossofviabilityintheenvironment. |  | | Soiltexture |  | | pH Temperature |  | "
+        },
+        {
+          "pdf": "j.mimet.2011.04.018.pdf",
+          "page": 2,
+          "table_label": "Table 3",
+          "caption": "Table3",
+          "region_id": "table_region_p2_34.5_559.9_569.5_793.7",
+          "region_bbox": [
+            34.5197,
+            559.882936,
+            569.543,
+            793.701
+          ],
+          "region_confidence": 0.95,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 351,
+          "rows": 10,
+          "cols": 2,
+          "chunk_bbox": [
+            48.47169600000001,
+            57.375747219999994,
+            561.6120904,
+            705.4972339999999
+          ],
+          "overlap": 0.597,
+          "rule_category": "ok",
+          "recommended_action": "accept",
+          "needs_llm_judge": false,
+          "rule_confidence": 0.9,
+          "rule_reasons": "parser_output_passed_quality_checks",
+          "retry_attempted": false,
+          "retry_succeeded": false,
+          "retry_action": "",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "would_retry": false,
+          "would_adjust_bbox": false,
+          "would_drop_candidate": false,
+          "safe_auto_action": false,
+          "human_review_required": false,
+          "auto_action_allowed": false,
+          "auto_decision_reason": "",
+          "candidate_score": 0.693,
+          "candidate_tier": "usable",
+          "candidate_reasons": "bbox_much_larger_than_region | text_context_body_heavy",
+          "retry_candidate_score": 0.0,
+          "retry_score_delta": 0.0,
+          "retry_score_verdict": "",
+          "retry_adoptable": false,
+          "excluded_from_storage": false,
+          "storage_exclusion_reason": "",
+          "storage_decision_source": "table_self_check_passed_or_repairable",
+          "failure_reason": "",
+          "preview": "| column 1 | column 2 | | --- | --- | | ble1 me interacting factors influencing gene expression, the viable but not | cultural | | BNC)state,microbialsurvivalandlossofviabilityintheenvironment. |  | | Soiltexture |  | | pH Temperature |  | "
+        }
+      ]
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\文献汇总整理（市场那边调研的文献）\\徐惊东-SL文献\\55、cstI晶体结构分析，Structural analysis of the alpha-2,3-sialyltransferase Cst-I from Campylobacter jejuni in apo and substrate-analogue bound forms.pdf",
+      "detect_ms": 265,
+      "caption_scan": {
+        "error": "",
+        "anchored_pages": [
+          3
+        ],
+        "broad_pages": [
+          3
+        ],
+        "anchored_count": 1,
+        "broad_count": 1
+      },
+      "regions": [
+        {
+          "region_id": "table_region_p3_310.0_47.6_565.5_712.8",
+          "source": "table_region_detector",
+          "page": 3,
+          "bbox": [
+            309.981,
+            47.57437700000003,
+            565.452,
+            712.824226
+          ],
+          "confidence": 1.0,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                317.981,
+                51.57437700000003,
+                496.76048,
+                60.05537700000002
+              ],
+              "details": {
+                "text": "Table1: DataCollectionandRefinementStatistics"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                309.981,
+                47.57437700000003,
+                565.452,
+                712.824226
+              ],
+              "details": {
+                "count": 5
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                309.981,
+                47.57437700000003,
+                565.452,
+                712.824226
+              ],
+              "details": {
+                "lines": 57
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.15,
+              "reason": "high_numeric_density",
+              "bbox": [
+                309.981,
+                47.57437700000003,
+                565.452,
+                712.824226
+              ],
+              "details": {
+                "ratio": 0.236
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                309.981,
+                47.57437700000003,
+                565.452,
+                712.824226
+              ],
+              "details": {
+                "ratio": 0.868
+              }
+            }
+          ]
+        },
+        {
+          "region_id": "table_region_p3_46.6_433.9_565.8_781.7",
+          "source": "table_region_detector",
+          "page": 3,
+          "bbox": [
+            46.560119799999995,
+            433.87267539999993,
+            565.8115099999999,
+            781.6644436
+          ],
+          "confidence": 0.55,
+          "band": "gray",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                54.56138240000007,
+                437.87267539999993,
+                557.4712757999998,
+                449.4074457999997
+              ],
+              "details": {
+                "text": "Table 1. membersofCAZyfamily42),andanadditionalC-terminal"
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                46.560119799999995,
+                433.87267539999993,
+                565.8115099999999,
+                781.6644436
+              ],
+              "details": {
+                "lines": 36
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                46.560119799999995,
+                433.87267539999993,
+                565.8115099999999,
+                781.6644436
+              ],
+              "details": {
+                "ratio": 0.902
+              }
+            },
+            {
+              "source": "negative",
+              "score": -0.2,
+              "reason": "section_like_body_region",
+              "bbox": [
+                46.560119799999995,
+                433.87267539999993,
+                565.8115099999999,
+                781.6644436
+              ]
+            }
+          ]
+        }
+      ],
+      "region_text_contexts": {
+        "table_region_p3_310.0_47.6_565.5_712.8": {
+          "word_count": 281,
+          "line_count": 72,
+          "long_line_count": 1,
+          "body_word_hits": 77,
+          "numeric_tokens": 66,
+          "single_char_tokens": 29,
+          "avg_token_len": 7.99
+        },
+        "table_region_p3_46.6_433.9_565.8_781.7": {
+          "word_count": 288,
+          "line_count": 54,
+          "long_line_count": 3,
+          "body_word_hits": 124,
+          "numeric_tokens": 29,
+          "single_char_tokens": 8,
+          "avg_token_len": 8.89
+        }
+      },
+      "parser_summaries": {
+        "region_guided": {
+          "duration_ms": 415,
+          "chunks": 0,
+          "error": ""
+        },
+        "pdfplumber": {
+          "duration_ms": 346,
+          "chunks": 0,
+          "error": ""
+        }
+      },
+      "results": [
+        {
+          "pdf": "55、cstI晶体结构分析，Structural analysis of the alpha-2,3-sialyltransferase Cst-I from Campylobacter jejuni in apo and substrate-analogue bound forms.pdf",
+          "page": 3,
+          "table_label": "Table 1",
+          "caption": "Table1: DataCollectionandRefinementStatistics",
+          "region_id": "table_region_p3_310.0_47.6_565.5_712.8",
+          "region_bbox": [
+            309.981,
+            47.57437700000003,
+            565.452,
+            712.824226
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": false,
+          "duration_ms": 415,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "rule_category": "body_text_contamination",
+          "recommended_action": "shrink_bbox",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "region_confidence=1.00 | words=281 | many_long_lines_or_body_words",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "shrink_bbox",
+          "retry_rows": 29,
+          "retry_cols": 3,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "would_retry": false,
+          "would_adjust_bbox": false,
+          "would_drop_candidate": false,
+          "safe_auto_action": false,
+          "human_review_required": false,
+          "auto_action_allowed": false,
+          "auto_decision_reason": "",
+          "candidate_score": 0.07,
+          "candidate_tier": "failed",
+          "candidate_reasons": "no_parser_output | too_few_rows | too_few_cols | text_context_body_heavy",
+          "retry_candidate_score": 0.896,
+          "retry_score_delta": 0.826,
+          "retry_score_verdict": "improved",
+          "retry_adoptable": true,
+          "excluded_from_storage": true,
+          "storage_exclusion_reason": "failed table self-check with no usable parser output",
+          "storage_decision_source": "failed_self_check_no_structure",
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        },
+        {
+          "pdf": "55、cstI晶体结构分析，Structural analysis of the alpha-2,3-sialyltransferase Cst-I from Campylobacter jejuni in apo and substrate-analogue bound forms.pdf",
+          "page": 3,
+          "table_label": "Table 1",
+          "caption": "Table 1. membersofCAZyfamily42),andanadditionalC-terminal",
+          "region_id": "table_region_p3_46.6_433.9_565.8_781.7",
+          "region_bbox": [
+            46.560119799999995,
+            433.87267539999993,
+            565.8115099999999,
+            781.6644436
+          ],
+          "region_confidence": 0.55,
+          "region_band": "gray",
+          "parser": "region_guided",
+          "succeeded": false,
+          "duration_ms": 415,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "rule_category": "body_text_contamination",
+          "recommended_action": "shrink_bbox",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "region_confidence=0.55 | words=288 | many_long_lines_or_body_words",
+          "retry_attempted": true,
+          "retry_succeeded": false,
+          "retry_action": "shrink_bbox",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "candidate produced no overlapping table chunk",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "would_retry": false,
+          "would_adjust_bbox": false,
+          "would_drop_candidate": false,
+          "safe_auto_action": false,
+          "human_review_required": false,
+          "auto_action_allowed": false,
+          "auto_decision_reason": "",
+          "candidate_score": 0.02,
+          "candidate_tier": "failed",
+          "candidate_reasons": "no_parser_output | too_few_rows | too_few_cols | text_context_body_heavy",
+          "retry_candidate_score": 0.02,
+          "retry_score_delta": 0.0,
+          "retry_score_verdict": "unchanged",
+          "retry_adoptable": false,
+          "excluded_from_storage": true,
+          "storage_exclusion_reason": "failed table self-check with no usable parser output",
+          "storage_decision_source": "failed_self_check_no_structure",
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        },
+        {
+          "pdf": "55、cstI晶体结构分析，Structural analysis of the alpha-2,3-sialyltransferase Cst-I from Campylobacter jejuni in apo and substrate-analogue bound forms.pdf",
+          "page": 3,
+          "table_label": "Table 1",
+          "caption": "Table1: DataCollectionandRefinementStatistics",
+          "region_id": "table_region_p3_310.0_47.6_565.5_712.8",
+          "region_bbox": [
+            309.981,
+            47.57437700000003,
+            565.452,
+            712.824226
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": false,
+          "duration_ms": 346,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "rule_category": "body_text_contamination",
+          "recommended_action": "shrink_bbox",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "region_confidence=1.00 | words=281 | many_long_lines_or_body_words",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "shrink_bbox",
+          "retry_rows": 29,
+          "retry_cols": 3,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "would_retry": false,
+          "would_adjust_bbox": false,
+          "would_drop_candidate": false,
+          "safe_auto_action": false,
+          "human_review_required": false,
+          "auto_action_allowed": false,
+          "auto_decision_reason": "",
+          "candidate_score": 0.07,
+          "candidate_tier": "failed",
+          "candidate_reasons": "no_parser_output | too_few_rows | too_few_cols | text_context_body_heavy",
+          "retry_candidate_score": 0.896,
+          "retry_score_delta": 0.826,
+          "retry_score_verdict": "improved",
+          "retry_adoptable": true,
+          "excluded_from_storage": true,
+          "storage_exclusion_reason": "failed table self-check with no usable parser output",
+          "storage_decision_source": "failed_self_check_no_structure",
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        },
+        {
+          "pdf": "55、cstI晶体结构分析，Structural analysis of the alpha-2,3-sialyltransferase Cst-I from Campylobacter jejuni in apo and substrate-analogue bound forms.pdf",
+          "page": 3,
+          "table_label": "Table 1",
+          "caption": "Table 1. membersofCAZyfamily42),andanadditionalC-terminal",
+          "region_id": "table_region_p3_46.6_433.9_565.8_781.7",
+          "region_bbox": [
+            46.560119799999995,
+            433.87267539999993,
+            565.8115099999999,
+            781.6644436
+          ],
+          "region_confidence": 0.55,
+          "region_band": "gray",
+          "parser": "pdfplumber",
+          "succeeded": false,
+          "duration_ms": 346,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "rule_category": "body_text_contamination",
+          "recommended_action": "shrink_bbox",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "region_confidence=0.55 | words=288 | many_long_lines_or_body_words",
+          "retry_attempted": true,
+          "retry_succeeded": false,
+          "retry_action": "shrink_bbox",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "candidate produced no overlapping table chunk",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "would_retry": false,
+          "would_adjust_bbox": false,
+          "would_drop_candidate": false,
+          "safe_auto_action": false,
+          "human_review_required": false,
+          "auto_action_allowed": false,
+          "auto_decision_reason": "",
+          "candidate_score": 0.02,
+          "candidate_tier": "failed",
+          "candidate_reasons": "no_parser_output | too_few_rows | too_few_cols | text_context_body_heavy",
+          "retry_candidate_score": 0.02,
+          "retry_score_delta": 0.0,
+          "retry_score_verdict": "unchanged",
+          "retry_adoptable": false,
+          "excluded_from_storage": true,
+          "storage_exclusion_reason": "failed table self-check with no usable parser output",
+          "storage_decision_source": "failed_self_check_no_structure",
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        }
+      ]
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\文献汇总整理（市场那边调研的文献）\\徐惊东-SL文献\\72、△arcA△iclR引入nox完全消除溢流代谢，Biosensor-Assisted Multitarget Gene Fine-Tuning for N‑Acetylneuraminic Acid Production in Escherichia coli with Sole Carbon Source Glucose.pdf",
+      "detect_ms": 471,
+      "caption_scan": {
+        "error": "",
+        "anchored_pages": [
+          2,
+          3
+        ],
+        "broad_pages": [
+          2,
+          3,
+          8,
+          11
+        ],
+        "anchored_count": 2,
+        "broad_count": 4
+      },
+      "regions": [
+        {
+          "region_id": "table_region_p2_43.5_56.7_563.5_721.9",
+          "source": "table_region_detector",
+          "page": 2,
+          "bbox": [
+            43.4576,
+            56.684999999999945,
+            563.458,
+            721.934
+          ],
+          "confidence": 0.9,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                51.4771,
+                60.684999999999945,
+                197.9901,
+                70.68499999999995
+              ],
+              "details": {
+                "text": "Table 1. Strains Used in This Study"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                43.4576,
+                56.684999999999945,
+                563.458,
+                721.934
+              ],
+              "details": {
+                "count": 4
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                43.4576,
+                56.684999999999945,
+                563.458,
+                721.934
+              ],
+              "details": {
+                "lines": 42
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.15,
+              "reason": "high_numeric_density",
+              "bbox": [
+                43.4576,
+                56.684999999999945,
+                563.458,
+                721.934
+              ],
+              "details": {
+                "ratio": 0.228
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                43.4576,
+                56.684999999999945,
+                563.458,
+                721.934
+              ],
+              "details": {
+                "ratio": 0.856
+              }
+            },
+            {
+              "source": "negative",
+              "score": -0.3,
+              "reason": "long_sentence_block",
+              "bbox": [
+                43.4576,
+                56.684999999999945,
+                563.458,
+                721.934
+              ],
+              "details": {
+                "lines": 3
+              }
+            }
+          ]
+        },
+        {
+          "region_id": "table_region_p3_43.5_432.9_563.5_589.9",
+          "source": "table_region_detector",
+          "page": 3,
+          "bbox": [
+            43.47749999999999,
+            432.8959,
+            563.4842000000001,
+            589.9144999999999
+          ],
+          "confidence": 0.75,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                51.47749999999999,
+                436.8959,
+                291.46610000000004,
+                445.8959
+              ],
+              "details": {
+                "text": "TableS1, andall primers usedforplasmid construction arelisted in"
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                43.47749999999999,
+                432.8959,
+                563.4842000000001,
+                589.9144999999999
+              ],
+              "details": {
+                "lines": 24
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                43.47749999999999,
+                432.8959,
+                563.4842000000001,
+                589.9144999999999
+              ],
+              "details": {
+                "ratio": 0.919
+              }
+            }
+          ]
+        }
+      ],
+      "region_text_contexts": {
+        "table_region_p2_43.5_56.7_563.5_721.9": {
+          "word_count": 330,
+          "line_count": 83,
+          "long_line_count": 16,
+          "body_word_hits": 155,
+          "numeric_tokens": 78,
+          "single_char_tokens": 11,
+          "avg_token_len": 10.64
+        },
+        "table_region_p3_43.5_432.9_563.5_589.9": {
+          "word_count": 207,
+          "line_count": 30,
+          "long_line_count": 2,
+          "body_word_hits": 80,
+          "numeric_tokens": 22,
+          "single_char_tokens": 10,
+          "avg_token_len": 7.29
+        }
+      },
+      "parser_summaries": {
+        "region_guided": {
+          "duration_ms": 416,
+          "chunks": 1,
+          "error": ""
+        },
+        "pdfplumber": {
+          "duration_ms": 467,
+          "chunks": 1,
+          "error": ""
+        }
+      },
+      "results": [
+        {
+          "pdf": "72、△arcA△iclR引入nox完全消除溢流代谢，Biosensor-Assisted Multitarget Gene Fine-Tuning for N‑Acetylneuraminic Acid Production in Escherichia coli with Sole Carbon Source Glucose.pdf",
+          "page": 2,
+          "table_label": "Table 1",
+          "caption": "Table 1. Strains Used in This Study",
+          "region_id": "table_region_p2_43.5_56.7_563.5_721.9",
+          "region_bbox": [
+            43.4576,
+            56.684999999999945,
+            563.458,
+            721.934
+          ],
+          "region_confidence": 0.9,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 416,
+          "rows": 9,
+          "cols": 3,
+          "chunk_bbox": [
+            43.4576,
+            56.684999999999945,
+            563.458,
+            721.934
+          ],
+          "overlap": 1.0,
+          "rule_category": "header_or_span_complexity",
+          "recommended_action": "retry_text_strategy",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "structural_quality:low_consistency",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "retry_text_strategy",
+          "retry_rows": 9,
+          "retry_cols": 3,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "would_retry": false,
+          "would_adjust_bbox": false,
+          "would_drop_candidate": false,
+          "safe_auto_action": false,
+          "human_review_required": false,
+          "auto_action_allowed": false,
+          "auto_decision_reason": "",
+          "candidate_score": 0.764,
+          "candidate_tier": "usable",
+          "candidate_reasons": "low_consistency | text_context_body_heavy",
+          "retry_candidate_score": 0.764,
+          "retry_score_delta": 0.0,
+          "retry_score_verdict": "unchanged",
+          "retry_adoptable": false,
+          "excluded_from_storage": false,
+          "storage_exclusion_reason": "",
+          "storage_decision_source": "table_self_check_passed_or_repairable",
+          "failure_reason": "",
+          "preview": "| strains | characteristics | source or reference | | --- | --- | --- | | E.coli cloninghost |  | labstock | | JM109 |  |  | | E.coliBL21 biosensorcharacterizationstrain |  | labstock | | (DE3) |  |  | | nanA::P tac |  |  | | nanT |  |  | |"
+        },
+        {
+          "pdf": "72、△arcA△iclR引入nox完全消除溢流代谢，Biosensor-Assisted Multitarget Gene Fine-Tuning for N‑Acetylneuraminic Acid Production in Escherichia coli with Sole Carbon Source Glucose.pdf",
+          "page": 3,
+          "table_label": "Table S1",
+          "caption": "TableS1, andall primers usedforplasmid construction arelisted in",
+          "region_id": "table_region_p3_43.5_432.9_563.5_589.9",
+          "region_bbox": [
+            43.47749999999999,
+            432.8959,
+            563.4842000000001,
+            589.9144999999999
+          ],
+          "region_confidence": 0.75,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": false,
+          "duration_ms": 416,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "rule_category": "body_text_contamination",
+          "recommended_action": "shrink_bbox",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "region_confidence=0.75 | words=207 | many_long_lines_or_body_words",
+          "retry_attempted": true,
+          "retry_succeeded": false,
+          "retry_action": "shrink_bbox",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "candidate produced no overlapping table chunk",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "would_retry": false,
+          "would_adjust_bbox": false,
+          "would_drop_candidate": false,
+          "safe_auto_action": false,
+          "human_review_required": false,
+          "auto_action_allowed": false,
+          "auto_decision_reason": "",
+          "candidate_score": 0.02,
+          "candidate_tier": "failed",
+          "candidate_reasons": "no_parser_output | too_few_rows | too_few_cols | text_context_body_heavy",
+          "retry_candidate_score": 0.02,
+          "retry_score_delta": 0.0,
+          "retry_score_verdict": "unchanged",
+          "retry_adoptable": false,
+          "excluded_from_storage": true,
+          "storage_exclusion_reason": "failed table self-check with no usable parser output",
+          "storage_decision_source": "failed_self_check_no_structure",
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        },
+        {
+          "pdf": "72、△arcA△iclR引入nox完全消除溢流代谢，Biosensor-Assisted Multitarget Gene Fine-Tuning for N‑Acetylneuraminic Acid Production in Escherichia coli with Sole Carbon Source Glucose.pdf",
+          "page": 2,
+          "table_label": "Table 1",
+          "caption": "Table 1. Strains Used in This Study",
+          "region_id": "table_region_p2_43.5_56.7_563.5_721.9",
+          "region_bbox": [
+            43.4576,
+            56.684999999999945,
+            563.458,
+            721.934
+          ],
+          "region_confidence": 0.9,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 467,
+          "rows": 9,
+          "cols": 3,
+          "chunk_bbox": [
+            43.4576,
+            56.684999999999945,
+            563.458,
+            721.934
+          ],
+          "overlap": 1.0,
+          "rule_category": "header_or_span_complexity",
+          "recommended_action": "retry_text_strategy",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "structural_quality:low_consistency",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "retry_text_strategy",
+          "retry_rows": 9,
+          "retry_cols": 3,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "would_retry": false,
+          "would_adjust_bbox": false,
+          "would_drop_candidate": false,
+          "safe_auto_action": false,
+          "human_review_required": false,
+          "auto_action_allowed": false,
+          "auto_decision_reason": "",
+          "candidate_score": 0.764,
+          "candidate_tier": "usable",
+          "candidate_reasons": "low_consistency | text_context_body_heavy",
+          "retry_candidate_score": 0.764,
+          "retry_score_delta": 0.0,
+          "retry_score_verdict": "unchanged",
+          "retry_adoptable": false,
+          "excluded_from_storage": false,
+          "storage_exclusion_reason": "",
+          "storage_decision_source": "table_self_check_passed_or_repairable",
+          "failure_reason": "",
+          "preview": "| strains | characteristics | source or reference | | --- | --- | --- | | E.coli cloninghost |  | labstock | | JM109 |  |  | | E.coliBL21 biosensorcharacterizationstrain |  | labstock | | (DE3) |  |  | | nanA::P tac |  |  | | nanT |  |  | |"
+        },
+        {
+          "pdf": "72、△arcA△iclR引入nox完全消除溢流代谢，Biosensor-Assisted Multitarget Gene Fine-Tuning for N‑Acetylneuraminic Acid Production in Escherichia coli with Sole Carbon Source Glucose.pdf",
+          "page": 3,
+          "table_label": "Table S1",
+          "caption": "TableS1, andall primers usedforplasmid construction arelisted in",
+          "region_id": "table_region_p3_43.5_432.9_563.5_589.9",
+          "region_bbox": [
+            43.47749999999999,
+            432.8959,
+            563.4842000000001,
+            589.9144999999999
+          ],
+          "region_confidence": 0.75,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": false,
+          "duration_ms": 467,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "rule_category": "body_text_contamination",
+          "recommended_action": "shrink_bbox",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "region_confidence=0.75 | words=207 | many_long_lines_or_body_words",
+          "retry_attempted": true,
+          "retry_succeeded": false,
+          "retry_action": "shrink_bbox",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "candidate produced no overlapping table chunk",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "would_retry": false,
+          "would_adjust_bbox": false,
+          "would_drop_candidate": false,
+          "safe_auto_action": false,
+          "human_review_required": false,
+          "auto_action_allowed": false,
+          "auto_decision_reason": "",
+          "candidate_score": 0.02,
+          "candidate_tier": "failed",
+          "candidate_reasons": "no_parser_output | too_few_rows | too_few_cols | text_context_body_heavy",
+          "retry_candidate_score": 0.02,
+          "retry_score_delta": 0.0,
+          "retry_score_verdict": "unchanged",
+          "retry_adoptable": false,
+          "excluded_from_storage": true,
+          "storage_exclusion_reason": "failed table self-check with no usable parser output",
+          "storage_decision_source": "failed_self_check_no_structure",
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        }
+      ]
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\文献汇总整理（市场那边调研的文献）\\徐惊东-SL文献\\一种基因工程构建的重组大肠杆菌及生物合成6’-唾液乳糖的方法.pdf",
+      "detect_ms": 12,
+      "caption_scan": {
+        "error": "",
+        "anchored_pages": [],
+        "broad_pages": [],
+        "anchored_count": 0,
+        "broad_count": 0
+      },
+      "regions": [],
+      "region_text_contexts": {},
+      "parser_summaries": {
+        "region_guided": {
+          "duration_ms": 0,
+          "chunks": 0,
+          "error": ""
+        },
+        "pdfplumber": {
+          "duration_ms": 0,
+          "chunks": 0,
+          "error": ""
+        }
+      },
+      "results": []
+    }
+  ],
+  "self_check_summary": {
+    "rows": 16,
+    "success_rate": 0.5,
+    "avg_candidate_score": 0.416,
+    "candidate_tiers": {
+      "failed": 8,
+      "strong": 2,
+      "usable": 6
+    },
+    "rule_categories": {
+      "body_text_contamination": 8,
+      "ok": 6,
+      "header_or_span_complexity": 2
+    },
+    "recommended_actions": {
+      "shrink_bbox": 8,
+      "accept": 6,
+      "retry_text_strategy": 2
+    },
+    "retry_attempted": 10,
+    "retry_succeeded": 6,
+    "retry_adoptable": 4,
+    "retry_verdicts": {
+      "improved": 4,
+      "unchanged": 6
+    },
+    "risk_flags": {
+      "body_text_contamination": 16,
+      "needs_llm_judge": 10,
+      "excluded_from_storage": 8,
+      "low_consistency": 2
+    },
+    "storage": {
+      "candidate_rows": 16,
+      "storable_rows": 8,
+      "excluded_from_storage": 8,
+      "excluded_reasons": {
+        "failed table self-check with no usable parser output": 8
+      },
+      "decision_sources": {
+        "failed_self_check_no_structure": 8,
+        "table_self_check_passed_or_repairable": 8
+      }
+    },
+    "zero_region_pdfs": 1,
+    "zero_region_with_caption": [],
+    "slow_pdfs": [
+      {
+        "pdf": "72、△arcA△iclR引入nox完全消除溢流代谢，Biosensor-Assisted Multitarget Gene Fine-Tuning for N‑Acetylneuraminic Acid Production in Escherichia coli with Sole Carbon Source Glucose.pdf",
+        "detect_ms": 471,
+        "regions": 2
+      },
+      {
+        "pdf": "j.mimet.2011.04.018.pdf",
+        "detect_ms": 403,
+        "regions": 2
+      },
+      {
+        "pdf": "2009 Genome, secretome and glucose transport highlight unique.pdf",
+        "detect_ms": 328,
+        "regions": 2
+      },
+      {
+        "pdf": "55、cstI晶体结构分析，Structural analysis of the alpha-2,3-sialyltransferase Cst-I from Campylobacter jejuni in apo and substrate-analogue bound forms.pdf",
+        "detect_ms": 265,
+        "regions": 2
+      },
+      {
+        "pdf": "一种基因工程构建的重组大肠杆菌及生物合成6’-唾液乳糖的方法.pdf",
+        "detect_ms": 12,
+        "regions": 0
+      }
+    ],
+    "slow_parsers": [
+      {
+        "pdf": "72、△arcA△iclR引入nox完全消除溢流代谢，Biosensor-Assisted Multitarget Gene Fine-Tuning for N‑Acetylneuraminic Acid Production in Escherichia coli with Sole Carbon Source Glucose.pdf",
+        "parser": "pdfplumber",
+        "duration_ms": 467,
+        "chunks": 1
+      },
+      {
+        "pdf": "72、△arcA△iclR引入nox完全消除溢流代谢，Biosensor-Assisted Multitarget Gene Fine-Tuning for N‑Acetylneuraminic Acid Production in Escherichia coli with Sole Carbon Source Glucose.pdf",
+        "parser": "region_guided",
+        "duration_ms": 416,
+        "chunks": 1
+      },
+      {
+        "pdf": "55、cstI晶体结构分析，Structural analysis of the alpha-2,3-sialyltransferase Cst-I from Campylobacter jejuni in apo and substrate-analogue bound forms.pdf",
+        "parser": "region_guided",
+        "duration_ms": 415,
+        "chunks": 0
+      },
+      {
+        "pdf": "j.mimet.2011.04.018.pdf",
+        "parser": "region_guided",
+        "duration_ms": 385,
+        "chunks": 1
+      },
+      {
+        "pdf": "j.mimet.2011.04.018.pdf",
+        "parser": "pdfplumber",
+        "duration_ms": 351,
+        "chunks": 1
+      },
+      {
+        "pdf": "55、cstI晶体结构分析，Structural analysis of the alpha-2,3-sialyltransferase Cst-I from Campylobacter jejuni in apo and substrate-analogue bound forms.pdf",
+        "parser": "pdfplumber",
+        "duration_ms": 346,
+        "chunks": 0
+      },
+      {
+        "pdf": "2009 Genome, secretome and glucose transport highlight unique.pdf",
+        "parser": "region_guided",
+        "duration_ms": 304,
+        "chunks": 1
+      },
+      {
+        "pdf": "2009 Genome, secretome and glucose transport highlight unique.pdf",
+        "parser": "pdfplumber",
+        "duration_ms": 241,
+        "chunks": 1
+      },
+      {
+        "pdf": "一种基因工程构建的重组大肠杆菌及生物合成6’-唾液乳糖的方法.pdf",
+        "parser": "region_guided",
+        "duration_ms": 0,
+        "chunks": 0
+      },
+      {
+        "pdf": "一种基因工程构建的重组大肠杆菌及生物合成6’-唾液乳糖的方法.pdf",
+        "parser": "pdfplumber",
+        "duration_ms": 0,
+        "chunks": 0
+      }
+    ]
+  }
+}

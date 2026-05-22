@@ -1,0 +1,5537 @@
+{
+  "parsers": [
+    "region_guided",
+    "pdfplumber"
+  ],
+  "pdf_count": 20,
+  "pdf_reports": [
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\2026-04-10-毕赤酵母合成乳蛋白相关参考文献-郭施琪\\毕赤酵母分泌途径\\2017 Coping with Protein Quality Control Failure（蛋白质质量控制）.pdf",
+      "detect_ms": 2662,
+      "regions": [],
+      "region_text_contexts": {},
+      "parser_summaries": {
+        "region_guided": {
+          "duration_ms": 0,
+          "chunks": 0,
+          "error": ""
+        },
+        "pdfplumber": {
+          "duration_ms": 0,
+          "chunks": 0,
+          "error": ""
+        }
+      },
+      "results": []
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\2026-04-10-毕赤酵母合成乳蛋白相关参考文献-郭施琪\\毕赤酵母碳源利用与启动子相关\\2017 Increased dosage of AOX1.pdf",
+      "detect_ms": 2548,
+      "regions": [
+        {
+          "region_id": "table_region_p4_32.6_141.9_562.6_782.4",
+          "source": "table_region_detector",
+          "page": 4,
+          "bbox": [
+            32.6379013,
+            141.86481738999998,
+            562.6379013,
+            782.362
+          ],
+          "confidence": 0.45,
+          "band": "gray",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                156.58250427,
+                145.86481738999998,
+                506.98400391009017,
+                154.86481738999998
+              ],
+              "details": {
+                "text": "Table 1. Reconciled macroscopic growth parameters of Rol-producing and reference strain in"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.2,
+              "reason": "wide_horizontal_lines",
+              "bbox": [
+                32.6379013,
+                141.86481738999998,
+                562.6379013,
+                782.362
+              ],
+              "details": {
+                "count": 2
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                32.6379013,
+                141.86481738999998,
+                562.6379013,
+                782.362
+              ],
+              "details": {
+                "lines": 50
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                32.6379013,
+                141.86481738999998,
+                562.6379013,
+                782.362
+              ],
+              "details": {
+                "ratio": 0.965
+              }
+            },
+            {
+              "source": "negative",
+              "score": -0.3,
+              "reason": "long_sentence_block",
+              "bbox": [
+                32.6379013,
+                141.86481738999998,
+                562.6379013,
+                782.362
+              ],
+              "details": {
+                "lines": 10
+              }
+            },
+            {
+              "source": "negative",
+              "score": -0.2,
+              "reason": "section_like_body_region",
+              "bbox": [
+                32.6379013,
+                141.86481738999998,
+                562.6379013,
+                782.362
+              ]
+            }
+          ]
+        }
+      ],
+      "region_text_contexts": {
+        "table_region_p4_32.6_141.9_562.6_782.4": {
+          "word_count": 735,
+          "line_count": 60,
+          "long_line_count": 40,
+          "body_word_hits": 215,
+          "numeric_tokens": 66,
+          "single_char_tokens": 45,
+          "avg_token_len": 5.76
+        }
+      },
+      "parser_summaries": {
+        "region_guided": {
+          "duration_ms": 301,
+          "chunks": 1,
+          "error": ""
+        },
+        "pdfplumber": {
+          "duration_ms": 401,
+          "chunks": 1,
+          "error": ""
+        }
+      },
+      "results": [
+        {
+          "pdf": "2017 Increased dosage of AOX1.pdf",
+          "page": 4,
+          "table_label": "Table 1",
+          "caption": "Table 1. Reconciled macroscopic growth parameters of Rol-producing and reference strain in",
+          "region_id": "table_region_p4_32.6_141.9_562.6_782.4",
+          "region_bbox": [
+            32.6379013,
+            141.86481738999998,
+            562.6379013,
+            782.362
+          ],
+          "region_confidence": 0.45,
+          "region_band": "gray",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 301,
+          "rows": 7,
+          "cols": 5,
+          "chunk_bbox": [
+            154.94539907232,
+            145.86481738999998,
+            554.8181969467602,
+            766.3624491599999
+          ],
+          "overlap": 1.0,
+          "rule_category": "ok",
+          "recommended_action": "accept",
+          "needs_llm_judge": false,
+          "rule_confidence": 0.9,
+          "rule_reasons": "parser_output_passed_quality_checks",
+          "retry_attempted": false,
+          "retry_succeeded": false,
+          "retry_action": "",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "| Table 1. Reconciled macroscopic growth parameter | s of Rol-prod | ucin | g and refe | rence strain in | | --- | --- | --- | --- | --- | | glycerol:methanol chemostat cultures. Substrate cons | umption and | biom | ass produ | ction rates"
+        },
+        {
+          "pdf": "2017 Increased dosage of AOX1.pdf",
+          "page": 4,
+          "table_label": "Table 1",
+          "caption": "Table 1. Reconciled macroscopic growth parameters of Rol-producing and reference strain in",
+          "region_id": "table_region_p4_32.6_141.9_562.6_782.4",
+          "region_bbox": [
+            32.6379013,
+            141.86481738999998,
+            562.6379013,
+            782.362
+          ],
+          "region_confidence": 0.45,
+          "region_band": "gray",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 401,
+          "rows": 7,
+          "cols": 5,
+          "chunk_bbox": [
+            154.94539907232,
+            145.86481738999998,
+            554.8181969467602,
+            766.3624491599999
+          ],
+          "overlap": 1.0,
+          "rule_category": "ok",
+          "recommended_action": "accept",
+          "needs_llm_judge": false,
+          "rule_confidence": 0.9,
+          "rule_reasons": "parser_output_passed_quality_checks",
+          "retry_attempted": false,
+          "retry_succeeded": false,
+          "retry_action": "",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "| Table 1. Reconciled macroscopic growth parameter | s of Rol-prod | ucin | g and refe | rence strain in | | --- | --- | --- | --- | --- | | glycerol:methanol chemostat cultures. Substrate cons | umption and | biom | ass produ | ction rates"
+        }
+      ]
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\2026-04-10-毕赤酵母合成乳蛋白相关参考文献-郭施琪\\毕赤酵母碳源利用与启动子相关\\2017 TFB改造（P9 启动子）.pdf",
+      "detect_ms": 1191,
+      "regions": [],
+      "region_text_contexts": {},
+      "parser_summaries": {
+        "region_guided": {
+          "duration_ms": 0,
+          "chunks": 0,
+          "error": ""
+        },
+        "pdfplumber": {
+          "duration_ms": 0,
+          "chunks": 0,
+          "error": ""
+        }
+      },
+      "results": []
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\2026-04-10-毕赤酵母合成乳蛋白相关参考文献-郭施琪\\蛋白合成相关（及其他）\\2025 Production of high-affinity.pdf",
+      "detect_ms": 1364,
+      "regions": [],
+      "region_text_contexts": {},
+      "parser_summaries": {
+        "region_guided": {
+          "duration_ms": 0,
+          "chunks": 0,
+          "error": ""
+        },
+        "pdfplumber": {
+          "duration_ms": 0,
+          "chunks": 0,
+          "error": ""
+        }
+      },
+      "results": []
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\2026-04-10-毕赤酵母合成乳蛋白相关参考文献-郭施琪\\蛋白翻译后修饰\\2025  在大肠杆菌中生产磷酸化且功能性的αs1-酪蛋白（补充文件）.pdf",
+      "detect_ms": 167,
+      "regions": [
+        {
+          "region_id": "table_region_p2_64.0_86.1_528.0_770.7",
+          "source": "table_region_detector",
+          "page": 2,
+          "bbox": [
+            64.025,
+            86.05399999999997,
+            527.975,
+            770.7
+          ],
+          "confidence": 0.95,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                72.025,
+                90.05399999999997,
+                198.33,
+                104.05399999999997
+              ],
+              "details": {
+                "text": "Supplementary table 1"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                64.025,
+                86.05399999999997,
+                527.975,
+                770.7
+              ],
+              "details": {
+                "count": 50
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                64.025,
+                86.05399999999997,
+                527.975,
+                770.7
+              ],
+              "details": {
+                "lines": 9
+              }
+            }
+          ]
+        },
+        {
+          "region_id": "table_region_p4_64.0_84.7_414.9_721.4",
+          "source": "table_region_detector",
+          "page": 4,
+          "bbox": [
+            64.025,
+            84.71600000000001,
+            414.92499999999995,
+            721.442218
+          ],
+          "confidence": 0.95,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                72.025,
+                88.71600000000001,
+                180.01300000000003,
+                100.71600000000001
+              ],
+              "details": {
+                "text": "Supplementary table 2"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                64.025,
+                84.71600000000001,
+                414.92499999999995,
+                721.442218
+              ],
+              "details": {
+                "count": 46
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                64.025,
+                84.71600000000001,
+                414.92499999999995,
+                721.442218
+              ],
+              "details": {
+                "lines": 14
+              }
+            }
+          ]
+        }
+      ],
+      "region_text_contexts": {
+        "table_region_p2_64.0_86.1_528.0_770.7": {
+          "word_count": 67,
+          "line_count": 46,
+          "long_line_count": 0,
+          "body_word_hits": 3,
+          "numeric_tokens": 7,
+          "single_char_tokens": 4,
+          "avg_token_len": 16.9
+        },
+        "table_region_p4_64.0_84.7_414.9_721.4": {
+          "word_count": 69,
+          "line_count": 34,
+          "long_line_count": 0,
+          "body_word_hits": 11,
+          "numeric_tokens": 11,
+          "single_char_tokens": 3,
+          "avg_token_len": 9.61
+        }
+      },
+      "parser_summaries": {
+        "region_guided": {
+          "duration_ms": 122,
+          "chunks": 2,
+          "error": ""
+        },
+        "pdfplumber": {
+          "duration_ms": 134,
+          "chunks": 2,
+          "error": ""
+        }
+      },
+      "results": [
+        {
+          "pdf": "2025  在大肠杆菌中生产磷酸化且功能性的αs1-酪蛋白（补充文件）.pdf",
+          "page": 2,
+          "table_label": "Supplementary Table 1",
+          "caption": "Supplementary table 1",
+          "region_id": "table_region_p2_64.0_86.1_528.0_770.7",
+          "region_bbox": [
+            64.025,
+            86.05399999999997,
+            527.975,
+            770.7
+          ],
+          "region_confidence": 0.95,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 122,
+          "rows": 40,
+          "cols": 3,
+          "chunk_bbox": [
+            77.525,
+            143.64199999999994,
+            462.932,
+            738.312
+          ],
+          "overlap": 1.0,
+          "rule_category": "header_or_span_complexity",
+          "recommended_action": "retry_text_strategy",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "structural_quality:low_consistency",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "retry_text_strategy",
+          "retry_rows": 40,
+          "retry_cols": 3,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": true,
+          "llm_failure_category": "header_or_span_complexity",
+          "llm_recommended_action": "retry_text_strategy",
+          "llm_confidence": 0.65,
+          "llm_reason": "The table has 40 rows and 3 columns but the preview shows merged header content and inconsistent column alignment, indicating complex header/span structures that the current text strategy failed to parse correctly.",
+          "llm_error": "",
+          "rule_llm_agree": true,
+          "failure_reason": "",
+          "preview": "| Name | Sequence |  | | --- | --- | --- | |  | MRPKHPIKHQGLPQEVLNENLLRFFVA |  | |  -casein s1 | PFPEVFGKEKVNELSKDIGSESTEDQAM | P02662 | |  | EDIKQMEAESISSSEEIVPNSVEQKHIQK |  | |  | EDVPSERYLGYLEQLLRLKKYKVPQLE |  | |  | IVPNSAEERLHSMKEGIHA"
+        },
+        {
+          "pdf": "2025  在大肠杆菌中生产磷酸化且功能性的αs1-酪蛋白（补充文件）.pdf",
+          "page": 4,
+          "table_label": "Supplementary Table 2",
+          "caption": "Supplementary table 2",
+          "region_id": "table_region_p4_64.0_84.7_414.9_721.4",
+          "region_bbox": [
+            64.025,
+            84.71600000000001,
+            414.92499999999995,
+            721.442218
+          ],
+          "region_confidence": 0.95,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 122,
+          "rows": 33,
+          "cols": 3,
+          "chunk_bbox": [
+            77.525,
+            142.63400000000001,
+            399.376,
+            658.784
+          ],
+          "overlap": 1.0,
+          "rule_category": "header_or_span_complexity",
+          "recommended_action": "retry_text_strategy",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "structural_quality:low_consistency",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "retry_text_strategy",
+          "retry_rows": 33,
+          "retry_cols": 3,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": true,
+          "llm_failure_category": "header_or_span_complexity",
+          "llm_recommended_action": "retry_text_strategy",
+          "llm_confidence": 0.65,
+          "llm_reason": "The extracted table shows header/span complexity (e.g., merged cells, multi-line headers) and low structural consistency, leading to misalignment of columns and rows.",
+          "llm_error": "",
+          "rule_llm_agree": true,
+          "failure_reason": "",
+          "preview": "| restriction site used | for the vector digestion |  | | --- | --- | --- | | Name | Sequence | Restriction | |  |  | site | |  |  | (pET15B) | | PrkD_As1_for | TGCCGCTGTGGTAAGGTCG |  | |  | ACTAAGAAGGAGATATACC |  | |  | ATGGCATTAAAACTTCTAA"
+        },
+        {
+          "pdf": "2025  在大肠杆菌中生产磷酸化且功能性的αs1-酪蛋白（补充文件）.pdf",
+          "page": 2,
+          "table_label": "Supplementary Table 1",
+          "caption": "Supplementary table 1",
+          "region_id": "table_region_p2_64.0_86.1_528.0_770.7",
+          "region_bbox": [
+            64.025,
+            86.05399999999997,
+            527.975,
+            770.7
+          ],
+          "region_confidence": 0.95,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 134,
+          "rows": 40,
+          "cols": 3,
+          "chunk_bbox": [
+            77.525,
+            143.64199999999994,
+            462.932,
+            738.312
+          ],
+          "overlap": 1.0,
+          "rule_category": "header_or_span_complexity",
+          "recommended_action": "retry_text_strategy",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "structural_quality:low_consistency",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "retry_text_strategy",
+          "retry_rows": 40,
+          "retry_cols": 3,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "| Name | Sequence |  | | --- | --- | --- | |  | MRPKHPIKHQGLPQEVLNENLLRFFVA |  | |  -casein s1 | PFPEVFGKEKVNELSKDIGSESTEDQAM | P02662 | |  | EDIKQMEAESISSSEEIVPNSVEQKHIQK |  | |  | EDVPSERYLGYLEQLLRLKKYKVPQLE |  | |  | IVPNSAEERLHSMKEGIHA"
+        },
+        {
+          "pdf": "2025  在大肠杆菌中生产磷酸化且功能性的αs1-酪蛋白（补充文件）.pdf",
+          "page": 4,
+          "table_label": "Supplementary Table 2",
+          "caption": "Supplementary table 2",
+          "region_id": "table_region_p4_64.0_84.7_414.9_721.4",
+          "region_bbox": [
+            64.025,
+            84.71600000000001,
+            414.92499999999995,
+            721.442218
+          ],
+          "region_confidence": 0.95,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 134,
+          "rows": 33,
+          "cols": 3,
+          "chunk_bbox": [
+            77.525,
+            142.63400000000001,
+            399.376,
+            658.784
+          ],
+          "overlap": 1.0,
+          "rule_category": "header_or_span_complexity",
+          "recommended_action": "retry_text_strategy",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "structural_quality:low_consistency",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "retry_text_strategy",
+          "retry_rows": 33,
+          "retry_cols": 3,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "| restriction site used | for the vector digestion |  | | --- | --- | --- | | Name | Sequence | Restriction | |  |  | site | |  |  | (pET15B) | | PrkD_As1_for | TGCCGCTGTGGTAAGGTCG |  | |  | ACTAAGAAGGAGATATACC |  | |  | ATGGCATTAAAACTTCTAA"
+        }
+      ]
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\260413-文献-CXH\\26-Patent-recombinant vectors for expression of animal free milk protein and process for preparing the animal free milk protein.pdf",
+      "detect_ms": 28,
+      "regions": [],
+      "region_text_contexts": {},
+      "parser_summaries": {
+        "region_guided": {
+          "duration_ms": 0,
+          "chunks": 0,
+          "error": ""
+        },
+        "pdfplumber": {
+          "duration_ms": 0,
+          "chunks": 0,
+          "error": ""
+        }
+      },
+      "results": []
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\功能文献汇总\\临床实验\\Effects of Infant Formula With Human Milk Oligosaccharides on Growth and Morbidity A Randomized Multicenter Trial.pdf",
+      "detect_ms": 1066,
+      "regions": [
+        {
+          "region_id": "table_region_p4_68.5_583.3_325.5_804.2",
+          "source": "table_region_detector",
+          "page": 4,
+          "bbox": [
+            68.535,
+            583.3052797999999,
+            325.48,
+            804.2265464999999
+          ],
+          "confidence": 1.0,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                76.5354,
+                587.3052797999999,
+                265.7200523,
+                595.2754798
+              ],
+              "details": {
+                "text": "TABLE1. Baselinecharacteristicsofstudyparticipants"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                68.535,
+                583.3052797999999,
+                325.48,
+                804.2265464999999
+              ],
+              "details": {
+                "count": 8
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                68.535,
+                583.3052797999999,
+                325.48,
+                804.2265464999999
+              ],
+              "details": {
+                "lines": 17
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.15,
+              "reason": "high_numeric_density",
+              "bbox": [
+                68.535,
+                583.3052797999999,
+                325.48,
+                804.2265464999999
+              ],
+              "details": {
+                "ratio": 0.568
+              }
+            }
+          ]
+        },
+        {
+          "region_id": "table_region_p5_68.5_104.9_584.9_370.0",
+          "source": "table_region_detector",
+          "page": 5,
+          "bbox": [
+            68.535,
+            104.93057980000003,
+            584.85,
+            369.9966545
+          ],
+          "confidence": 0.7,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                76.5354,
+                108.93057980000003,
+                400.23869683999993,
+                116.90077980000001
+              ],
+              "details": {
+                "text": "TABLE2. Comparisonofweightgainfromenrollmentto4monthsofagebetweengroups"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                68.535,
+                104.93057980000003,
+                584.85,
+                369.9966545
+              ],
+              "details": {
+                "count": 8
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                68.535,
+                104.93057980000003,
+                584.85,
+                369.9966545
+              ],
+              "details": {
+                "lines": 16
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.15,
+              "reason": "high_numeric_density",
+              "bbox": [
+                68.535,
+                104.93057980000003,
+                584.85,
+                369.9966545
+              ],
+              "details": {
+                "ratio": 0.222
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                68.535,
+                104.93057980000003,
+                584.85,
+                369.9966545
+              ],
+              "details": {
+                "ratio": 0.854
+              }
+            },
+            {
+              "source": "negative",
+              "score": -0.3,
+              "reason": "long_sentence_block",
+              "bbox": [
+                68.535,
+                104.93057980000003,
+                584.85,
+                369.9966545
+              ],
+              "details": {
+                "lines": 3
+              }
+            },
+            {
+              "source": "negative",
+              "score": -0.2,
+              "reason": "section_like_body_region",
+              "bbox": [
+                68.535,
+                104.93057980000003,
+                584.85,
+                369.9966545
+              ]
+            }
+          ]
+        }
+      ],
+      "region_text_contexts": {
+        "table_region_p4_68.5_583.3_325.5_804.2": {
+          "word_count": 39,
+          "line_count": 18,
+          "long_line_count": 0,
+          "body_word_hits": 13,
+          "numeric_tokens": 26,
+          "single_char_tokens": 0,
+          "avg_token_len": 15.56
+        },
+        "table_region_p5_68.5_104.9_584.9_370.0": {
+          "word_count": 124,
+          "line_count": 25,
+          "long_line_count": 7,
+          "body_word_hits": 80,
+          "numeric_tokens": 30,
+          "single_char_tokens": 2,
+          "avg_token_len": 12.33
+        }
+      },
+      "parser_summaries": {
+        "region_guided": {
+          "duration_ms": 349,
+          "chunks": 2,
+          "error": ""
+        },
+        "pdfplumber": {
+          "duration_ms": 213,
+          "chunks": 2,
+          "error": ""
+        }
+      },
+      "results": [
+        {
+          "pdf": "Effects of Infant Formula With Human Milk Oligosaccharides on Growth and Morbidity A Randomized Multicenter Trial.pdf",
+          "page": 4,
+          "table_label": "Table 1",
+          "caption": "TABLE1. Baselinecharacteristicsofstudyparticipants",
+          "region_id": "table_region_p4_68.5_583.3_325.5_804.2",
+          "region_bbox": [
+            68.535,
+            583.3052797999999,
+            325.48,
+            804.2265464999999
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 349,
+          "rows": 12,
+          "cols": 3,
+          "chunk_bbox": [
+            76.53381,
+            589.376057725,
+            298.81311999999997,
+            779.8914287
+          ],
+          "overlap": 1.0,
+          "rule_category": "ok",
+          "recommended_action": "accept",
+          "needs_llm_judge": false,
+          "rule_confidence": 0.9,
+          "rule_reasons": "parser_output_passed_quality_checks",
+          "retry_attempted": false,
+          "retry_succeeded": false,
+          "retry_action": "",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "| TABLE1. Baselinecharacteristicsofst | udyparticipants |  | | --- | --- | --- | | Infantcharacteristics Co | ntrol(n¼87) T | est(n¼8 | | Age,days | 7.7(cid:8)3.3 | 8.6(cid:8)3.3 | | Sex(n,%male) | 44(50.6) | 44(50.0) | | Gestationalage,wk "
+        },
+        {
+          "pdf": "Effects of Infant Formula With Human Milk Oligosaccharides on Growth and Morbidity A Randomized Multicenter Trial.pdf",
+          "page": 5,
+          "table_label": "Table 2",
+          "caption": "TABLE2. Comparisonofweightgainfromenrollmentto4monthsofagebetweengroups",
+          "region_id": "table_region_p5_68.5_104.9_584.9_370.0",
+          "region_bbox": [
+            68.535,
+            104.93057980000003,
+            584.85,
+            369.9966545
+          ],
+          "region_confidence": 0.7,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 349,
+          "rows": 9,
+          "cols": 2,
+          "chunk_bbox": [
+            76.53343,
+            108.93057980000003,
+            576.9073666,
+            365.9522544999999
+          ],
+          "overlap": 1.0,
+          "rule_category": "header_or_span_complexity",
+          "recommended_action": "retry_text_strategy",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "structural_quality:low_consistency",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "retry_text_strategy",
+          "retry_rows": 9,
+          "retry_cols": 2,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": true,
+          "llm_failure_category": "header_or_span_complexity",
+          "llm_recommended_action": "retry_text_strategy",
+          "llm_confidence": 0.65,
+          "llm_reason": "The table header spans multiple lines and contains merged or complex column labels (e.g., 'Difference between groups (test vs control)'), which the current text strategy failed to parse correctly, leading to low structural consistency.",
+          "llm_error": "",
+          "rule_llm_agree": true,
+          "failure_reason": "",
+          "preview": "| TABLE2. Comparisonofweightgainfromenrollmentto4monthsofag | ebetweengroups | | --- | --- | |  | Differencebetweengroups (cid:2) | |  | (test(cid:3)control) | | Population Groups Weightgain,g/d | ayLSMean(SE) Estimate 95%CI | | PP Test(n¼7"
+        },
+        {
+          "pdf": "Effects of Infant Formula With Human Milk Oligosaccharides on Growth and Morbidity A Randomized Multicenter Trial.pdf",
+          "page": 4,
+          "table_label": "Table 1",
+          "caption": "TABLE1. Baselinecharacteristicsofstudyparticipants",
+          "region_id": "table_region_p4_68.5_583.3_325.5_804.2",
+          "region_bbox": [
+            68.535,
+            583.3052797999999,
+            325.48,
+            804.2265464999999
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 213,
+          "rows": 11,
+          "cols": 3,
+          "chunk_bbox": [
+            76.53381,
+            589.376057725,
+            298.81311999999997,
+            779.8914287
+          ],
+          "overlap": 1.0,
+          "rule_category": "ok",
+          "recommended_action": "accept",
+          "needs_llm_judge": false,
+          "rule_confidence": 0.9,
+          "rule_reasons": "parser_output_passed_quality_checks",
+          "retry_attempted": false,
+          "retry_succeeded": false,
+          "retry_action": "",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "| Infantcharacteristics | Control(n¼87) | Test(n¼88) | | --- | --- | --- | | Age,days | 7.7(cid:8)3.3 | 8.6(cid:8)3.3 | | Sex(n,%male) | 44(50.6) | 44(50.0) | | Gestationalage,wk | 39.2(cid:8)1.0 | 39.2(cid:8)1.1 | | Modeofdelivery(n,%cesar"
+        },
+        {
+          "pdf": "Effects of Infant Formula With Human Milk Oligosaccharides on Growth and Morbidity A Randomized Multicenter Trial.pdf",
+          "page": 5,
+          "table_label": "Table 2",
+          "caption": "TABLE2. Comparisonofweightgainfromenrollmentto4monthsofagebetweengroups",
+          "region_id": "table_region_p5_68.5_104.9_584.9_370.0",
+          "region_bbox": [
+            68.535,
+            104.93057980000003,
+            584.85,
+            369.9966545
+          ],
+          "region_confidence": 0.7,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 213,
+          "rows": 9,
+          "cols": 2,
+          "chunk_bbox": [
+            76.53343,
+            108.93057980000003,
+            576.9073666,
+            365.9522544999999
+          ],
+          "overlap": 1.0,
+          "rule_category": "header_or_span_complexity",
+          "recommended_action": "retry_text_strategy",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "structural_quality:low_consistency",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "retry_text_strategy",
+          "retry_rows": 9,
+          "retry_cols": 2,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "| TABLE2. Comparisonofweightgainfromenrollmentto4monthsofag | ebetweengroups | | --- | --- | |  | Differencebetweengroups (cid:2) | |  | (test(cid:3)control) | | Population Groups Weightgain,g/d | ayLSMean(SE) Estimate 95%CI | | PP Test(n¼7"
+        }
+      ]
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\功能文献汇总\\功能文献\\2-FL\\Inhibition of Attachment of Streptococcus pneumoniae and Haemophilus influenzae.pdf",
+      "detect_ms": 969,
+      "regions": [
+        {
+          "region_id": "table_region_p3_65.4_103.7_543.3_639.1",
+          "source": "table_region_detector",
+          "page": 3,
+          "bbox": [
+            65.3574,
+            103.72640000000001,
+            543.3324512,
+            639.0682
+          ],
+          "confidence": 0.7,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                73.3574,
+                107.72640000000001,
+                535.3324512,
+                116.92640000000006
+              ],
+              "details": {
+                "text": "Table 1. Effect of human, cow, and buffalo milk and infant formula on the adhesion of S. pneumoniae and"
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                65.3574,
+                103.72640000000001,
+                543.3324512,
+                639.0682
+              ],
+              "details": {
+                "lines": 60
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.15,
+              "reason": "high_numeric_density",
+              "bbox": [
+                65.3574,
+                103.72640000000001,
+                543.3324512,
+                639.0682
+              ],
+              "details": {
+                "ratio": 0.288
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                65.3574,
+                103.72640000000001,
+                543.3324512,
+                639.0682
+              ],
+              "details": {
+                "ratio": 0.921
+              }
+            },
+            {
+              "source": "negative",
+              "score": -0.2,
+              "reason": "section_like_body_region",
+              "bbox": [
+                65.3574,
+                103.72640000000001,
+                543.3324512,
+                639.0682
+              ]
+            }
+          ]
+        },
+        {
+          "region_id": "table_region_p4_63.8_103.4_610.3_715.0",
+          "source": "table_region_detector",
+          "page": 4,
+          "bbox": [
+            63.79220000000001,
+            103.3664,
+            610.264,
+            714.9617000000001
+          ],
+          "confidence": 0.7,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                74.7974,
+                107.3664,
+                538.4165310000001,
+                116.90470000000005
+              ],
+              "details": {
+                "text": "Table 3. InhibitionofadhesionofS.pneumoniaeand Table 4. Inhibitionofadhesion by fractions ofhuman"
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                63.79220000000001,
+                103.3664,
+                610.264,
+                714.9617000000001
+              ],
+              "details": {
+                "lines": 67
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.15,
+              "reason": "high_numeric_density",
+              "bbox": [
+                63.79220000000001,
+                103.3664,
+                610.264,
+                714.9617000000001
+              ],
+              "details": {
+                "ratio": 0.209
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                63.79220000000001,
+                103.3664,
+                610.264,
+                714.9617000000001
+              ],
+              "details": {
+                "ratio": 0.87
+              }
+            },
+            {
+              "source": "negative",
+              "score": -0.2,
+              "reason": "section_like_body_region",
+              "bbox": [
+                63.79220000000001,
+                103.3664,
+                610.264,
+                714.9617000000001
+              ]
+            }
+          ]
+        },
+        {
+          "region_id": "table_region_p5_65.8_102.9_610.3_542.4",
+          "source": "table_region_detector",
+          "page": 5,
+          "bbox": [
+            65.78109999999998,
+            102.8732,
+            610.264,
+            542.39187
+          ],
+          "confidence": 0.75,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                75.3362,
+                106.8732,
+                448.06641999999994,
+                116.47320000000002
+              ],
+              "details": {
+                "text": "Table 5. Inhibition of adhesion of S. pneumoniae by oligosaccharides from human milk."
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                65.78109999999998,
+                102.8732,
+                610.264,
+                542.39187
+              ],
+              "details": {
+                "lines": 37
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                65.78109999999998,
+                102.8732,
+                610.264,
+                542.39187
+              ],
+              "details": {
+                "ratio": 0.842
+              }
+            }
+          ]
+        }
+      ],
+      "region_text_contexts": {
+        "table_region_p3_65.4_103.7_543.3_639.1": {
+          "word_count": 393,
+          "line_count": 69,
+          "long_line_count": 7,
+          "body_word_hits": 110,
+          "numeric_tokens": 116,
+          "single_char_tokens": 48,
+          "avg_token_len": 6.2
+        },
+        "table_region_p4_63.8_103.4_610.3_715.0": {
+          "word_count": 462,
+          "line_count": 88,
+          "long_line_count": 3,
+          "body_word_hits": 136,
+          "numeric_tokens": 98,
+          "single_char_tokens": 59,
+          "avg_token_len": 7.34
+        },
+        "table_region_p5_65.8_102.9_610.3_542.4": {
+          "word_count": 288,
+          "line_count": 46,
+          "long_line_count": 4,
+          "body_word_hits": 117,
+          "numeric_tokens": 53,
+          "single_char_tokens": 9,
+          "avg_token_len": 8.35
+        }
+      },
+      "parser_summaries": {
+        "region_guided": {
+          "duration_ms": 631,
+          "chunks": 1,
+          "error": ""
+        },
+        "pdfplumber": {
+          "duration_ms": 572,
+          "chunks": 1,
+          "error": ""
+        }
+      },
+      "results": [
+        {
+          "pdf": "Inhibition of Attachment of Streptococcus pneumoniae and Haemophilus influenzae.pdf",
+          "page": 3,
+          "table_label": "Table 1",
+          "caption": "Table 1. Effect of human, cow, and buffalo milk and infant formula on the adhesion of S. pneumoniae and",
+          "region_id": "table_region_p3_65.4_103.7_543.3_639.1",
+          "region_bbox": [
+            65.3574,
+            103.72640000000001,
+            543.3324512,
+            639.0682
+          ],
+          "region_confidence": 0.7,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": false,
+          "duration_ms": 631,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "rule_category": "body_text_contamination",
+          "recommended_action": "shrink_bbox",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "region_confidence=0.70 | words=393 | many_long_lines_or_body_words",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "shrink_bbox",
+          "retry_rows": 19,
+          "retry_cols": 2,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": true,
+          "llm_failure_category": "body_text_contamination",
+          "llm_recommended_action": "shrink_bbox",
+          "llm_confidence": 0.65,
+          "llm_reason": "The region contains 393 words with 110 body word hits and 7 long lines, indicating the bounding box includes surrounding body text. The parser produced no output due to no overlapping table chunk, and rule feedback suggests contamination. Shrinking the bbox may isolate the actual table.",
+          "llm_error": "",
+          "rule_llm_agree": true,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        },
+        {
+          "pdf": "Inhibition of Attachment of Streptococcus pneumoniae and Haemophilus influenzae.pdf",
+          "page": 4,
+          "table_label": "Table 3",
+          "caption": "Table 3. InhibitionofadhesionofS.pneumoniaeand Table 4. Inhibitionofadhesion by fractions ofhuman",
+          "region_id": "table_region_p4_63.8_103.4_610.3_715.0",
+          "region_bbox": [
+            63.79220000000001,
+            103.3664,
+            610.264,
+            714.9617000000001
+          ],
+          "region_confidence": 0.7,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": false,
+          "duration_ms": 631,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "rule_category": "body_text_contamination",
+          "recommended_action": "shrink_bbox",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "region_confidence=0.70 | words=462 | many_long_lines_or_body_words",
+          "retry_attempted": true,
+          "retry_succeeded": false,
+          "retry_action": "shrink_bbox",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "retry produced no overlapping table chunk",
+          "llm_judge_attempted": true,
+          "llm_failure_category": "body_text_contamination",
+          "llm_recommended_action": "shrink_bbox",
+          "llm_confidence": 0.65,
+          "llm_reason": "Region contains 462 words with 136 body word hits and many long lines, indicating the bounding box captures surrounding body text rather than just the table. The parser produced no output due to no overlapping table chunk, and rule feedback confirms contamination. Shrinking the bbox to exclude extraneous text is the appropriate action.",
+          "llm_error": "",
+          "rule_llm_agree": true,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        },
+        {
+          "pdf": "Inhibition of Attachment of Streptococcus pneumoniae and Haemophilus influenzae.pdf",
+          "page": 5,
+          "table_label": "Table 5",
+          "caption": "Table 5. Inhibition of adhesion of S. pneumoniae by oligosaccharides from human milk.",
+          "region_id": "table_region_p5_65.8_102.9_610.3_542.4",
+          "region_bbox": [
+            65.78109999999998,
+            102.8732,
+            610.264,
+            542.39187
+          ],
+          "region_confidence": 0.75,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 631,
+          "rows": 14,
+          "cols": 7,
+          "chunk_bbox": [
+            73.78109999999998,
+            106.8732,
+            602.264,
+            541.50387
+          ],
+          "overlap": 1.0,
+          "rule_category": "header_or_span_complexity",
+          "recommended_action": "retry_text_strategy",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "structural_quality:low_consistency",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "retry_text_strategy",
+          "retry_rows": 14,
+          "retry_cols": 7,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": true,
+          "llm_failure_category": "header_or_span_complexity",
+          "llm_recommended_action": "retry_text_strategy",
+          "llm_confidence": 0.65,
+          "llm_reason": "The table has complex multi-line headers and span structures (e.g., 'Source' split across columns, merged cells) that the current text strategy failed to parse correctly, leading to low structural consistency.",
+          "llm_error": "",
+          "rule_llm_agree": true,
+          "failure_reason": "",
+          "preview": "| Structure |  | S | ource |  | EIDso(mg/rnljl |  | | --- | --- | --- | --- | --- | --- | --- | | Oligosaccharide fraction |  | Hum | an milk |  | 6.0 |  | | Gal(J31- 4)GleNAc(J31- 3)Gal(J31- 4)Gle |  | Hum | an milk |  | 0.2* |  | | Gal(J3"
+        },
+        {
+          "pdf": "Inhibition of Attachment of Streptococcus pneumoniae and Haemophilus influenzae.pdf",
+          "page": 3,
+          "table_label": "Table 1",
+          "caption": "Table 1. Effect of human, cow, and buffalo milk and infant formula on the adhesion of S. pneumoniae and",
+          "region_id": "table_region_p3_65.4_103.7_543.3_639.1",
+          "region_bbox": [
+            65.3574,
+            103.72640000000001,
+            543.3324512,
+            639.0682
+          ],
+          "region_confidence": 0.7,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": false,
+          "duration_ms": 572,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "rule_category": "body_text_contamination",
+          "recommended_action": "shrink_bbox",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "region_confidence=0.70 | words=393 | many_long_lines_or_body_words",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "shrink_bbox",
+          "retry_rows": 19,
+          "retry_cols": 2,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        },
+        {
+          "pdf": "Inhibition of Attachment of Streptococcus pneumoniae and Haemophilus influenzae.pdf",
+          "page": 4,
+          "table_label": "Table 3",
+          "caption": "Table 3. InhibitionofadhesionofS.pneumoniaeand Table 4. Inhibitionofadhesion by fractions ofhuman",
+          "region_id": "table_region_p4_63.8_103.4_610.3_715.0",
+          "region_bbox": [
+            63.79220000000001,
+            103.3664,
+            610.264,
+            714.9617000000001
+          ],
+          "region_confidence": 0.7,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": false,
+          "duration_ms": 572,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "rule_category": "body_text_contamination",
+          "recommended_action": "shrink_bbox",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "region_confidence=0.70 | words=462 | many_long_lines_or_body_words",
+          "retry_attempted": true,
+          "retry_succeeded": false,
+          "retry_action": "shrink_bbox",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "retry produced no overlapping table chunk",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        },
+        {
+          "pdf": "Inhibition of Attachment of Streptococcus pneumoniae and Haemophilus influenzae.pdf",
+          "page": 5,
+          "table_label": "Table 5",
+          "caption": "Table 5. Inhibition of adhesion of S. pneumoniae by oligosaccharides from human milk.",
+          "region_id": "table_region_p5_65.8_102.9_610.3_542.4",
+          "region_bbox": [
+            65.78109999999998,
+            102.8732,
+            610.264,
+            542.39187
+          ],
+          "region_confidence": 0.75,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 572,
+          "rows": 14,
+          "cols": 7,
+          "chunk_bbox": [
+            73.78109999999998,
+            106.8732,
+            602.264,
+            541.50387
+          ],
+          "overlap": 1.0,
+          "rule_category": "header_or_span_complexity",
+          "recommended_action": "retry_text_strategy",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "structural_quality:low_consistency",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "retry_text_strategy",
+          "retry_rows": 14,
+          "retry_cols": 7,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "| Structure |  | S | ource |  | EIDso(mg/rnljl |  | | --- | --- | --- | --- | --- | --- | --- | | Oligosaccharide fraction |  | Hum | an milk |  | 6.0 |  | | Gal(J31- 4)GleNAc(J31- 3)Gal(J31- 4)Gle |  | Hum | an milk |  | 0.2* |  | | Gal(J3"
+        }
+      ]
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\功能文献汇总\\功能文献\\6-SL\\Potential effects of a human milk oligosaccharide 6′‑sialyllactoseon angiotensin II‑induced aortic aneurysm via p90RSKTGF‑βSMAD2signaling pathway.pdf",
+      "detect_ms": 5458,
+      "regions": [
+        {
+          "region_id": "table_region_p4_43.0_551.8_552.3_775.2",
+          "source": "table_region_detector",
+          "page": 4,
+          "bbox": [
+            43.023601531,
+            551.755801026,
+            552.251480102,
+            775.2392
+          ],
+          "confidence": 1.0,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                51.023601531,
+                555.755801026,
+                156.151601531,
+                566.261801026
+              ],
+              "details": {
+                "text": "Table 1 Primers used for qRT-"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                43.023601531,
+                551.755801026,
+                552.251480102,
+                775.2392
+              ],
+              "details": {
+                "count": 6
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                43.023601531,
+                551.755801026,
+                552.251480102,
+                775.2392
+              ],
+              "details": {
+                "lines": 13
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                43.023601531,
+                551.755801026,
+                552.251480102,
+                775.2392
+              ],
+              "details": {
+                "ratio": 0.983
+              }
+            }
+          ]
+        }
+      ],
+      "region_text_contexts": {
+        "table_region_p4_43.0_551.8_552.3_775.2": {
+          "word_count": 180,
+          "line_count": 14,
+          "long_line_count": 11,
+          "body_word_hits": 3,
+          "numeric_tokens": 6,
+          "single_char_tokens": 2,
+          "avg_token_len": 3.62
+        }
+      },
+      "parser_summaries": {
+        "region_guided": {
+          "duration_ms": 330,
+          "chunks": 1,
+          "error": ""
+        },
+        "pdfplumber": {
+          "duration_ms": 136,
+          "chunks": 1,
+          "error": ""
+        }
+      },
+      "results": [
+        {
+          "pdf": "Potential effects of a human milk oligosaccharide 6′‑sialyllactoseon angiotensin II‑induced aortic aneurysm via p90RSKTGF‑βSMAD2signaling pathway.pdf",
+          "page": 4,
+          "table_label": "Table 1",
+          "caption": "Table 1 Primers used for qRT-",
+          "region_id": "table_region_p4_43.0_551.8_552.3_775.2",
+          "region_bbox": [
+            43.023601531,
+            551.755801026,
+            552.251480102,
+            775.2392
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 330,
+          "rows": 12,
+          "cols": 4,
+          "chunk_bbox": [
+            43.023601531,
+            551.755801026,
+            552.251480102,
+            775.2392
+          ],
+          "overlap": 1.0,
+          "rule_category": "ok",
+          "recommended_action": "accept",
+          "needs_llm_judge": false,
+          "rule_confidence": 0.9,
+          "rule_reasons": "parser_output_passed_quality_checks",
+          "retry_attempted": false,
+          "retry_succeeded": false,
+          "retry_action": "",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "| Primers used for qRT- | Genes | Forward (5′-3′) | Reverse (5′-3′) | | --- | --- | --- | --- | |  |  | GCT CTC AAG GTC ATC CCA | GTTG TGT TTC CAC GCT TGG TTC ACT | |  |  | CCA ACT GAA CGT GAC CAA | AAA CCA GAA GGT GCT GGG TAG GGA AGT AGG C"
+        },
+        {
+          "pdf": "Potential effects of a human milk oligosaccharide 6′‑sialyllactoseon angiotensin II‑induced aortic aneurysm via p90RSKTGF‑βSMAD2signaling pathway.pdf",
+          "page": 4,
+          "table_label": "Table 1",
+          "caption": "Table 1 Primers used for qRT-",
+          "region_id": "table_region_p4_43.0_551.8_552.3_775.2",
+          "region_bbox": [
+            43.023601531,
+            551.755801026,
+            552.251480102,
+            775.2392
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 136,
+          "rows": 12,
+          "cols": 4,
+          "chunk_bbox": [
+            43.023601531,
+            551.755801026,
+            552.251480102,
+            775.2392
+          ],
+          "overlap": 1.0,
+          "rule_category": "ok",
+          "recommended_action": "accept",
+          "needs_llm_judge": false,
+          "rule_confidence": 0.9,
+          "rule_reasons": "parser_output_passed_quality_checks",
+          "retry_attempted": false,
+          "retry_succeeded": false,
+          "retry_action": "",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "| Primers used for qRT- | Genes | Forward (5′-3′) | Reverse (5′-3′) | | --- | --- | --- | --- | |  |  | GCT CTC AAG GTC ATC CCA | GTTG TGT TTC CAC GCT TGG TTC ACT | |  |  | CCA ACT GAA CGT GAC CAA | AAA CCA GAA GGT GCT GGG TAG GGA AGT AGG C"
+        }
+      ]
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\功能文献汇总\\功能文献\\LNFP Ⅰ\\Treponema primitia α1-2-fucosyltransferase-catalyzed one-pot multienzyme synthesis of fucosylated oligosaccharide lacto-N-fucopentaose I with antiviral activity against enterovirus 71.pdf",
+      "detect_ms": 1811,
+      "regions": [
+        {
+          "region_id": "table_region_p3_29.6_53.1_565.7_693.0",
+          "source": "table_region_detector",
+          "page": 3,
+          "bbox": [
+            29.587400000000002,
+            53.090936000000056,
+            565.663,
+            692.9980091
+          ],
+          "confidence": 1.0,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                37.5874,
+                57.090936000000056,
+                62.77395490000001,
+                64.26393600000006
+              ],
+              "details": {
+                "text": "Table 1"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                29.587400000000002,
+                53.090936000000056,
+                565.663,
+                692.9980091
+              ],
+              "details": {
+                "count": 8
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                29.587400000000002,
+                53.090936000000056,
+                565.663,
+                692.9980091
+              ],
+              "details": {
+                "lines": 20
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.15,
+              "reason": "high_numeric_density",
+              "bbox": [
+                29.587400000000002,
+                53.090936000000056,
+                565.663,
+                692.9980091
+              ],
+              "details": {
+                "ratio": 0.553
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                29.587400000000002,
+                53.090936000000056,
+                565.663,
+                692.9980091
+              ],
+              "details": {
+                "ratio": 0.809
+              }
+            }
+          ]
+        }
+      ],
+      "region_text_contexts": {
+        "table_region_p3_29.6_53.1_565.7_693.0": {
+          "word_count": 90,
+          "line_count": 35,
+          "long_line_count": 0,
+          "body_word_hits": 1,
+          "numeric_tokens": 50,
+          "single_char_tokens": 24,
+          "avg_token_len": 6.97
+        }
+      },
+      "parser_summaries": {
+        "region_guided": {
+          "duration_ms": 121,
+          "chunks": 1,
+          "error": ""
+        },
+        "pdfplumber": {
+          "duration_ms": 196,
+          "chunks": 1,
+          "error": ""
+        }
+      },
+      "results": [
+        {
+          "pdf": "Treponema primitia α1-2-fucosyltransferase-catalyzed one-pot multienzyme synthesis of fucosylated oligosaccharide lacto-N-fucopentaose I with antiviral activity against enterovirus 71.pdf",
+          "page": 3,
+          "table_label": "Table 1",
+          "caption": "Table 1",
+          "region_id": "table_region_p3_29.6_53.1_565.7_693.0",
+          "region_bbox": [
+            29.587400000000002,
+            53.090936000000056,
+            565.663,
+            692.9980091
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 121,
+          "rows": 26,
+          "cols": 5,
+          "chunk_bbox": [
+            49.5496,
+            65.46792405000008,
+            527.65831595,
+            668.9980091
+          ],
+          "overlap": 1.0,
+          "rule_category": "header_or_span_complexity",
+          "recommended_action": "retry_text_strategy",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "structural_quality:low_consistency",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "retry_text_strategy",
+          "retry_rows": 26,
+          "retry_cols": 5,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "| eptor substrate specificity of | His6-Tp2FT. ND, no activity detected | . |  |  | | --- | --- | --- | --- | --- | | cceptors |  | Products |  | Convert | |  |  |  |  | 34.9 | | Galβ1–3GlcNAcβ1–3Galβ1–4Glc | (1) | Fuc α 1–2-Galβ1–3GlcNAcβ1"
+        },
+        {
+          "pdf": "Treponema primitia α1-2-fucosyltransferase-catalyzed one-pot multienzyme synthesis of fucosylated oligosaccharide lacto-N-fucopentaose I with antiviral activity against enterovirus 71.pdf",
+          "page": 3,
+          "table_label": "Table 1",
+          "caption": "Table 1",
+          "region_id": "table_region_p3_29.6_53.1_565.7_693.0",
+          "region_bbox": [
+            29.587400000000002,
+            53.090936000000056,
+            565.663,
+            692.9980091
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 196,
+          "rows": 26,
+          "cols": 5,
+          "chunk_bbox": [
+            49.5496,
+            65.46792405000008,
+            527.65831595,
+            668.9980091
+          ],
+          "overlap": 1.0,
+          "rule_category": "header_or_span_complexity",
+          "recommended_action": "retry_text_strategy",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "structural_quality:low_consistency",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "retry_text_strategy",
+          "retry_rows": 26,
+          "retry_cols": 5,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "| eptor substrate specificity of | His6-Tp2FT. ND, no activity detected | . |  |  | | --- | --- | --- | --- | --- | | cceptors |  | Products |  | Convert | |  |  |  |  | 34.9 | | Galβ1–3GlcNAcβ1–3Galβ1–4Glc | (1) | Fuc α 1–2-Galβ1–3GlcNAcβ1"
+        }
+      ]
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\文献汇总整理（市场那边调研的文献）\\1.0 岩藻糖基乳糖资料\\2-FL生物合成参考文献库\\2016-AAAAA-表达WcfB改善2-FL生产.pdf",
+      "detect_ms": 1281,
+      "regions": [
+        {
+          "region_id": "table_region_p27_77.1_82.5_660.2_562.4",
+          "source": "table_region_detector",
+          "page": 27,
+          "bbox": [
+            77.08,
+            82.49200000000002,
+            660.17,
+            562.4332800000001
+          ],
+          "confidence": 1.0,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                85.08,
+                86.49200000000002,
+                344.19800000000004,
+                98.49200000000002
+              ],
+              "details": {
+                "text": "Table 1 List of strains and plasmids used in this study"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                77.08,
+                82.49200000000002,
+                660.17,
+                562.4332800000001
+              ],
+              "details": {
+                "count": 6
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                77.08,
+                82.49200000000002,
+                660.17,
+                562.4332800000001
+              ],
+              "details": {
+                "lines": 15
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.15,
+              "reason": "high_numeric_density",
+              "bbox": [
+                77.08,
+                82.49200000000002,
+                660.17,
+                562.4332800000001
+              ],
+              "details": {
+                "ratio": 0.203
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                77.08,
+                82.49200000000002,
+                660.17,
+                562.4332800000001
+              ],
+              "details": {
+                "ratio": 0.983
+              }
+            }
+          ]
+        },
+        {
+          "region_id": "table_region_p29_77.1_110.5_523.8_412.0",
+          "source": "table_region_detector",
+          "page": 29,
+          "bbox": [
+            77.104,
+            110.452,
+            523.76,
+            411.96199999999993
+          ],
+          "confidence": 1.0,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                85.104,
+                114.452,
+                497.344,
+                126.452
+              ],
+              "details": {
+                "text": "Table 2 Comparison of results of batch fermentations of the engineered E. coli strains"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                77.104,
+                110.452,
+                523.76,
+                411.96199999999993
+              ],
+              "details": {
+                "count": 4
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                77.104,
+                110.452,
+                523.76,
+                411.96199999999993
+              ],
+              "details": {
+                "lines": 14
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                77.104,
+                110.452,
+                523.76,
+                411.96199999999993
+              ],
+              "details": {
+                "ratio": 0.952
+              }
+            }
+          ]
+        },
+        {
+          "region_id": "table_region_p30_77.1_96.7_518.4_536.9",
+          "source": "table_region_detector",
+          "page": 30,
+          "bbox": [
+            77.104,
+            96.65199999999993,
+            518.36,
+            536.9019999999999
+          ],
+          "confidence": 0.9,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                85.104,
+                100.65199999999993,
+                510.28000000000003,
+                112.65199999999993
+              ],
+              "details": {
+                "text": "Table 3 Comparison of results of fed-batch fermentations of the engineered E. coli"
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                77.104,
+                96.65199999999993,
+                518.36,
+                536.9019999999999
+              ],
+              "details": {
+                "lines": 21
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.15,
+              "reason": "high_numeric_density",
+              "bbox": [
+                77.104,
+                96.65199999999993,
+                518.36,
+                536.9019999999999
+              ],
+              "details": {
+                "ratio": 0.232
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                77.104,
+                96.65199999999993,
+                518.36,
+                536.9019999999999
+              ],
+              "details": {
+                "ratio": 0.96
+              }
+            }
+          ]
+        }
+      ],
+      "region_text_contexts": {
+        "table_region_p27_77.1_82.5_660.2_562.4": {
+          "word_count": 144,
+          "line_count": 18,
+          "long_line_count": 3,
+          "body_word_hits": 11,
+          "numeric_tokens": 32,
+          "single_char_tokens": 12,
+          "avg_token_len": 5.62
+        },
+        "table_region_p29_77.1_110.5_523.8_412.0": {
+          "word_count": 83,
+          "line_count": 20,
+          "long_line_count": 1,
+          "body_word_hits": 21,
+          "numeric_tokens": 16,
+          "single_char_tokens": 3,
+          "avg_token_len": 6.08
+        },
+        "table_region_p30_77.1_96.7_518.4_536.9": {
+          "word_count": 125,
+          "line_count": 30,
+          "long_line_count": 1,
+          "body_word_hits": 26,
+          "numeric_tokens": 29,
+          "single_char_tokens": 9,
+          "avg_token_len": 5.16
+        }
+      },
+      "parser_summaries": {
+        "region_guided": {
+          "duration_ms": 198,
+          "chunks": 2,
+          "error": ""
+        },
+        "pdfplumber": {
+          "duration_ms": 204,
+          "chunks": 2,
+          "error": ""
+        }
+      },
+      "results": [
+        {
+          "pdf": "2016-AAAAA-表达WcfB改善2-FL生产.pdf",
+          "page": 27,
+          "table_label": "Table 1",
+          "caption": "Table 1 List of strains and plasmids used in this study",
+          "region_id": "table_region_p27_77.1_82.5_660.2_562.4",
+          "region_bbox": [
+            77.08,
+            82.49200000000002,
+            660.17,
+            562.4332800000001
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 198,
+          "rows": 7,
+          "cols": 2,
+          "chunk_bbox": [
+            77.08,
+            82.49200000000002,
+            660.17,
+            562.4332800000001
+          ],
+          "overlap": 1.0,
+          "rule_category": "ok",
+          "recommended_action": "accept",
+          "needs_llm_judge": false,
+          "rule_confidence": 0.9,
+          "rule_reasons": "parser_output_passed_quality_checks",
+          "retry_attempted": false,
+          "retry_succeeded": false,
+          "retry_action": "",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "| Strains/Plasmids | Relevant description | | --- | --- | | rains |  | | △L M15 △L Tn7::lacZ△M15YA | (lacZ partially disrupted) | | △L YA △L Tn7::lacYA | (lacZ completely deleted) | | △L M15 BCGW-F △L M15 harboring | pBCGW (manB, manC, gmd,"
+        },
+        {
+          "pdf": "2016-AAAAA-表达WcfB改善2-FL生产.pdf",
+          "page": 29,
+          "table_label": "Table 2",
+          "caption": "Table 2 Comparison of results of batch fermentations of the engineered E. coli strains",
+          "region_id": "table_region_p29_77.1_110.5_523.8_412.0",
+          "region_bbox": [
+            77.104,
+            110.452,
+            523.76,
+            411.96199999999993
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 198,
+          "rows": 19,
+          "cols": 4,
+          "chunk_bbox": [
+            85.104,
+            114.452,
+            484.42,
+            387.96199999999993
+          ],
+          "overlap": 1.0,
+          "rule_category": "header_or_span_complexity",
+          "recommended_action": "retry_text_strategy",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "structural_quality:low_consistency",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "retry_text_strategy",
+          "retry_rows": 19,
+          "retry_cols": 4,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "| Strains |  | ( | mole 2-FL/m | | --- | --- | --- | --- | |  | cell weight (g/L) con | centrationa (g/L) |  | |  |  |  | lactose) | | △L M15 |  |  |  | |  | 5.73±0.09 | 0.08±0.012 | 0.040±0.003 | | BCGW-F |  |  |  | | △L M15 |  |  |  | |  "
+        },
+        {
+          "pdf": "2016-AAAAA-表达WcfB改善2-FL生产.pdf",
+          "page": 30,
+          "table_label": "Table 3",
+          "caption": "Table 3 Comparison of results of fed-batch fermentations of the engineered E. coli",
+          "region_id": "table_region_p30_77.1_96.7_518.4_536.9",
+          "region_bbox": [
+            77.104,
+            96.65199999999993,
+            518.36,
+            536.9019999999999
+          ],
+          "region_confidence": 0.9,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": false,
+          "duration_ms": 198,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "rule_category": "body_text_contamination",
+          "recommended_action": "shrink_bbox",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "region_confidence=0.90 | words=125 | many_long_lines_or_body_words",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "shrink_bbox",
+          "retry_rows": 18,
+          "retry_cols": 5,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        },
+        {
+          "pdf": "2016-AAAAA-表达WcfB改善2-FL生产.pdf",
+          "page": 27,
+          "table_label": "Table 1",
+          "caption": "Table 1 List of strains and plasmids used in this study",
+          "region_id": "table_region_p27_77.1_82.5_660.2_562.4",
+          "region_bbox": [
+            77.08,
+            82.49200000000002,
+            660.17,
+            562.4332800000001
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 204,
+          "rows": 7,
+          "cols": 2,
+          "chunk_bbox": [
+            77.08,
+            82.49200000000002,
+            660.17,
+            562.4332800000001
+          ],
+          "overlap": 1.0,
+          "rule_category": "ok",
+          "recommended_action": "accept",
+          "needs_llm_judge": false,
+          "rule_confidence": 0.9,
+          "rule_reasons": "parser_output_passed_quality_checks",
+          "retry_attempted": false,
+          "retry_succeeded": false,
+          "retry_action": "",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "| Strains/Plasmids | Relevant description | | --- | --- | | rains |  | | △L M15 △L Tn7::lacZ△M15YA | (lacZ partially disrupted) | | △L YA △L Tn7::lacYA | (lacZ completely deleted) | | △L M15 BCGW-F △L M15 harboring | pBCGW (manB, manC, gmd,"
+        },
+        {
+          "pdf": "2016-AAAAA-表达WcfB改善2-FL生产.pdf",
+          "page": 29,
+          "table_label": "Table 2",
+          "caption": "Table 2 Comparison of results of batch fermentations of the engineered E. coli strains",
+          "region_id": "table_region_p29_77.1_110.5_523.8_412.0",
+          "region_bbox": [
+            77.104,
+            110.452,
+            523.76,
+            411.96199999999993
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 204,
+          "rows": 19,
+          "cols": 4,
+          "chunk_bbox": [
+            85.104,
+            114.452,
+            484.42,
+            387.96199999999993
+          ],
+          "overlap": 1.0,
+          "rule_category": "header_or_span_complexity",
+          "recommended_action": "retry_text_strategy",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "structural_quality:low_consistency",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "retry_text_strategy",
+          "retry_rows": 19,
+          "retry_cols": 4,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "| Strains |  | ( | mole 2-FL/m | | --- | --- | --- | --- | |  | cell weight (g/L) con | centrationa (g/L) |  | |  |  |  | lactose) | | △L M15 |  |  |  | |  | 5.73±0.09 | 0.08±0.012 | 0.040±0.003 | | BCGW-F |  |  |  | | △L M15 |  |  |  | |  "
+        },
+        {
+          "pdf": "2016-AAAAA-表达WcfB改善2-FL生产.pdf",
+          "page": 30,
+          "table_label": "Table 3",
+          "caption": "Table 3 Comparison of results of fed-batch fermentations of the engineered E. coli",
+          "region_id": "table_region_p30_77.1_96.7_518.4_536.9",
+          "region_bbox": [
+            77.104,
+            96.65199999999993,
+            518.36,
+            536.9019999999999
+          ],
+          "region_confidence": 0.9,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": false,
+          "duration_ms": 204,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "rule_category": "body_text_contamination",
+          "recommended_action": "shrink_bbox",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "region_confidence=0.90 | words=125 | many_long_lines_or_body_words",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "shrink_bbox",
+          "retry_rows": 18,
+          "retry_cols": 5,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        }
+      ]
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\文献汇总整理（市场那边调研的文献）\\1.0 岩藻糖基乳糖资料\\2019-2023年文献资料\\2-FL\\2021-Discovery and characterization of a novel α-l-fucosidase from the marine-derived Flavobacterium algicola and its application in 2'-fucosyllactose production.pdf",
+      "detect_ms": 2168,
+      "regions": [],
+      "region_text_contexts": {},
+      "parser_summaries": {
+        "region_guided": {
+          "duration_ms": 0,
+          "chunks": 0,
+          "error": ""
+        },
+        "pdfplumber": {
+          "duration_ms": 0,
+          "chunks": 0,
+          "error": ""
+        }
+      },
+      "results": []
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\文献汇总整理（市场那边调研的文献）\\2.0 LNT LNnT资料\\2019-2024 LNT LNnT资料汇总\\2019-2024 LNT 相关文献\\lu-et-al-2021-engineered-microbial-routes-for-human-milk-oligosaccharides-synthesis.pdf",
+      "detect_ms": 2124,
+      "regions": [
+        {
+          "region_id": "table_region_p3_56.1_65.0_558.4_768.7",
+          "source": "table_region_detector",
+          "page": 3,
+          "bbox": [
+            56.089625999999996,
+            65.02245796999989,
+            558.3609948,
+            768.7053
+          ],
+          "confidence": 0.65,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "rotated_table_caption",
+              "bbox": [
+                62.089625999999996,
+                531.4270272399999,
+                76.089726,
+                762.7053
+              ],
+              "details": {
+                "text": "Table1.HMOsProducedUsingMetabolicEngineering"
+              }
+            },
+            {
+              "source": "rotation",
+              "score": 0.3,
+              "reason": "rotated_text_block",
+              "bbox": [
+                56.089625999999996,
+                65.02245796999989,
+                558.3609948,
+                768.7053
+              ],
+              "details": {
+                "chars": 4135
+              }
+            }
+          ]
+        },
+        {
+          "region_id": "table_region_p4_56.1_65.9_570.9_768.7",
+          "source": "table_region_detector",
+          "page": 4,
+          "bbox": [
+            56.089625999999996,
+            65.86366046,
+            570.8726282599999,
+            768.7053
+          ],
+          "confidence": 0.65,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "rotated_table_caption",
+              "bbox": [
+                62.089625999999996,
+                681.7365303199999,
+                76.089726,
+                762.7053
+              ],
+              "details": {
+                "text": "Table1.continued"
+              }
+            },
+            {
+              "source": "rotation",
+              "score": 0.3,
+              "reason": "rotated_text_block",
+              "bbox": [
+                56.089625999999996,
+                65.86366046,
+                570.8726282599999,
+                768.7053
+              ],
+              "details": {
+                "chars": 4178
+              }
+            }
+          ]
+        },
+        {
+          "region_id": "table_region_p5_56.1_62.2_475.3_768.7",
+          "source": "table_region_detector",
+          "page": 5,
+          "bbox": [
+            56.089625999999996,
+            62.197,
+            475.2938,
+            768.7053
+          ],
+          "confidence": 0.65,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "rotated_table_caption",
+              "bbox": [
+                62.089625999999996,
+                681.7365303199999,
+                76.089726,
+                762.7053
+              ],
+              "details": {
+                "text": "Table1.continued"
+              }
+            },
+            {
+              "source": "rotation",
+              "score": 0.3,
+              "reason": "rotated_text_block",
+              "bbox": [
+                56.089625999999996,
+                62.197,
+                475.2938,
+                768.7053
+              ],
+              "details": {
+                "chars": 3731
+              }
+            }
+          ]
+        }
+      ],
+      "region_text_contexts": {
+        "table_region_p3_56.1_65.0_558.4_768.7": {
+          "word_count": 253,
+          "line_count": 71,
+          "long_line_count": 11,
+          "body_word_hits": 5,
+          "numeric_tokens": 174,
+          "single_char_tokens": 12,
+          "avg_token_len": 16.34
+        },
+        "table_region_p4_56.1_65.9_570.9_768.7": {
+          "word_count": 240,
+          "line_count": 71,
+          "long_line_count": 12,
+          "body_word_hits": 18,
+          "numeric_tokens": 152,
+          "single_char_tokens": 27,
+          "avg_token_len": 17.41
+        },
+        "table_region_p5_56.1_62.2_475.3_768.7": {
+          "word_count": 186,
+          "line_count": 64,
+          "long_line_count": 10,
+          "body_word_hits": 3,
+          "numeric_tokens": 117,
+          "single_char_tokens": 9,
+          "avg_token_len": 20.06
+        }
+      },
+      "parser_summaries": {
+        "region_guided": {
+          "duration_ms": 943,
+          "chunks": 0,
+          "error": ""
+        },
+        "pdfplumber": {
+          "duration_ms": 840,
+          "chunks": 0,
+          "error": ""
+        }
+      },
+      "results": [
+        {
+          "pdf": "lu-et-al-2021-engineered-microbial-routes-for-human-milk-oligosaccharides-synthesis.pdf",
+          "page": 3,
+          "table_label": "Table 1",
+          "caption": "Table1.HMOsProducedUsingMetabolicEngineering",
+          "region_id": "table_region_p3_56.1_65.0_558.4_768.7",
+          "region_bbox": [
+            56.089625999999996,
+            65.02245796999989,
+            558.3609948,
+            768.7053
+          ],
+          "region_confidence": 0.65,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": false,
+          "duration_ms": 943,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "rule_category": "body_text_contamination",
+          "recommended_action": "shrink_bbox",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "region_confidence=0.65 | words=253 | many_long_lines_or_body_words",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "shrink_bbox",
+          "retry_rows": 34,
+          "retry_cols": 21,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        },
+        {
+          "pdf": "lu-et-al-2021-engineered-microbial-routes-for-human-milk-oligosaccharides-synthesis.pdf",
+          "page": 4,
+          "table_label": "Table 1",
+          "caption": "Table1.continued",
+          "region_id": "table_region_p4_56.1_65.9_570.9_768.7",
+          "region_bbox": [
+            56.089625999999996,
+            65.86366046,
+            570.8726282599999,
+            768.7053
+          ],
+          "region_confidence": 0.65,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": false,
+          "duration_ms": 943,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "rule_category": "body_text_contamination",
+          "recommended_action": "shrink_bbox",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "region_confidence=0.65 | words=240 | many_long_lines_or_body_words",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "shrink_bbox",
+          "retry_rows": 36,
+          "retry_cols": 23,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        },
+        {
+          "pdf": "lu-et-al-2021-engineered-microbial-routes-for-human-milk-oligosaccharides-synthesis.pdf",
+          "page": 5,
+          "table_label": "Table 1",
+          "caption": "Table1.continued",
+          "region_id": "table_region_p5_56.1_62.2_475.3_768.7",
+          "region_bbox": [
+            56.089625999999996,
+            62.197,
+            475.2938,
+            768.7053
+          ],
+          "region_confidence": 0.65,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": false,
+          "duration_ms": 943,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "rule_category": "body_text_contamination",
+          "recommended_action": "shrink_bbox",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "region_confidence=0.65 | words=186 | many_long_lines_or_body_words",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "shrink_bbox",
+          "retry_rows": 6,
+          "retry_cols": 7,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        },
+        {
+          "pdf": "lu-et-al-2021-engineered-microbial-routes-for-human-milk-oligosaccharides-synthesis.pdf",
+          "page": 3,
+          "table_label": "Table 1",
+          "caption": "Table1.HMOsProducedUsingMetabolicEngineering",
+          "region_id": "table_region_p3_56.1_65.0_558.4_768.7",
+          "region_bbox": [
+            56.089625999999996,
+            65.02245796999989,
+            558.3609948,
+            768.7053
+          ],
+          "region_confidence": 0.65,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": false,
+          "duration_ms": 840,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "rule_category": "body_text_contamination",
+          "recommended_action": "shrink_bbox",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "region_confidence=0.65 | words=253 | many_long_lines_or_body_words",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "shrink_bbox",
+          "retry_rows": 34,
+          "retry_cols": 21,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        },
+        {
+          "pdf": "lu-et-al-2021-engineered-microbial-routes-for-human-milk-oligosaccharides-synthesis.pdf",
+          "page": 4,
+          "table_label": "Table 1",
+          "caption": "Table1.continued",
+          "region_id": "table_region_p4_56.1_65.9_570.9_768.7",
+          "region_bbox": [
+            56.089625999999996,
+            65.86366046,
+            570.8726282599999,
+            768.7053
+          ],
+          "region_confidence": 0.65,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": false,
+          "duration_ms": 840,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "rule_category": "body_text_contamination",
+          "recommended_action": "shrink_bbox",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "region_confidence=0.65 | words=240 | many_long_lines_or_body_words",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "shrink_bbox",
+          "retry_rows": 36,
+          "retry_cols": 23,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        },
+        {
+          "pdf": "lu-et-al-2021-engineered-microbial-routes-for-human-milk-oligosaccharides-synthesis.pdf",
+          "page": 5,
+          "table_label": "Table 1",
+          "caption": "Table1.continued",
+          "region_id": "table_region_p5_56.1_62.2_475.3_768.7",
+          "region_bbox": [
+            56.089625999999996,
+            62.197,
+            475.2938,
+            768.7053
+          ],
+          "region_confidence": 0.65,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": false,
+          "duration_ms": 840,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "rule_category": "body_text_contamination",
+          "recommended_action": "shrink_bbox",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "region_confidence=0.65 | words=186 | many_long_lines_or_body_words",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "shrink_bbox",
+          "retry_rows": 6,
+          "retry_cols": 7,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        }
+      ]
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\文献汇总整理（市场那边调研的文献）\\2.0 LNT LNnT资料\\2019年前文献\\CRISPRi-guided multiplexed fine-tuning of metabolic flux for enhanced Lacto-N-neotetraose production in Bacillus subtilis.pdf",
+      "detect_ms": 2144,
+      "regions": [
+        {
+          "region_id": "table_region_p23_46.0_71.9_514.2_722.7",
+          "source": "table_region_detector",
+          "page": 23,
+          "bbox": [
+            46.0,
+            71.91160000000002,
+            514.1588800392001,
+            722.6715999999999
+          ],
+          "confidence": 1.0,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                54.0,
+                75.91160000000002,
+                212.91183964079997,
+                85.87159999999994
+              ],
+              "details": {
+                "text": "Table 1 Strains used in this study"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                46.0,
+                71.91160000000002,
+                514.1588800392001,
+                722.6715999999999
+              ],
+              "details": {
+                "count": 4
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                46.0,
+                71.91160000000002,
+                514.1588800392001,
+                722.6715999999999
+              ],
+              "details": {
+                "lines": 23
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.15,
+              "reason": "high_numeric_density",
+              "bbox": [
+                46.0,
+                71.91160000000002,
+                514.1588800392001,
+                722.6715999999999
+              ],
+              "details": {
+                "ratio": 0.362
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                46.0,
+                71.91160000000002,
+                514.1588800392001,
+                722.6715999999999
+              ],
+              "details": {
+                "ratio": 0.983
+              }
+            }
+          ]
+        }
+      ],
+      "region_text_contexts": {
+        "table_region_p23_46.0_71.9_514.2_722.7": {
+          "word_count": 170,
+          "line_count": 37,
+          "long_line_count": 1,
+          "body_word_hits": 17,
+          "numeric_tokens": 61,
+          "single_char_tokens": 25,
+          "avg_token_len": 4.77
+        }
+      },
+      "parser_summaries": {
+        "region_guided": {
+          "duration_ms": 184,
+          "chunks": 1,
+          "error": ""
+        },
+        "pdfplumber": {
+          "duration_ms": 131,
+          "chunks": 1,
+          "error": ""
+        }
+      },
+      "results": [
+        {
+          "pdf": "CRISPRi-guided multiplexed fine-tuning of metabolic flux for enhanced Lacto-N-neotetraose production in Bacillus subtilis.pdf",
+          "page": 23,
+          "table_label": "Table 1",
+          "caption": "Table 1 Strains used in this study",
+          "region_id": "table_region_p23_46.0_71.9_514.2_722.7",
+          "region_bbox": [
+            46.0,
+            71.91160000000002,
+            514.1588800392001,
+            722.6715999999999
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 184,
+          "rows": 39,
+          "cols": 2,
+          "chunk_bbox": [
+            59.664,
+            101.11159999999995,
+            509.61497992000005,
+            698.77972
+          ],
+          "overlap": 1.0,
+          "rule_category": "ok",
+          "recommended_action": "accept",
+          "needs_llm_judge": false,
+          "rule_confidence": 0.9,
+          "rule_reasons": "parser_output_passed_quality_checks",
+          "retry_attempted": false,
+          "retry_succeeded": false,
+          "retry_action": "",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "| Strains | Characteristics | | --- | --- | | BY24 | B. subtilis 168 der | |  | P -pgi, P -gtaB, 43 43 | | BN0 | BY24 derivate, Δg | | NA1 | BN0 derivate, P veg | | NA2 | BN0 derivate, P veg | | NA3 | BN0 derivate, P veg | | NA4 | BN0 deriv"
+        },
+        {
+          "pdf": "CRISPRi-guided multiplexed fine-tuning of metabolic flux for enhanced Lacto-N-neotetraose production in Bacillus subtilis.pdf",
+          "page": 23,
+          "table_label": "Table 1",
+          "caption": "Table 1 Strains used in this study",
+          "region_id": "table_region_p23_46.0_71.9_514.2_722.7",
+          "region_bbox": [
+            46.0,
+            71.91160000000002,
+            514.1588800392001,
+            722.6715999999999
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 131,
+          "rows": 39,
+          "cols": 2,
+          "chunk_bbox": [
+            59.664,
+            101.11159999999995,
+            509.61497992000005,
+            698.77972
+          ],
+          "overlap": 1.0,
+          "rule_category": "ok",
+          "recommended_action": "accept",
+          "needs_llm_judge": false,
+          "rule_confidence": 0.9,
+          "rule_reasons": "parser_output_passed_quality_checks",
+          "retry_attempted": false,
+          "retry_succeeded": false,
+          "retry_action": "",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "| Strains | Characteristics | | --- | --- | | BY24 | B. subtilis 168 der | |  | P -pgi, P -gtaB, 43 43 | | BN0 | BY24 derivate, Δg | | NA1 | BN0 derivate, P veg | | NA2 | BN0 derivate, P veg | | NA3 | BN0 derivate, P veg | | NA4 | BN0 deriv"
+        }
+      ]
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\文献汇总整理（市场那边调研的文献）\\3.0 唾液酸乳糖资料\\已完成\\2022-AAAA-Metabolic Engineering of Escherichia coli for Increased Bioproduction of N-Acetylneuraminic Acid(科研通-ablesci.com).pdf",
+      "detect_ms": 1404,
+      "regions": [
+        {
+          "region_id": "table_region_p3_43.5_56.7_292.7_597.5",
+          "source": "table_region_detector",
+          "page": 3,
+          "bbox": [
+            43.4576,
+            56.684999999999945,
+            292.7471848,
+            597.4562999999999
+          ],
+          "confidence": 1.0,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                51.4771,
+                60.684999999999945,
+                194.6451,
+                70.68499999999995
+              ],
+              "details": {
+                "text": "Table 1. Strains Used in this Study"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                43.4576,
+                56.684999999999945,
+                292.7471848,
+                597.4562999999999
+              ],
+              "details": {
+                "count": 6
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                43.4576,
+                56.684999999999945,
+                292.7471848,
+                597.4562999999999
+              ],
+              "details": {
+                "lines": 43
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.15,
+              "reason": "high_numeric_density",
+              "bbox": [
+                43.4576,
+                56.684999999999945,
+                292.7471848,
+                597.4562999999999
+              ],
+              "details": {
+                "ratio": 0.377
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                43.4576,
+                56.684999999999945,
+                292.7471848,
+                597.4562999999999
+              ],
+              "details": {
+                "ratio": 0.829
+              }
+            }
+          ]
+        },
+        {
+          "region_id": "table_region_p3_43.5_610.6_563.5_744.1",
+          "source": "table_region_detector",
+          "page": 3,
+          "bbox": [
+            43.4771,
+            610.572,
+            563.4715999999999,
+            744.1397999999999
+          ],
+          "confidence": 0.45,
+          "band": "gray",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                51.477499999999964,
+                614.572,
+                555.4499999999999,
+                624.1397999999999
+              ],
+              "details": {
+                "text": "Table S1. All primers synthesized by GENEWIZ (Suzhou, China) 12 h. Then, 2% (v/v) of the seed culture was transferred into a 96-"
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                43.4771,
+                610.572,
+                563.4715999999999,
+                744.1397999999999
+              ],
+              "details": {
+                "lines": 14
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                43.4771,
+                610.572,
+                563.4715999999999,
+                744.1397999999999
+              ],
+              "details": {
+                "ratio": 0.933
+              }
+            },
+            {
+              "source": "negative",
+              "score": -0.3,
+              "reason": "long_sentence_block",
+              "bbox": [
+                43.4771,
+                610.572,
+                563.4715999999999,
+                744.1397999999999
+              ],
+              "details": {
+                "lines": 4
+              }
+            }
+          ]
+        }
+      ],
+      "region_text_contexts": {
+        "table_region_p3_43.5_56.7_292.7_597.5": {
+          "word_count": 139,
+          "line_count": 58,
+          "long_line_count": 0,
+          "body_word_hits": 40,
+          "numeric_tokens": 86,
+          "single_char_tokens": 18,
+          "avg_token_len": 12.49
+        },
+        "table_region_p3_43.5_610.6_563.5_744.1": {
+          "word_count": 154,
+          "line_count": 15,
+          "long_line_count": 12,
+          "body_word_hits": 74,
+          "numeric_tokens": 14,
+          "single_char_tokens": 5,
+          "avg_token_len": 8.43
+        }
+      },
+      "parser_summaries": {
+        "region_guided": {
+          "duration_ms": 332,
+          "chunks": 1,
+          "error": ""
+        },
+        "pdfplumber": {
+          "duration_ms": 262,
+          "chunks": 1,
+          "error": ""
+        }
+      },
+      "results": [
+        {
+          "pdf": "2022-AAAA-Metabolic Engineering of Escherichia coli for Increased Bioproduction of N-Acetylneuraminic Acid(科研通-ablesci.com).pdf",
+          "page": 3,
+          "table_label": "Table 1",
+          "caption": "Table 1. Strains Used in this Study",
+          "region_id": "table_region_p3_43.5_56.7_292.7_597.5",
+          "region_bbox": [
+            43.4576,
+            56.684999999999945,
+            292.7471848,
+            597.4562999999999
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 332,
+          "rows": 44,
+          "cols": 2,
+          "chunk_bbox": [
+            52.46933748000001,
+            110.37387480999996,
+            292.2808492,
+            593.3544999999999
+          ],
+          "overlap": 1.0,
+          "rule_category": "header_or_span_complexity",
+          "recommended_action": "retry_text_strategy",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "structural_quality:low_consistency",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "retry_text_strategy",
+          "retry_rows": 44,
+          "retry_cols": 2,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "| E.coliJM109 | cloninghost | | --- | --- | | E.coliBL21(DE3) | startingstrain | | NBC1 | E.coliBL21(DE3)derivate,ΔnagΔnanATEΔmanXYZ, | | NBC2 | terminatorlocusofpspGgene NBC1derivate,ΔcheW::P6-glmS | | NBC3-10 | A NBC2derivate,overexpressi"
+        },
+        {
+          "pdf": "2022-AAAA-Metabolic Engineering of Escherichia coli for Increased Bioproduction of N-Acetylneuraminic Acid(科研通-ablesci.com).pdf",
+          "page": 3,
+          "table_label": "Table S1",
+          "caption": "Table S1. All primers synthesized by GENEWIZ (Suzhou, China) 12 h. Then, 2% (v/v) of the seed culture was transferred into a 96-",
+          "region_id": "table_region_p3_43.5_610.6_563.5_744.1",
+          "region_bbox": [
+            43.4771,
+            610.572,
+            563.4715999999999,
+            744.1397999999999
+          ],
+          "region_confidence": 0.45,
+          "region_band": "gray",
+          "parser": "region_guided",
+          "succeeded": false,
+          "duration_ms": 332,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "rule_category": "body_text_contamination",
+          "recommended_action": "shrink_bbox",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "region_confidence=0.45 | words=154 | many_long_lines_or_body_words",
+          "retry_attempted": true,
+          "retry_succeeded": false,
+          "retry_action": "shrink_bbox",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "retry produced no overlapping table chunk",
+          "llm_judge_attempted": true,
+          "llm_failure_category": "body_text_contamination",
+          "llm_recommended_action": "shrink_bbox",
+          "llm_confidence": 0.65,
+          "llm_reason": "The region contains 154 words with 74 body word hits and 12 long lines, indicating the bounding box captures surrounding body text rather than the table. The parser failed with no overlapping table chunk, and rule feedback confirms contamination. Shrinking the bbox to exclude non-table text is appropriate.",
+          "llm_error": "",
+          "rule_llm_agree": true,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        },
+        {
+          "pdf": "2022-AAAA-Metabolic Engineering of Escherichia coli for Increased Bioproduction of N-Acetylneuraminic Acid(科研通-ablesci.com).pdf",
+          "page": 3,
+          "table_label": "Table 1",
+          "caption": "Table 1. Strains Used in this Study",
+          "region_id": "table_region_p3_43.5_56.7_292.7_597.5",
+          "region_bbox": [
+            43.4576,
+            56.684999999999945,
+            292.7471848,
+            597.4562999999999
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 262,
+          "rows": 44,
+          "cols": 2,
+          "chunk_bbox": [
+            52.46933748000001,
+            110.37387480999996,
+            292.2808492,
+            593.3544999999999
+          ],
+          "overlap": 1.0,
+          "rule_category": "header_or_span_complexity",
+          "recommended_action": "retry_text_strategy",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "structural_quality:low_consistency",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "retry_text_strategy",
+          "retry_rows": 44,
+          "retry_cols": 2,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "| E.coliJM109 | cloninghost | | --- | --- | | E.coliBL21(DE3) | startingstrain | | NBC1 | E.coliBL21(DE3)derivate,ΔnagΔnanATEΔmanXYZ, | | NBC2 | terminatorlocusofpspGgene NBC1derivate,ΔcheW::P6-glmS | | NBC3-10 | A NBC2derivate,overexpressi"
+        },
+        {
+          "pdf": "2022-AAAA-Metabolic Engineering of Escherichia coli for Increased Bioproduction of N-Acetylneuraminic Acid(科研通-ablesci.com).pdf",
+          "page": 3,
+          "table_label": "Table S1",
+          "caption": "Table S1. All primers synthesized by GENEWIZ (Suzhou, China) 12 h. Then, 2% (v/v) of the seed culture was transferred into a 96-",
+          "region_id": "table_region_p3_43.5_610.6_563.5_744.1",
+          "region_bbox": [
+            43.4771,
+            610.572,
+            563.4715999999999,
+            744.1397999999999
+          ],
+          "region_confidence": 0.45,
+          "region_band": "gray",
+          "parser": "pdfplumber",
+          "succeeded": false,
+          "duration_ms": 262,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "rule_category": "body_text_contamination",
+          "recommended_action": "shrink_bbox",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "region_confidence=0.45 | words=154 | many_long_lines_or_body_words",
+          "retry_attempted": true,
+          "retry_succeeded": false,
+          "retry_action": "shrink_bbox",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "retry produced no overlapping table chunk",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        }
+      ]
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\文献汇总整理（市场那边调研的文献）\\学习班\\蛋白质稳定性计算设计与定向进化前沿工具_阮青云.pdf",
+      "detect_ms": 4794,
+      "regions": [
+        {
+          "region_id": "table_region_p4_57.5_102.0_554.8_766.4",
+          "source": "table_region_detector",
+          "page": 4,
+          "bbox": [
+            57.4804,
+            101.98945679999997,
+            554.8034,
+            766.3514759
+          ],
+          "confidence": 0.95,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                226.1492687,
+                105.98945679999997,
+                386.16871440000006,
+                114.80935680000005
+              ],
+              "details": {
+                "text": "Table 1 Definitions of stability parameters"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                57.4804,
+                101.98945679999997,
+                554.8034,
+                766.3514759
+              ],
+              "details": {
+                "count": 3
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                57.4804,
+                101.98945679999997,
+                554.8034,
+                766.3514759
+              ],
+              "details": {
+                "lines": 33
+              }
+            }
+          ]
+        },
+        {
+          "region_id": "table_region_p9_57.3_101.8_555.1_767.0",
+          "source": "table_region_detector",
+          "page": 9,
+          "bbox": [
+            57.338499999999996,
+            101.84169839999993,
+            555.0654999999999,
+            766.9720391999999
+          ],
+          "confidence": 0.95,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                185.1647,
+                105.84169839999993,
+                427.1298366,
+                114.6615984
+              ],
+              "details": {
+                "text": "Table 2 Summary of software for protein stability rational design"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                57.338499999999996,
+                101.84169839999993,
+                555.0654999999999,
+                766.9720391999999
+              ],
+              "details": {
+                "count": 3
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                57.338499999999996,
+                101.84169839999993,
+                555.0654999999999,
+                766.9720391999999
+              ],
+              "details": {
+                "lines": 38
+              }
+            }
+          ]
+        }
+      ],
+      "region_text_contexts": {
+        "table_region_p4_57.5_102.0_554.8_766.4": {
+          "word_count": 143,
+          "line_count": 71,
+          "long_line_count": 0,
+          "body_word_hits": 2,
+          "numeric_tokens": 19,
+          "single_char_tokens": 27,
+          "avg_token_len": 10.78
+        },
+        "table_region_p9_57.3_101.8_555.1_767.0": {
+          "word_count": 159,
+          "line_count": 48,
+          "long_line_count": 0,
+          "body_word_hits": 4,
+          "numeric_tokens": 29,
+          "single_char_tokens": 9,
+          "avg_token_len": 11.42
+        }
+      },
+      "parser_summaries": {
+        "region_guided": {
+          "duration_ms": 488,
+          "chunks": 2,
+          "error": ""
+        },
+        "pdfplumber": {
+          "duration_ms": 471,
+          "chunks": 2,
+          "error": ""
+        }
+      },
+      "results": [
+        {
+          "pdf": "蛋白质稳定性计算设计与定向进化前沿工具_阮青云.pdf",
+          "page": 4,
+          "table_label": "Table 1",
+          "caption": "Table 1 Definitions of stability parameters",
+          "region_id": "table_region_p4_57.5_102.0_554.8_766.4",
+          "region_bbox": [
+            57.4804,
+            101.98945679999997,
+            554.8034,
+            766.3514759
+          ],
+          "region_confidence": 0.95,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 488,
+          "rows": 25,
+          "cols": 2,
+          "chunk_bbox": [
+            57.4804,
+            101.98945679999997,
+            554.8034,
+            766.3514759
+          ],
+          "overlap": 1.0,
+          "rule_category": "ok",
+          "recommended_action": "accept",
+          "needs_llm_judge": false,
+          "rule_confidence": 0.9,
+          "rule_reasons": "parser_output_passed_quality_checks",
+          "retry_attempted": false,
+          "retry_succeeded": false,
+          "retry_action": "",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "| column 1 | column 2 | | --- | --- | | 符号 | 稳定性类型 | | ΔG UN | 热力学 | | ΔG NU | 热力学 | | ΔΔG | 热力学 | | T m | 热力学 | | C 1/2 | 热力学 | | K U | 热力学 | | k f | 动力学 | | k u | 动力学 | | k d, obs | 动力学 | | T 50 | ― | | t | 动力学 | | 度量 | 定义 | | 折叠自由能 | 蛋白质"
+        },
+        {
+          "pdf": "蛋白质稳定性计算设计与定向进化前沿工具_阮青云.pdf",
+          "page": 9,
+          "table_label": "Table 2",
+          "caption": "Table 2 Summary of software for protein stability rational design",
+          "region_id": "table_region_p9_57.3_101.8_555.1_767.0",
+          "region_bbox": [
+            57.338499999999996,
+            101.84169839999993,
+            555.0654999999999,
+            766.9720391999999
+          ],
+          "region_confidence": 0.95,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 488,
+          "rows": 6,
+          "cols": 5,
+          "chunk_bbox": [
+            57.338499999999996,
+            101.84169839999993,
+            555.0654999999999,
+            766.9720391999999
+          ],
+          "overlap": 1.0,
+          "rule_category": "ok",
+          "recommended_action": "accept",
+          "needs_llm_judge": false,
+          "rule_confidence": 0.9,
+          "rule_reasons": "parser_output_passed_quality_checks",
+          "retry_attempted": false,
+          "retry_succeeded": false,
+          "retry_action": "",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "| 类别 | 软件名称 | 输入 | 网站/本地安装 | 参考文献 | | --- | --- | --- | --- | --- | | 基于结构分析 |  |  |  |  | | 优化蛋白质表面电荷 | TKSA-MC PHEPS | 结构 结构 | http://tksamc.df.ibilce.unesp.br http://pheps.orgchm.bas.bg/home.html | [47] [48] | | 基于温度因子 | B-FITTER | 结构 | "
+        },
+        {
+          "pdf": "蛋白质稳定性计算设计与定向进化前沿工具_阮青云.pdf",
+          "page": 4,
+          "table_label": "Table 1",
+          "caption": "Table 1 Definitions of stability parameters",
+          "region_id": "table_region_p4_57.5_102.0_554.8_766.4",
+          "region_bbox": [
+            57.4804,
+            101.98945679999997,
+            554.8034,
+            766.3514759
+          ],
+          "region_confidence": 0.95,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 471,
+          "rows": 25,
+          "cols": 2,
+          "chunk_bbox": [
+            57.4804,
+            101.98945679999997,
+            554.8034,
+            766.3514759
+          ],
+          "overlap": 1.0,
+          "rule_category": "ok",
+          "recommended_action": "accept",
+          "needs_llm_judge": false,
+          "rule_confidence": 0.9,
+          "rule_reasons": "parser_output_passed_quality_checks",
+          "retry_attempted": false,
+          "retry_succeeded": false,
+          "retry_action": "",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "| column 1 | column 2 | | --- | --- | | 符号 | 稳定性类型 | | ΔG UN | 热力学 | | ΔG NU | 热力学 | | ΔΔG | 热力学 | | T m | 热力学 | | C 1/2 | 热力学 | | K U | 热力学 | | k f | 动力学 | | k u | 动力学 | | k d, obs | 动力学 | | T 50 | ― | | t | 动力学 | | 度量 | 定义 | | 折叠自由能 | 蛋白质"
+        },
+        {
+          "pdf": "蛋白质稳定性计算设计与定向进化前沿工具_阮青云.pdf",
+          "page": 9,
+          "table_label": "Table 2",
+          "caption": "Table 2 Summary of software for protein stability rational design",
+          "region_id": "table_region_p9_57.3_101.8_555.1_767.0",
+          "region_bbox": [
+            57.338499999999996,
+            101.84169839999993,
+            555.0654999999999,
+            766.9720391999999
+          ],
+          "region_confidence": 0.95,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 471,
+          "rows": 6,
+          "cols": 5,
+          "chunk_bbox": [
+            57.338499999999996,
+            101.84169839999993,
+            555.0654999999999,
+            766.9720391999999
+          ],
+          "overlap": 1.0,
+          "rule_category": "ok",
+          "recommended_action": "accept",
+          "needs_llm_judge": false,
+          "rule_confidence": 0.9,
+          "rule_reasons": "parser_output_passed_quality_checks",
+          "retry_attempted": false,
+          "retry_succeeded": false,
+          "retry_action": "",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "| 类别 | 软件名称 | 输入 | 网站/本地安装 | 参考文献 | | --- | --- | --- | --- | --- | | 基于结构分析 |  |  |  |  | | 优化蛋白质表面电荷 | TKSA-MC PHEPS | 结构 结构 | http://tksamc.df.ibilce.unesp.br http://pheps.orgchm.bas.bg/home.html | [47] [48] | | 基于温度因子 | B-FITTER | 结构 | "
+        }
+      ]
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\文献汇总整理（市场那边调研的文献）\\徐惊东-SL文献\\18、三条途径同时合成NeuAc，Engineering of Synthetic Multiplexed Pathways for High-Level N‑Acetylneuraminic Acid Bioproduction.pdf",
+      "detect_ms": 1126,
+      "regions": [
+        {
+          "region_id": "table_region_p3_43.5_55.8_563.5_557.7",
+          "source": "table_region_detector",
+          "page": 3,
+          "bbox": [
+            43.514,
+            55.837725999999975,
+            563.514,
+            557.7223373500001
+          ],
+          "confidence": 1.0,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                51.5338,
+                59.837725999999975,
+                198.05026514999997,
+                69.83782599999995
+              ],
+              "details": {
+                "text": "Table 1. Strains Used in This Study"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                43.514,
+                55.837725999999975,
+                563.514,
+                557.7223373500001
+              ],
+              "details": {
+                "count": 4
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                43.514,
+                55.837725999999975,
+                563.514,
+                557.7223373500001
+              ],
+              "details": {
+                "lines": 35
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.15,
+              "reason": "high_numeric_density",
+              "bbox": [
+                43.514,
+                55.837725999999975,
+                563.514,
+                557.7223373500001
+              ],
+              "details": {
+                "ratio": 0.238
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                43.514,
+                55.837725999999975,
+                563.514,
+                557.7223373500001
+              ],
+              "details": {
+                "ratio": 0.848
+              }
+            },
+            {
+              "source": "negative",
+              "score": -0.2,
+              "reason": "section_like_body_region",
+              "bbox": [
+                43.514,
+                55.837725999999975,
+                563.514,
+                557.7223373500001
+              ]
+            }
+          ]
+        },
+        {
+          "region_id": "table_region_p8_43.5_517.4_563.5_800.4",
+          "source": "table_region_detector",
+          "page": 8,
+          "bbox": [
+            43.514,
+            517.3824,
+            563.514,
+            800.447
+          ],
+          "confidence": 1.0,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                51.5338,
+                521.3824,
+                217.45945924,
+                533.982526
+              ],
+              "details": {
+                "text": "Table 2. De Novo Biosynthesis of NeuAc"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                43.514,
+                517.3824,
+                563.514,
+                800.447
+              ],
+              "details": {
+                "count": 4
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                43.514,
+                517.3824,
+                563.514,
+                800.447
+              ],
+              "details": {
+                "lines": 23
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.15,
+              "reason": "high_numeric_density",
+              "bbox": [
+                43.514,
+                517.3824,
+                563.514,
+                800.447
+              ],
+              "details": {
+                "ratio": 0.5
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                43.514,
+                517.3824,
+                563.514,
+                800.447
+              ],
+              "details": {
+                "ratio": 0.7
+              }
+            }
+          ]
+        }
+      ],
+      "region_text_contexts": {
+        "table_region_p3_43.5_55.8_563.5_557.7": {
+          "word_count": 192,
+          "line_count": 57,
+          "long_line_count": 18,
+          "body_word_hits": 209,
+          "numeric_tokens": 50,
+          "single_char_tokens": 7,
+          "avg_token_len": 16.56
+        },
+        "table_region_p8_43.5_517.4_563.5_800.4": {
+          "word_count": 100,
+          "line_count": 33,
+          "long_line_count": 5,
+          "body_word_hits": 90,
+          "numeric_tokens": 50,
+          "single_char_tokens": 9,
+          "avg_token_len": 16.06
+        }
+      },
+      "parser_summaries": {
+        "region_guided": {
+          "duration_ms": 320,
+          "chunks": 1,
+          "error": ""
+        },
+        "pdfplumber": {
+          "duration_ms": 323,
+          "chunks": 1,
+          "error": ""
+        }
+      },
+      "results": [
+        {
+          "pdf": "18、三条途径同时合成NeuAc，Engineering of Synthetic Multiplexed Pathways for High-Level N‑Acetylneuraminic Acid Bioproduction.pdf",
+          "page": 3,
+          "table_label": "Table 1",
+          "caption": "Table 1. Strains Used in This Study",
+          "region_id": "table_region_p3_43.5_55.8_563.5_557.7",
+          "region_bbox": [
+            43.514,
+            55.837725999999975,
+            563.514,
+            557.7223373500001
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 320,
+          "rows": 4,
+          "cols": 3,
+          "chunk_bbox": [
+            43.514,
+            55.837725999999975,
+            563.514,
+            557.7223373500001
+          ],
+          "overlap": 1.0,
+          "rule_category": "header_or_span_complexity",
+          "recommended_action": "retry_text_strategy",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "structural_quality:low_consistency",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "retry_text_strategy",
+          "retry_rows": 4,
+          "retry_cols": 3,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "| names | characteristics | source or reference | | --- | --- | --- | | Strains |  |  | | E.coliTop10 | F-mcrAΔ(mrr-hsdRMS-mcrBC)φ80lacZΔM15ΔlacX74nupGrecA1araD139Δ(ara-leu)7697galE15galK16rpsL(StrR)endA1λ‑ | labstock | | BSGN6 | B.subtilis"
+        },
+        {
+          "pdf": "18、三条途径同时合成NeuAc，Engineering of Synthetic Multiplexed Pathways for High-Level N‑Acetylneuraminic Acid Bioproduction.pdf",
+          "page": 8,
+          "table_label": "Table 2",
+          "caption": "Table 2. De Novo Biosynthesis of NeuAc",
+          "region_id": "table_region_p8_43.5_517.4_563.5_800.4",
+          "region_bbox": [
+            43.514,
+            517.3824,
+            563.514,
+            800.447
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": false,
+          "duration_ms": 320,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "rule_category": "body_text_contamination",
+          "recommended_action": "shrink_bbox",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "region_confidence=1.00 | words=100 | many_long_lines_or_body_words",
+          "retry_attempted": true,
+          "retry_succeeded": false,
+          "retry_action": "shrink_bbox",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "retry produced no overlapping table chunk",
+          "llm_judge_attempted": true,
+          "llm_failure_category": "body_text_contamination",
+          "llm_recommended_action": "shrink_bbox",
+          "llm_confidence": 0.65,
+          "llm_reason": "The region contains 90 body word hits out of 100 words, indicating heavy contamination from surrounding body text, and the parser failed to produce any table output. Shrinking the bounding box may isolate the actual table region.",
+          "llm_error": "",
+          "rule_llm_agree": true,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        },
+        {
+          "pdf": "18、三条途径同时合成NeuAc，Engineering of Synthetic Multiplexed Pathways for High-Level N‑Acetylneuraminic Acid Bioproduction.pdf",
+          "page": 3,
+          "table_label": "Table 1",
+          "caption": "Table 1. Strains Used in This Study",
+          "region_id": "table_region_p3_43.5_55.8_563.5_557.7",
+          "region_bbox": [
+            43.514,
+            55.837725999999975,
+            563.514,
+            557.7223373500001
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 323,
+          "rows": 4,
+          "cols": 3,
+          "chunk_bbox": [
+            43.514,
+            55.837725999999975,
+            563.514,
+            557.7223373500001
+          ],
+          "overlap": 1.0,
+          "rule_category": "header_or_span_complexity",
+          "recommended_action": "retry_text_strategy",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "structural_quality:low_consistency",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "retry_text_strategy",
+          "retry_rows": 4,
+          "retry_cols": 3,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "| names | characteristics | source or reference | | --- | --- | --- | | Strains |  |  | | E.coliTop10 | F-mcrAΔ(mrr-hsdRMS-mcrBC)φ80lacZΔM15ΔlacX74nupGrecA1araD139Δ(ara-leu)7697galE15galK16rpsL(StrR)endA1λ‑ | labstock | | BSGN6 | B.subtilis"
+        },
+        {
+          "pdf": "18、三条途径同时合成NeuAc，Engineering of Synthetic Multiplexed Pathways for High-Level N‑Acetylneuraminic Acid Bioproduction.pdf",
+          "page": 8,
+          "table_label": "Table 2",
+          "caption": "Table 2. De Novo Biosynthesis of NeuAc",
+          "region_id": "table_region_p8_43.5_517.4_563.5_800.4",
+          "region_bbox": [
+            43.514,
+            517.3824,
+            563.514,
+            800.447
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": false,
+          "duration_ms": 323,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "rule_category": "body_text_contamination",
+          "recommended_action": "shrink_bbox",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "region_confidence=1.00 | words=100 | many_long_lines_or_body_words",
+          "retry_attempted": true,
+          "retry_succeeded": false,
+          "retry_action": "shrink_bbox",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "retry produced no overlapping table chunk",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        }
+      ]
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\文献汇总整理（市场那边调研的文献）\\徐惊东-SL文献\\19、两阶段pH控制对NeuAc产量的影响，Enhanced N‑acetyl‑d‑neuraminic production from glycerol and N‑acetyl‑d‑glucosamine by metabolically engineered Escherichia coli with a two‑stage pH‑shift control strategy.pdf",
+      "detect_ms": 1265,
+      "regions": [
+        {
+          "region_id": "table_region_p3_43.0_277.0_552.3_721.8",
+          "source": "table_region_detector",
+          "page": 3,
+          "bbox": [
+            43.023601531,
+            276.98260766699997,
+            552.251995086,
+            721.770006958
+          ],
+          "confidence": 0.8,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                51.023601531,
+                280.98260766699997,
+                248.42675153100004,
+                291.488607667
+              ],
+              "details": {
+                "text": "Table 1 Neu5Ac production with different energy sources"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.2,
+              "reason": "wide_horizontal_lines",
+              "bbox": [
+                43.023601531,
+                276.98260766699997,
+                552.251995086,
+                721.770006958
+              ],
+              "details": {
+                "count": 2
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                43.023601531,
+                276.98260766699997,
+                552.251995086,
+                721.770006958
+              ],
+              "details": {
+                "lines": 13
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.15,
+              "reason": "high_numeric_density",
+              "bbox": [
+                43.023601531,
+                276.98260766699997,
+                552.251995086,
+                721.770006958
+              ],
+              "details": {
+                "ratio": 0.216
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                43.023601531,
+                276.98260766699997,
+                552.251995086,
+                721.770006958
+              ],
+              "details": {
+                "ratio": 1.0
+              }
+            },
+            {
+              "source": "negative",
+              "score": -0.3,
+              "reason": "long_sentence_block",
+              "bbox": [
+                43.023601531,
+                276.98260766699997,
+                552.251995086,
+                721.770006958
+              ],
+              "details": {
+                "lines": 3
+              }
+            }
+          ]
+        },
+        {
+          "region_id": "table_region_p6_91.4_50.4_253.0_723.6",
+          "source": "table_region_detector",
+          "page": 6,
+          "bbox": [
+            91.397598266,
+            50.38022656299995,
+            252.954703447174,
+            723.6087009100004
+          ],
+          "confidence": 0.65,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "rotated_table_caption",
+              "bbox": [
+                97.397598266,
+                465.03865,
+                111.903598266,
+                717.5778
+              ],
+              "details": {
+                "text": "Table 2  Neu5Ac production with different initial GlcNAc concentrations"
+              }
+            },
+            {
+              "source": "rotation",
+              "score": 0.3,
+              "reason": "rotated_text_block",
+              "bbox": [
+                91.397598266,
+                50.38022656299995,
+                252.954703447174,
+                723.6087009100004
+              ],
+              "details": {
+                "chars": 832
+              }
+            }
+          ]
+        }
+      ],
+      "region_text_contexts": {
+        "table_region_p3_43.0_277.0_552.3_721.8": {
+          "word_count": 176,
+          "line_count": 17,
+          "long_line_count": 7,
+          "body_word_hits": 36,
+          "numeric_tokens": 38,
+          "single_char_tokens": 33,
+          "avg_token_len": 4.62
+        },
+        "table_region_p6_91.4_50.4_253.0_723.6": {
+          "word_count": 173,
+          "line_count": 80,
+          "long_line_count": 0,
+          "body_word_hits": 1,
+          "numeric_tokens": 78,
+          "single_char_tokens": 38,
+          "avg_token_len": 4.22
+        }
+      },
+      "parser_summaries": {
+        "region_guided": {
+          "duration_ms": 411,
+          "chunks": 1,
+          "error": ""
+        },
+        "pdfplumber": {
+          "duration_ms": 436,
+          "chunks": 1,
+          "error": ""
+        }
+      },
+      "results": [
+        {
+          "pdf": "19、两阶段pH控制对NeuAc产量的影响，Enhanced N‑acetyl‑d‑neuraminic production from glycerol and N‑acetyl‑d‑glucosamine by metabolically engineered Escherichia coli with a two‑stage pH‑shift control strategy.pdf",
+          "page": 3,
+          "table_label": "Table 1",
+          "caption": "Table 1 Neu5Ac production with different energy sources",
+          "region_id": "table_region_p3_43.0_277.0_552.3_721.8",
+          "region_bbox": [
+            43.023601531,
+            276.98260766699997,
+            552.251995086,
+            721.770006958
+          ],
+          "region_confidence": 0.8,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 411,
+          "rows": 22,
+          "cols": 6,
+          "chunk_bbox": [
+            51.00708383200009,
+            281.98560766699995,
+            530.0840796755001,
+            719.27179657
+          ],
+          "overlap": 1.0,
+          "rule_category": "header_or_span_complexity",
+          "recommended_action": "retry_text_strategy",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "structural_quality:low_consistency",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "retry_text_strategy",
+          "retry_rows": 22,
+          "retry_cols": 6,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "| Energy sou | rce | Neu5Ac (g | L −1) | Productivity | (g Biomass | | --- | --- | --- | --- | --- | --- | |  |  |  |  | L−1 h−1) |  | | Glucose |  | 11.90 ± 0. | 24 | 0.175 | 10.29 ± | | Glycerol |  | 13.97 ± 0. | 27 | 0.205 | 10.49 ± | | "
+        },
+        {
+          "pdf": "19、两阶段pH控制对NeuAc产量的影响，Enhanced N‑acetyl‑d‑neuraminic production from glycerol and N‑acetyl‑d‑glucosamine by metabolically engineered Escherichia coli with a two‑stage pH‑shift control strategy.pdf",
+          "page": 6,
+          "table_label": "Table 2",
+          "caption": "Table 2  Neu5Ac production with different initial GlcNAc concentrations",
+          "region_id": "table_region_p6_91.4_50.4_253.0_723.6",
+          "region_bbox": [
+            91.397598266,
+            50.38022656299995,
+            252.954703447174,
+            723.6087009100004
+          ],
+          "region_confidence": 0.65,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": false,
+          "duration_ms": 411,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "rule_category": "no_parser_output",
+          "recommended_action": "retry_text_strategy",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.6,
+          "rule_reasons": "region_confidence=0.65 | words=173 | strong_caption_region_without_parser_output",
+          "retry_attempted": true,
+          "retry_succeeded": false,
+          "retry_action": "retry_text_strategy",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "retry produced no overlapping table chunk",
+          "llm_judge_attempted": true,
+          "llm_failure_category": "no_parser_output",
+          "llm_recommended_action": "retry_text_strategy",
+          "llm_confidence": 0.6,
+          "llm_reason": "The parser produced no output for a region with a strong caption and 173 words, indicating a text extraction strategy issue rather than a bounding box or contamination problem.",
+          "llm_error": "",
+          "rule_llm_agree": true,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        },
+        {
+          "pdf": "19、两阶段pH控制对NeuAc产量的影响，Enhanced N‑acetyl‑d‑neuraminic production from glycerol and N‑acetyl‑d‑glucosamine by metabolically engineered Escherichia coli with a two‑stage pH‑shift control strategy.pdf",
+          "page": 3,
+          "table_label": "Table 1",
+          "caption": "Table 1 Neu5Ac production with different energy sources",
+          "region_id": "table_region_p3_43.0_277.0_552.3_721.8",
+          "region_bbox": [
+            43.023601531,
+            276.98260766699997,
+            552.251995086,
+            721.770006958
+          ],
+          "region_confidence": 0.8,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 436,
+          "rows": 22,
+          "cols": 6,
+          "chunk_bbox": [
+            51.00708383200009,
+            281.98560766699995,
+            530.0840796755001,
+            719.27179657
+          ],
+          "overlap": 1.0,
+          "rule_category": "header_or_span_complexity",
+          "recommended_action": "retry_text_strategy",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "structural_quality:low_consistency",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "retry_text_strategy",
+          "retry_rows": 22,
+          "retry_cols": 6,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "| Energy sou | rce | Neu5Ac (g | L −1) | Productivity | (g Biomass | | --- | --- | --- | --- | --- | --- | |  |  |  |  | L−1 h−1) |  | | Glucose |  | 11.90 ± 0. | 24 | 0.175 | 10.29 ± | | Glycerol |  | 13.97 ± 0. | 27 | 0.205 | 10.49 ± | | "
+        },
+        {
+          "pdf": "19、两阶段pH控制对NeuAc产量的影响，Enhanced N‑acetyl‑d‑neuraminic production from glycerol and N‑acetyl‑d‑glucosamine by metabolically engineered Escherichia coli with a two‑stage pH‑shift control strategy.pdf",
+          "page": 6,
+          "table_label": "Table 2",
+          "caption": "Table 2  Neu5Ac production with different initial GlcNAc concentrations",
+          "region_id": "table_region_p6_91.4_50.4_253.0_723.6",
+          "region_bbox": [
+            91.397598266,
+            50.38022656299995,
+            252.954703447174,
+            723.6087009100004
+          ],
+          "region_confidence": 0.65,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": false,
+          "duration_ms": 436,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "rule_category": "no_parser_output",
+          "recommended_action": "retry_text_strategy",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.6,
+          "rule_reasons": "region_confidence=0.65 | words=173 | strong_caption_region_without_parser_output",
+          "retry_attempted": true,
+          "retry_succeeded": false,
+          "retry_action": "retry_text_strategy",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "retry produced no overlapping table chunk",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        }
+      ]
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\文献汇总整理（市场那边调研的文献）\\徐惊东-SL文献\\5、age与neuB组合表达优化-RBS工程以及PEP代谢改造，Exploring Amino Sugar and Phosphoenolpyruvate Metabolism to Improve Escherichia coli N‑Acetylneuraminic Acid Production.pdf",
+      "detect_ms": 919,
+      "regions": [
+        {
+          "region_id": "table_region_p3_52.5_64.8_572.5_600.4",
+          "source": "table_region_detector",
+          "page": 3,
+          "bbox": [
+            52.472,
+            64.79522599999996,
+            572.4747456399999,
+            600.3545567399999
+          ],
+          "confidence": 0.75,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                60.4913,
+                68.79522599999996,
+                263.23832744999993,
+                78.79532599999993
+              ],
+              "details": {
+                "text": "Table 1. Plasmids and Sources of AGE and NeuB"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                52.472,
+                64.79522599999996,
+                572.4747456399999,
+                600.3545567399999
+              ],
+              "details": {
+                "count": 8
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                52.472,
+                64.79522599999996,
+                572.4747456399999,
+                600.3545567399999
+              ],
+              "details": {
+                "lines": 65
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                52.472,
+                64.79522599999996,
+                572.4747456399999,
+                600.3545567399999
+              ],
+              "details": {
+                "ratio": 0.928
+              }
+            },
+            {
+              "source": "negative",
+              "score": -0.3,
+              "reason": "long_sentence_block",
+              "bbox": [
+                52.472,
+                64.79522599999996,
+                572.4747456399999,
+                600.3545567399999
+              ],
+              "details": {
+                "lines": 4
+              }
+            }
+          ]
+        }
+      ],
+      "region_text_contexts": {
+        "table_region_p3_52.5_64.8_572.5_600.4": {
+          "word_count": 518,
+          "line_count": 89,
+          "long_line_count": 7,
+          "body_word_hits": 226,
+          "numeric_tokens": 60,
+          "single_char_tokens": 39,
+          "avg_token_len": 7.26
+        }
+      },
+      "parser_summaries": {
+        "region_guided": {
+          "duration_ms": 218,
+          "chunks": 0,
+          "error": ""
+        },
+        "pdfplumber": {
+          "duration_ms": 193,
+          "chunks": 0,
+          "error": ""
+        }
+      },
+      "results": [
+        {
+          "pdf": "5、age与neuB组合表达优化-RBS工程以及PEP代谢改造，Exploring Amino Sugar and Phosphoenolpyruvate Metabolism to Improve Escherichia coli N‑Acetylneuraminic Acid Production.pdf",
+          "page": 3,
+          "table_label": "Table 1",
+          "caption": "Table 1. Plasmids and Sources of AGE and NeuB",
+          "region_id": "table_region_p3_52.5_64.8_572.5_600.4",
+          "region_bbox": [
+            52.472,
+            64.79522599999996,
+            572.4747456399999,
+            600.3545567399999
+          ],
+          "region_confidence": 0.75,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": false,
+          "duration_ms": 218,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "rule_category": "body_text_contamination",
+          "recommended_action": "shrink_bbox",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "region_confidence=0.75 | words=518 | many_long_lines_or_body_words",
+          "retry_attempted": true,
+          "retry_succeeded": false,
+          "retry_action": "shrink_bbox",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "retry produced no overlapping table chunk",
+          "llm_judge_attempted": true,
+          "llm_failure_category": "body_text_contamination",
+          "llm_recommended_action": "shrink_bbox",
+          "llm_confidence": 0.65,
+          "llm_reason": "The region contains 518 words with 226 body word hits and many long lines, indicating the bounding box includes surrounding body text rather than just the table. The parser produced no output due to no overlapping table chunk, and rule feedback suggests shrinking the bbox to isolate the actual table.",
+          "llm_error": "",
+          "rule_llm_agree": true,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        },
+        {
+          "pdf": "5、age与neuB组合表达优化-RBS工程以及PEP代谢改造，Exploring Amino Sugar and Phosphoenolpyruvate Metabolism to Improve Escherichia coli N‑Acetylneuraminic Acid Production.pdf",
+          "page": 3,
+          "table_label": "Table 1",
+          "caption": "Table 1. Plasmids and Sources of AGE and NeuB",
+          "region_id": "table_region_p3_52.5_64.8_572.5_600.4",
+          "region_bbox": [
+            52.472,
+            64.79522599999996,
+            572.4747456399999,
+            600.3545567399999
+          ],
+          "region_confidence": 0.75,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": false,
+          "duration_ms": 193,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "rule_category": "body_text_contamination",
+          "recommended_action": "shrink_bbox",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "region_confidence=0.75 | words=518 | many_long_lines_or_body_words",
+          "retry_attempted": true,
+          "retry_succeeded": false,
+          "retry_action": "shrink_bbox",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "retry produced no overlapping table chunk",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        }
+      ]
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\文献汇总整理（市场那边调研的文献）\\徐惊东-SL文献\\肽聚糖合成与细菌细胞壁\\大肠杆菌肽聚糖和脂多糖合成关键基因表达水平对细胞生长的影响.pdf",
+      "detect_ms": 4911,
+      "regions": [
+        {
+          "region_id": "table_region_p18_66.4_78.8_458.8_731.1",
+          "source": "table_region_detector",
+          "page": 18,
+          "bbox": [
+            66.4,
+            78.78800000000001,
+            458.84000000000003,
+            731.088
+          ],
+          "confidence": 1.0,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                175.7,
+                82.78800000000001,
+                419.6935,
+                93.28800000000001
+              ],
+              "details": {
+                "text": "Table 2-1 Bacterial strains and plasmids used in this study"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                66.4,
+                78.78800000000001,
+                458.84000000000003,
+                731.088
+              ],
+              "details": {
+                "count": 8
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                66.4,
+                78.78800000000001,
+                458.84000000000003,
+                731.088
+              ],
+              "details": {
+                "lines": 28
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.15,
+              "reason": "high_numeric_density",
+              "bbox": [
+                66.4,
+                78.78800000000001,
+                458.84000000000003,
+                731.088
+              ],
+              "details": {
+                "ratio": 0.349
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                66.4,
+                78.78800000000001,
+                458.84000000000003,
+                731.088
+              ],
+              "details": {
+                "ratio": 0.803
+              }
+            }
+          ]
+        },
+        {
+          "region_id": "table_region_p24_159.4_78.8_514.8_738.9",
+          "source": "table_region_detector",
+          "page": 24,
+          "bbox": [
+            159.36,
+            78.78800000000001,
+            514.82,
+            738.8879999999999
+          ],
+          "confidence": 1.0,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                213.14,
+                82.78800000000001,
+                382.288,
+                93.28800000000001
+              ],
+              "details": {
+                "text": "Table 2-2 The primers used in this study"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                159.36,
+                78.78800000000001,
+                514.82,
+                738.8879999999999
+              ],
+              "details": {
+                "count": 10
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                159.36,
+                78.78800000000001,
+                514.82,
+                738.8879999999999
+              ],
+              "details": {
+                "lines": 29
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.15,
+              "reason": "high_numeric_density",
+              "bbox": [
+                159.36,
+                78.78800000000001,
+                514.82,
+                738.8879999999999
+              ],
+              "details": {
+                "ratio": 0.216
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                159.36,
+                78.78800000000001,
+                514.82,
+                738.8879999999999
+              ],
+              "details": {
+                "ratio": 0.876
+              }
+            }
+          ]
+        },
+        {
+          "region_id": "table_region_p25_88.4_78.8_506.2_760.0",
+          "source": "table_region_detector",
+          "page": 25,
+          "bbox": [
+            88.38,
+            78.78800000000001,
+            506.24,
+            759.9599999999999
+          ],
+          "confidence": 1.0,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                187.22,
+                82.78800000000001,
+                408.1735,
+                93.28800000000001
+              ],
+              "details": {
+                "text": "Table 2-3 Equipment and facilities used in this study"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                88.38,
+                78.78800000000001,
+                506.24,
+                759.9599999999999
+              ],
+              "details": {
+                "count": 18
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                88.38,
+                78.78800000000001,
+                506.24,
+                759.9599999999999
+              ],
+              "details": {
+                "lines": 31
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                88.38,
+                78.78800000000001,
+                506.24,
+                759.9599999999999
+              ],
+              "details": {
+                "ratio": 0.886
+              }
+            }
+          ]
+        }
+      ],
+      "region_text_contexts": {
+        "table_region_p18_66.4_78.8_458.8_731.1": {
+          "word_count": 111,
+          "line_count": 32,
+          "long_line_count": 0,
+          "body_word_hits": 8,
+          "numeric_tokens": 53,
+          "single_char_tokens": 0,
+          "avg_token_len": 10.26
+        },
+        "table_region_p24_159.4_78.8_514.8_738.9": {
+          "word_count": 80,
+          "line_count": 34,
+          "long_line_count": 0,
+          "body_word_hits": 4,
+          "numeric_tokens": 21,
+          "single_char_tokens": 10,
+          "avg_token_len": 7.64
+        },
+        "table_region_p25_88.4_78.8_506.2_760.0": {
+          "word_count": 110,
+          "line_count": 32,
+          "long_line_count": 0,
+          "body_word_hits": 9,
+          "numeric_tokens": 14,
+          "single_char_tokens": 3,
+          "avg_token_len": 7.3
+        }
+      },
+      "parser_summaries": {
+        "region_guided": {
+          "duration_ms": 565,
+          "chunks": 3,
+          "error": ""
+        },
+        "pdfplumber": {
+          "duration_ms": 614,
+          "chunks": 3,
+          "error": ""
+        }
+      },
+      "results": [
+        {
+          "pdf": "大肠杆菌肽聚糖和脂多糖合成关键基因表达水平对细胞生长的影响.pdf",
+          "page": 18,
+          "table_label": "Table 2",
+          "caption": "Table 2-1 Bacterial strains and plasmids used in this study",
+          "region_id": "table_region_p18_66.4_78.8_458.8_731.1",
+          "region_bbox": [
+            66.4,
+            78.78800000000001,
+            458.84000000000003,
+            731.088
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 565,
+          "rows": 25,
+          "cols": 2,
+          "chunk_bbox": [
+            66.4,
+            78.78800000000001,
+            458.84000000000003,
+            731.088
+          ],
+          "overlap": 1.0,
+          "rule_category": "ok",
+          "recommended_action": "accept",
+          "needs_llm_judge": false,
+          "rule_confidence": 0.9,
+          "rule_reasons": "parser_output_passed_quality_checks",
+          "retry_attempted": false,
+          "retry_succeeded": false,
+          "retry_action": "",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "| 菌株或质粒 | 描述 | | --- | --- | | MG1655/pCDF-P1-murA-P1-lpxA | MG1655 harboring pCDF-P1-murA-P1- lpxA | | MG1655/pCDF-P1-murA-P2-lpxA | MG1655 harboring pCDF-P1-murA-P2- lpxA | | MG1655/pCDF-P2-murA-P1-lpxA | MG1655 harboring pCDF-P2-murA-P1-"
+        },
+        {
+          "pdf": "大肠杆菌肽聚糖和脂多糖合成关键基因表达水平对细胞生长的影响.pdf",
+          "page": 24,
+          "table_label": "Table 2",
+          "caption": "Table 2-2 The primers used in this study",
+          "region_id": "table_region_p24_159.4_78.8_514.8_738.9",
+          "region_bbox": [
+            159.36,
+            78.78800000000001,
+            514.82,
+            738.8879999999999
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 565,
+          "rows": 29,
+          "cols": 4,
+          "chunk_bbox": [
+            165.07999999999998,
+            104.62800000000004,
+            485.7345,
+            735.288
+          ],
+          "overlap": 1.0,
+          "rule_category": "header_or_span_complexity",
+          "recommended_action": "retry_text_strategy",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "structural_quality:low_consistency",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "retry_text_strategy",
+          "retry_rows": 29,
+          "retry_cols": 4,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "|  | Sequen | ce (5’-3’) |  | | --- | --- | --- | --- | |  | ATGC | GGTAAAAGCCATTCTG |  | |  | CGAC | GCACACCATCAATAAC |  | |  | GTTC | GAACAGGCGAAGAAAG |  | |  | TACC | TTCGAAGCCATCCATC |  | |  | GGTG | ATCGGGCTGATGATTT |  | |  | GCGT | AC"
+        },
+        {
+          "pdf": "大肠杆菌肽聚糖和脂多糖合成关键基因表达水平对细胞生长的影响.pdf",
+          "page": 25,
+          "table_label": "Table 2",
+          "caption": "Table 2-3 Equipment and facilities used in this study",
+          "region_id": "table_region_p25_88.4_78.8_506.2_760.0",
+          "region_bbox": [
+            88.38,
+            78.78800000000001,
+            506.24,
+            759.9599999999999
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 565,
+          "rows": 7,
+          "cols": 5,
+          "chunk_bbox": [
+            102.08,
+            103.84050000000002,
+            488.3925,
+            694.228
+          ],
+          "overlap": 1.0,
+          "rule_category": "header_or_span_complexity",
+          "recommended_action": "retry_text_strategy",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "structural_quality:low_consistency",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "retry_text_strategy",
+          "retry_rows": 7,
+          "retry_cols": 5,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "|  | 仪器名称 | 生产厂家 |  | 设备型号 | | --- | --- | --- | --- | --- | | 超 | 高速离心机 | 美国贝克曼库尔特 | 有限公司 | Allegra X-15 R | |  | 旋转蒸发仪 | 瑞士BÜCHI | 公司 | Rotavapor RII | | 循 | 环水式真空泵 | 巩义市予华仪器有限 | 责任公司 | SHZ-D（Ⅲ） | |  | 加热板 | 德国IKA公 | 司 | C-MAG HP10 | |  |"
+        },
+        {
+          "pdf": "大肠杆菌肽聚糖和脂多糖合成关键基因表达水平对细胞生长的影响.pdf",
+          "page": 18,
+          "table_label": "Table 2",
+          "caption": "Table 2-1 Bacterial strains and plasmids used in this study",
+          "region_id": "table_region_p18_66.4_78.8_458.8_731.1",
+          "region_bbox": [
+            66.4,
+            78.78800000000001,
+            458.84000000000003,
+            731.088
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 614,
+          "rows": 25,
+          "cols": 2,
+          "chunk_bbox": [
+            66.4,
+            78.78800000000001,
+            458.84000000000003,
+            731.088
+          ],
+          "overlap": 1.0,
+          "rule_category": "ok",
+          "recommended_action": "accept",
+          "needs_llm_judge": false,
+          "rule_confidence": 0.9,
+          "rule_reasons": "parser_output_passed_quality_checks",
+          "retry_attempted": false,
+          "retry_succeeded": false,
+          "retry_action": "",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "| 菌株或质粒 | 描述 | | --- | --- | | MG1655/pCDF-P1-murA-P1-lpxA | MG1655 harboring pCDF-P1-murA-P1- lpxA | | MG1655/pCDF-P1-murA-P2-lpxA | MG1655 harboring pCDF-P1-murA-P2- lpxA | | MG1655/pCDF-P2-murA-P1-lpxA | MG1655 harboring pCDF-P2-murA-P1-"
+        },
+        {
+          "pdf": "大肠杆菌肽聚糖和脂多糖合成关键基因表达水平对细胞生长的影响.pdf",
+          "page": 24,
+          "table_label": "Table 2",
+          "caption": "Table 2-2 The primers used in this study",
+          "region_id": "table_region_p24_159.4_78.8_514.8_738.9",
+          "region_bbox": [
+            159.36,
+            78.78800000000001,
+            514.82,
+            738.8879999999999
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 614,
+          "rows": 29,
+          "cols": 4,
+          "chunk_bbox": [
+            165.07999999999998,
+            104.62800000000004,
+            485.7345,
+            735.288
+          ],
+          "overlap": 1.0,
+          "rule_category": "header_or_span_complexity",
+          "recommended_action": "retry_text_strategy",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "structural_quality:low_consistency",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "retry_text_strategy",
+          "retry_rows": 29,
+          "retry_cols": 4,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "|  | Sequen | ce (5’-3’) |  | | --- | --- | --- | --- | |  | ATGC | GGTAAAAGCCATTCTG |  | |  | CGAC | GCACACCATCAATAAC |  | |  | GTTC | GAACAGGCGAAGAAAG |  | |  | TACC | TTCGAAGCCATCCATC |  | |  | GGTG | ATCGGGCTGATGATTT |  | |  | GCGT | AC"
+        },
+        {
+          "pdf": "大肠杆菌肽聚糖和脂多糖合成关键基因表达水平对细胞生长的影响.pdf",
+          "page": 25,
+          "table_label": "Table 2",
+          "caption": "Table 2-3 Equipment and facilities used in this study",
+          "region_id": "table_region_p25_88.4_78.8_506.2_760.0",
+          "region_bbox": [
+            88.38,
+            78.78800000000001,
+            506.24,
+            759.9599999999999
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 614,
+          "rows": 7,
+          "cols": 5,
+          "chunk_bbox": [
+            102.08,
+            103.84050000000002,
+            488.3925,
+            694.228
+          ],
+          "overlap": 1.0,
+          "rule_category": "header_or_span_complexity",
+          "recommended_action": "retry_text_strategy",
+          "needs_llm_judge": true,
+          "rule_confidence": 0.65,
+          "rule_reasons": "structural_quality:low_consistency",
+          "retry_attempted": true,
+          "retry_succeeded": true,
+          "retry_action": "retry_text_strategy",
+          "retry_rows": 7,
+          "retry_cols": 5,
+          "retry_overlap": 1.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "failure_reason": "",
+          "preview": "|  | 仪器名称 | 生产厂家 |  | 设备型号 | | --- | --- | --- | --- | --- | | 超 | 高速离心机 | 美国贝克曼库尔特 | 有限公司 | Allegra X-15 R | |  | 旋转蒸发仪 | 瑞士BÜCHI | 公司 | Rotavapor RII | | 循 | 环水式真空泵 | 巩义市予华仪器有限 | 责任公司 | SHZ-D（Ⅲ） | |  | 加热板 | 德国IKA公 | 司 | C-MAG HP10 | |  |"
+        }
+      ]
+    }
+  ],
+  "llm_judge_sample": {
+    "requested_max_regions": 10,
+    "selected_regions": 10,
+    "attempted": 10,
+    "model": "deepseek-chat"
+  },
+  "llm_judge_summary": {
+    "attempted_rows": 10,
+    "agree_count": 10,
+    "agreement_rate": 1.0,
+    "errors": {},
+    "rule_categories": {
+      "header_or_span_complexity": 4,
+      "body_text_contamination": 5,
+      "no_parser_output": 1
+    },
+    "rule_actions": {
+      "retry_text_strategy": 5,
+      "shrink_bbox": 5
+    },
+    "llm_categories": {
+      "header_or_span_complexity": 4,
+      "body_text_contamination": 5,
+      "no_parser_output": 1
+    },
+    "llm_actions": {
+      "retry_text_strategy": 5,
+      "shrink_bbox": 5
+    }
+  }
+}

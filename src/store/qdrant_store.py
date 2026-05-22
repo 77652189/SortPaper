@@ -1,9 +1,8 @@
 """
 Qdrant 向量存储：Hybrid Search（Dense + Sparse + RRF 融合）。
 
-每个 chunk 作为 Qdrant point, 同时写入 dense 向量 (DashScope text-embedding-v3)
-和 sparse 向量 (同模型 output_type="dense&sparse" 返回的离散向量),
-支持 category/credibility/content_type 等字段的原生过滤。
+每个 chunk 作为 Qdrant point 写入 dense 向量；DashScope provider 可额外写入 sparse
+向量并启用 Hybrid Search，OpenAI provider 默认使用 dense-only 检索。
 """
 
 from __future__ import annotations
@@ -18,6 +17,10 @@ def _stable_hash(s: str) -> int:
     """确定性哈希，替代 Python hash()（跨进程不稳定）。"""
     return int(hashlib.md5(s.encode()).hexdigest()[:16], 16)
 
+
+def qdrant_point_id(paper_id: str, chunk_id: str) -> int:
+    return _stable_hash(f"{paper_id}:{chunk_id}") % (2 ** 63)
+
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 from qdrant_client.http.models import (
@@ -26,11 +29,16 @@ from qdrant_client.http.models import (
     FusionQuery, Fusion, Prefetch,
 )
 
+from app_config import (
+    EMBEDDING_API_KEY_ENV,
+    EMBEDDING_DIM,
+    EMBEDDING_MODEL,
+    EMBEDDING_PROVIDER,
+)
+
 logger = logging.getLogger(__name__)
 
 COLLECTION_NAME = "papers"
-EMBEDDING_MODEL = "text-embedding-v3"
-EMBEDDING_DIM = 1024                     # text-embedding-v3 默认维度
 DENSE_VECTOR_NAME = "dense"              # 密集向量名
 SPARSE_VECTOR_NAME = "sparse"            # 稀疏向量名
 
@@ -50,76 +58,110 @@ class QdrantStore:
     # ── 集合管理 ────────────────────────────────────────────────────────────
 
     def _ensure_collection(self) -> None:
-        """确保 collection 存在，同时配置 dense 和 sparse 向量索引。
-
-        如果已存在但不含 sparse 配置（旧版），自动重建。
-        """
+        """确保 collection 存在，并与当前 embedding provider 的向量配置一致。"""
         collections = [c.name for c in self.client.get_collections().collections]
         if self.collection in collections:
             info = self.client.get_collection(self.collection)
             has_sparse = bool(info.config.params.sparse_vectors)
-            if not has_sparse:
-                logger.warning(
-                    "旧版 collection 不含 sparse 索引，正在重建… | %s", self.collection,
-                )
-                self.client.delete_collection(collection_name=self.collection)
-            else:
-                return  # 已有 sparse，无需重建
+            current_dim = info.config.params.vectors.get(
+                DENSE_VECTOR_NAME
+            ).size if DENSE_VECTOR_NAME in info.config.params.vectors else 0
+            if current_dim == EMBEDDING_DIM and has_sparse == self._uses_sparse_vectors:
+                return
+            logger.warning(
+                "collection vector config mismatch; recreating | collection=%s current_dim=%s target_dim=%s current_sparse=%s target_sparse=%s",
+                self.collection,
+                current_dim,
+                EMBEDDING_DIM,
+                has_sparse,
+                self._uses_sparse_vectors,
+            )
+            self.client.delete_collection(collection_name=self.collection)
 
-        # 新建或重建
-        self.client.create_collection(
-            collection_name=self.collection,
-            vectors_config={
+        self._create_collection(EMBEDDING_DIM)
+
+    @property
+    def _uses_sparse_vectors(self) -> bool:
+        return EMBEDDING_PROVIDER == "dashscope"
+
+    def _create_collection(self, dense_dim: int) -> None:
+        kwargs: dict[str, Any] = {
+            "collection_name": self.collection,
+            "vectors_config": {
                 DENSE_VECTOR_NAME: VectorParams(
-                    size=EMBEDDING_DIM, distance=Distance.COSINE,
+                    size=dense_dim, distance=Distance.COSINE,
                 ),
             },
-            sparse_vectors_config={
+        }
+        if self._uses_sparse_vectors:
+            kwargs["sparse_vectors_config"] = {
                 SPARSE_VECTOR_NAME: SparseVectorParams(
                     index=SparseIndexParams(on_disk=False),
                 ),
-            },
-        )
+            }
+        self.client.create_collection(**kwargs)
         logger.info(
-            "Created collection '%s' (dense=%dd + sparse)", self.collection, EMBEDDING_DIM,
+            "Created collection '%s' (provider=%s dense=%dd sparse=%s)",
+            self.collection,
+            EMBEDDING_PROVIDER,
+            dense_dim,
+            self._uses_sparse_vectors,
         )
 
     def _recreate_collection(self, actual_dim: int) -> None:
         """删除并重建 collection（维度不匹配时）。"""
-        self.client.recreate_collection(
-            collection_name=self.collection,
-            vectors_config={
-                DENSE_VECTOR_NAME: VectorParams(
-                    size=actual_dim, distance=Distance.COSINE,
-                ),
-            },
-            sparse_vectors_config={
-                SPARSE_VECTOR_NAME: SparseVectorParams(
-                    index=SparseIndexParams(on_disk=False),
-                ),
-            },
-        )
+        self.client.delete_collection(collection_name=self.collection)
+        self._create_collection(actual_dim)
         logger.info(
-            "Recreated collection '%s' (dense=%dd + sparse)", self.collection, actual_dim,
+            "Recreated collection '%s' (dense=%dd)", self.collection, actual_dim,
         )
 
     # ── Embedding ──────────────────────────────────────────────────────────
 
     def embed(self, text: str) -> tuple[list[float], dict[int, float]]:
-        """调用 DashScope TextEmbedding，同时返回 dense + sparse 向量。
+        """Return (dense_vector, sparse_dict) for the configured embedding provider."""
+        if EMBEDDING_PROVIDER == "openai":
+            return self._embed_openai(text), {}
+        return self._embed_dashscope(text)
 
-        Returns:
-            (dense_vector, sparse_dict): sparse_dict 为 {index: value} 格式。
-        """
+    def _embed_openai(self, text: str) -> list[float]:
+        import os
+        from openai import OpenAI
+
+        api_key = os.getenv(EMBEDDING_API_KEY_ENV, "").strip()
+        if not api_key:
+            raise ValueError(f"{EMBEDDING_API_KEY_ENV} 未设置")
+
+        from src.judge.llm_runtime import run_llm_call
+
+        client = OpenAI(api_key=api_key, timeout=60.0)
+        response = run_llm_call(
+            lambda: client.embeddings.create(
+                model=EMBEDDING_MODEL,
+                input=text,
+                dimensions=EMBEDDING_DIM,
+            ),
+            label="openai-embedding",
+        )
+        if not response.data:
+            raise ValueError("No embedding returned from OpenAI")
+        return [float(v) for v in response.data[0].embedding]
+
+    def _embed_dashscope(self, text: str) -> tuple[list[float], dict[int, float]]:
         from dashscope import TextEmbedding
 
         last_exc: Exception | None = None
         for attempt in range(3):
             try:
-                response = TextEmbedding.call(
-                    model=EMBEDDING_MODEL,
-                    input=text,
-                    output_type="dense&sparse",
+                from src.judge.llm_runtime import run_llm_call
+
+                response = run_llm_call(
+                    lambda: TextEmbedding.call(
+                        model=EMBEDDING_MODEL,
+                        input=text,
+                        output_type="dense&sparse",
+                    ),
+                    label="dashscope-embedding",
                 )
                 break
             except Exception as exc:
@@ -190,7 +232,7 @@ class QdrantStore:
         if current_dim and current_dim != actual_dim:
             self._recreate_collection(actual_dim)
 
-        chunk_id = metadata.get("chunk_id", f"{paper_id}_{worker_type}_{_stable_hash(content)}")
+        chunk_id = metadata.get("chunk_id", f"{worker_type}_{_stable_hash(content)}")
 
         # payload：合并所有 metadata + 原始内容
         payload: dict[str, Any] = {
@@ -203,21 +245,20 @@ class QdrantStore:
             if isinstance(v, tuple):
                 payload[k] = list(v)
 
-        # 构建 sparse vector（Qdrant 格式）
-        indices = sorted(sparse_dict.keys())
-        values = [sparse_dict[i] for i in indices]
+        vector_payload: dict[str, Any] = {DENSE_VECTOR_NAME: dense_vec}
+        if self._uses_sparse_vectors:
+            indices = sorted(sparse_dict.keys())
+            values = [sparse_dict[i] for i in indices]
+            vector_payload[SPARSE_VECTOR_NAME] = SparseVector(
+                indices=indices, values=values,
+            )
 
         self.client.upsert(
             collection_name=self.collection,
             points=[
                 models.PointStruct(
-                    id=_stable_hash(chunk_id) % (2 ** 63),
-                    vector={
-                        DENSE_VECTOR_NAME: dense_vec,
-                        SPARSE_VECTOR_NAME: SparseVector(
-                            indices=indices, values=values,
-                        ),
-                    },
+                    id=qdrant_point_id(paper_id, chunk_id),
+                    vector=vector_payload,
                     payload=payload,
                 )
             ],
@@ -273,34 +314,40 @@ class QdrantStore:
 
         qdrant_filter = self._build_filter(filter_kwargs)
 
-        # 稀疏向量 → Qdrant 格式
-        sparse_indices = sorted(sparse_dict.keys())
-        sparse_values = [sparse_dict[i] for i in sparse_indices]
-        sparse_vec = SparseVector(indices=sparse_indices, values=sparse_values)
-
         # Rerank 模式多召回一些候选
         fetch_multiplier = 3 if rerank else 2
-
-        prefetch_dense = Prefetch(
-            query=dense_vec,
-            using=DENSE_VECTOR_NAME,
-            limit=limit * fetch_multiplier,
-            filter=qdrant_filter,
-        )
-        prefetch_sparse = Prefetch(
-            query=sparse_vec,
-            using=SPARSE_VECTOR_NAME,
-            limit=limit * fetch_multiplier,
-            filter=qdrant_filter,
-        )
-
-        candidates = self.client.query_points(
-            collection_name=self.collection,
-            prefetch=[prefetch_dense, prefetch_sparse],
-            query=FusionQuery(fusion=Fusion.RRF),
-            limit=limit * fetch_multiplier,
-            score_threshold=score_threshold,
-        )
+        if self._uses_sparse_vectors and sparse_dict:
+            sparse_indices = sorted(sparse_dict.keys())
+            sparse_values = [sparse_dict[i] for i in sparse_indices]
+            sparse_vec = SparseVector(indices=sparse_indices, values=sparse_values)
+            prefetch_dense = Prefetch(
+                query=dense_vec,
+                using=DENSE_VECTOR_NAME,
+                limit=limit * fetch_multiplier,
+                filter=qdrant_filter,
+            )
+            prefetch_sparse = Prefetch(
+                query=sparse_vec,
+                using=SPARSE_VECTOR_NAME,
+                limit=limit * fetch_multiplier,
+                filter=qdrant_filter,
+            )
+            candidates = self.client.query_points(
+                collection_name=self.collection,
+                prefetch=[prefetch_dense, prefetch_sparse],
+                query=FusionQuery(fusion=Fusion.RRF),
+                limit=limit * fetch_multiplier,
+                score_threshold=score_threshold,
+            )
+        else:
+            candidates = self.client.query_points(
+                collection_name=self.collection,
+                query=dense_vec,
+                using=DENSE_VECTOR_NAME,
+                query_filter=qdrant_filter,
+                limit=limit * fetch_multiplier,
+                score_threshold=score_threshold,
+            )
 
         results = [
             {

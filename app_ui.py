@@ -5,7 +5,7 @@ SortPaper UI — Streamlit 渲染组件。
 from __future__ import annotations
 
 import streamlit as st
-from app_utils import _chunk_to_dict, qdrant_search, load_saved_list, load_saved_detail, delete_saved
+from app_utils import qdrant_search, load_saved_list, load_saved_detail, delete_saved
 
 def type_badge(ctype: str) -> str:
     colors = {"text": "🔵", "table": "🟠", "image": "🟢"}
@@ -30,7 +30,7 @@ def render_reconstruction_tab(result: dict) -> None:
 
     color_mode = st.radio(
         "着色方式",
-        ["按内容类型", "按栏位"],
+        ["按内容类型", "按栏位", "按表格解析状态"],
         horizontal=True,
     )
 
@@ -44,10 +44,23 @@ def render_reconstruction_tab(result: dict) -> None:
         1: ("#C62828", "#FFCDD2"),
         2: ("#7B1FA2", "#E1BEE7"),
     }
+    table_debug_colors = {
+        "manual": ("#D32F2F", "#FFCDD2"),
+        "vision_pending": ("#F57C00", "#FFE0B2"),
+        "vision_attempted": ("#8E24AA", "#E1BEE7"),
+        "matched": ("#2E7D32", "#C8E6C9"),
+        "table_no_region": ("#6D4C41", "#D7CCC8"),
+        "other": ("#607D8B", "#CFD8DC"),
+    }
 
     def get_color(chunk: dict) -> tuple[str, str]:
         if color_mode == "按内容类型":
             return type_colors.get(chunk.get("content_type", "text"), ("#888", "#ddd"))
+        if color_mode == "按表格解析状态":
+            if chunk.get("content_type") != "table":
+                return ("#B0BEC5", "#ECEFF1")
+            status = _table_debug_status(chunk.get("metadata", {}))
+            return table_debug_colors.get(status, table_debug_colors["other"])
         col = chunk.get("column", 0)
         return column_colors.get(col, ("#888", "#ddd"))
 
@@ -113,6 +126,16 @@ def render_reconstruction_tab(result: dict) -> None:
         content = chunk.get("raw_content", "").strip()
         ctype = chunk.get("content_type", "text")
         type_tag = {"text": "T", "table": "TBL", "image": "IMG"}.get(ctype, "?")
+        if color_mode == "按表格解析状态" and ctype == "table":
+            status_label = {
+                "manual": "NO-LLM",
+                "vision_pending": "VISION",
+                "vision_attempted": "VISION-DONE",
+                "matched": "OK",
+                "table_no_region": "NO-REGION",
+                "other": "TABLE",
+            }.get(_table_debug_status(chunk.get("metadata", {})), "TABLE")
+            type_tag = status_label
 
         if not content:
             # 无内容：只显示类型标签
@@ -157,7 +180,7 @@ def render_reconstruction_tab(result: dict) -> None:
             else:
                 draw.text((text_area_left, py0 + th + 6), line_text, fill="#333", font=font_small)
 
-    st.image(img, use_container_width=True)
+    st.image(img, width="stretch")
 
     # 图例
     if color_mode == "按内容类型":
@@ -168,28 +191,148 @@ def render_reconstruction_tab(result: dict) -> None:
                 unsafe_allow_html=True,
             )
     else:
-        c1, c2, c3 = st.columns(3)
-        labels = {0: "左栏", 1: "右栏", 2: "通栏"}
-        for col, (col_id, (clr, _)) in zip([c1, c2, c3], column_colors.items()):
-            col.markdown(
-                f"<span style='display:inline-block;width:14px;height:14px;"                f"background:{clr};border-radius:3px;margin-right:6px;'></span>{labels[col_id]}",
-                unsafe_allow_html=True,
-            )
+        if color_mode == "按表格解析状态":
+            labels = {
+                "matched": "已解析且匹配候选",
+                "vision_pending": "结构质量需处理",
+                "vision_attempted": "历史视觉兜底记录",
+                "manual": "未解析候选，保留诊断",
+                "table_no_region": "表格无候选",
+                "other": "其他",
+            }
+            cols = st.columns(len(labels))
+            for col, (key, label) in zip(cols, labels.items()):
+                clr, _ = table_debug_colors[key]
+                col.markdown(
+                    f"<span style='display:inline-block;width:14px;height:14px;"
+                    f"background:{clr};border-radius:3px;margin-right:6px;'></span>{label}",
+                    unsafe_allow_html=True,
+                )
+        else:
+            c1, c2, c3 = st.columns(3)
+            labels = {0: "左栏", 1: "右栏", 2: "通栏"}
+            for col, (col_id, (clr, _)) in zip([c1, c2, c3], column_colors.items()):
+                col.markdown(
+                    f"<span style='display:inline-block;width:14px;height:14px;"
+                    f"background:{clr};border-radius:3px;margin-right:6px;'></span>{labels[col_id]}",
+                    unsafe_allow_html=True,
+                )
+
+    if color_mode == "按表格解析状态":
+        render_reconstruction_table_debug(page_chunks)
 
     st.caption(f"共 {len(page_chunks)} 个 chunks | 页面 {page_num}")
+
+
+def _table_debug_status(metadata: dict) -> str:
+    if metadata.get("table_region_unparsed") or metadata.get("structure_reparse_needed"):
+        return "manual"
+    if metadata.get("vision_fallback_attempted"):
+        return "vision_attempted"
+    if metadata.get("vision_fallback_needed"):
+        return "vision_pending"
+    if metadata.get("table_region_match") == "matched":
+        return "matched"
+    if metadata.get("parser") and not metadata.get("table_region"):
+        return "table_no_region"
+    return "other"
+
+
+def _table_llm_action(metadata: dict) -> tuple[str, str]:
+    if metadata.get("structure_reparse_needed") or metadata.get("vision_fallback_disabled"):
+        return "structure_reparse", "结构质量低；走 LLM Judge/自动动作，不调用 Vision 读表"
+    if metadata.get("table_region_unparsed") or metadata.get("manual_review_needed"):
+        return "manual_review", "未解析候选：保留候选并记录诊断，不直接删除"
+    if metadata.get("vision_fallback_attempted"):
+        if metadata.get("vision_fallback_succeeded"):
+            return "vision_called", "历史视觉兜底记录：修复成功"
+        return "vision_called", "历史视觉兜底记录：未得到可用表格"
+    if metadata.get("vision_fallback_needed"):
+        return "vision_pending", "结构质量低：不调用 Vision 读表，由 Judge 决定策略"
+    return "none", "未触发 LLM Judge"
+
+
+def render_reconstruction_table_debug(page_chunks: list[dict]) -> None:
+    table_chunks = [c for c in page_chunks if c.get("content_type") == "table"]
+    if not table_chunks:
+        st.info("当前页没有表格候选或表格块。")
+        return
+
+    rows = collect_table_debug_rows(table_chunks)
+    unparsed = sum(1 for row in rows if row["unparsed"])
+    quality_flagged = sum(1 for row in rows if row["vision_needed"])
+    legacy_vision_attempted = sum(1 for row in rows if row["llm_action"] == "vision_called")
+    no_judge = sum(1 for row in rows if row["llm_action"] in {"none"})
+    matched = sum(1 for row in rows if row["match"] == "matched")
+
+    with st.expander(
+        f"当前页表格调试：{len(rows)} 个 | 已匹配 {matched} | 未解析 {unparsed} | "
+        f"结构需处理 {quality_flagged} | 历史视觉记录 {legacy_vision_attempted} | 未触发 Judge {no_judge}",
+        expanded=bool(unparsed or quality_flagged),
+    ):
+        for row in rows:
+            status = row["llm_label"] if row["llm_action"] != "none" else "已解析"
+            st.markdown(
+                f"**p{row['page']} | {status} | {row['parser']} | "
+                f"{row['region_band']} {row['region_score'] if row['region_score'] is not None else ''}**"
+            )
+            st.caption(f"bbox: {row['bbox']} | chunk_id: `{row['chunk_id']}`")
+            render_table_debug_summary(row["metadata"], inline=True)
+            st.divider()
+
 def render_chunk_card(chunk: dict, verdict: dict | None = None, index: int = 0) -> None:
     ctype = chunk.get("content_type", "text")
     badge = type_badge(ctype)
     page = chunk.get("page", "?")
     cid = chunk.get("chunk_id", "")
     short_id = cid.split("_", 2)[-1] if "_" in cid else cid
+    metadata = chunk.get("metadata", {})
 
-    label = f"{badge} p{page} · {short_id}"
-    if verdict:
+    if ctype == "table":
+        excluded = bool(metadata.get("excluded_from_storage") or (verdict and verdict.get("issue_type") == "false_positive"))
+        unparsed = bool(metadata.get("table_region_unparsed"))
+        if excluded:
+            status_icon = "❌"
+            status_text = "不入库候选"
+        elif unparsed:
+            status_icon = "⚠️"
+            status_text = "未解析候选"
+        else:
+            status_icon = "✅"
+            status_text = "可用表格"
+        score = metadata.get("table_candidate_score")
+        if score is None:
+            score = (metadata.get("table_region") or {}).get("confidence")
+        score_text = f" candidate={float(score):.2f}" if score is not None else ""
+        judge_text = f" judge={verdict.get('score', 0):.2f}" if verdict else ""
+        label = f"{status_icon} {badge} p{page} · {status_text} · {short_id}{score_text}{judge_text}"
+    else:
+        label = f"{badge} p{page} · {short_id}"
+    if verdict and ctype != "table":
         label = f"{verdict_badge(verdict['passed'])} {label}  score={verdict.get('score', 0):.2f}"
 
     with st.expander(label, expanded=False):
         content = chunk.get("raw_content", "")
+        if verdict and verdict.get("issue_type") == "false_positive":
+            st.error("Judge 已判定该块不是表格；会标记为不入库，但仍保留候选记录。")
+        if metadata.get("table_region_unparsed"):
+            st.warning("检测到疑似表格区域，但结构解析器没有产出可用表格；保留候选并交给规则/LLM Judge 诊断。")
+        if metadata.get("structure_reparse_needed"):
+            st.warning("该表格结构质量偏低；不会调用 Vision 读表，会优先使用 LLM Judge 选择重试或 bbox 候选。")
+        if metadata.get("vision_fallback_needed"):
+            st.warning("该表格结构质量偏低；当前默认不会用 Vision 生成表格内容，会由 Judge/候选竞争处理。")
+            reasons = metadata.get("vision_fallback_reasons", [])
+            quality = metadata.get("structural_quality", {})
+            if reasons or quality:
+                reason_text = ", ".join(reasons) if reasons else "unknown"
+                st.caption(
+                    "quality flags: "
+                    f"reasons={reason_text}; "
+                    f"consistency={quality.get('consistency_score', '?')}; "
+                    f"fill={quality.get('fill_rate', '?')}"
+                )
+        if metadata.get("vision_needed"):
+            st.warning("预览模式仅标记图片位置，未调用 GPT Vision 生成描述。")
         if ctype == "table":
             st.markdown(content)
         elif ctype == "image":
@@ -198,14 +341,387 @@ def render_chunk_card(chunk: dict, verdict: dict | None = None, index: int = 0) 
             st.text(content[:1200] + ("…" if len(content) > 1200 else ""))
 
         col1, col2, col3 = st.columns(3)
-        col1.caption(f"类型: {ctype}  [{chunk.get('metadata', {}).get('parser', chunk.get('parser', '?'))}]")
+        col1.caption(f"类型: {ctype}  [{metadata.get('parser', chunk.get('parser', '?'))}]")
         col2.caption(f"页: {page}")
         col3.caption(f"列: {chunk.get('column', '?')}")
+
+        if ctype == "table":
+            render_table_debug_summary(metadata, inline=True)
 
         if verdict:
             fb = verdict.get("feedback", "")
             if fb:
                 st.caption(f"**Judge 意见：** {fb}")
+
+
+def render_table_debug_summary(metadata: dict, *, inline: bool = False) -> None:
+    """Render compact table parsing diagnostics inside a chunk card."""
+    region = metadata.get("table_region")
+    attempts = metadata.get("region_extraction_attempts", [])
+    quality = metadata.get("structural_quality", {})
+    extraction = metadata.get("extraction_attempt", {})
+    dedup_replaced = metadata.get("dedup_replaced", [])
+
+    if not any([region, attempts, quality, extraction, dedup_replaced]):
+        return
+
+    debug_container = st.container() if inline else st.expander("表格解析调试", expanded=False)
+    with debug_container:
+        llm_action, llm_label = _table_llm_action(metadata)
+        st.caption(f"LLM 动作: {llm_label}")
+        render_table_judge_diagnostics(metadata)
+
+        if region:
+            c1, c2, c3 = st.columns(3)
+            c1.metric("候选区域", region.get("band", "?"))
+            c2.metric("证据分", f"{region.get('confidence', 0):.2f}")
+            c3.metric("匹配状态", metadata.get("table_region_match", "?"))
+            st.caption(f"region_id: `{region.get('region_id', '?')}`")
+            st.caption(f"bbox: {region.get('bbox', '?')}")
+
+            evidence = region.get("evidence", [])
+            if evidence:
+                st.markdown("**候选区域证据**")
+                for item in evidence:
+                    score = item.get("score", 0)
+                    source = item.get("source", "?")
+                    reason = item.get("reason", "")
+                    st.caption(f"- {source}: {score:+.2f} | {reason}")
+
+        if extraction:
+            st.markdown("**成功解析**")
+            st.caption(
+                f"{extraction.get('parser', '?')} | "
+                f"rows={extraction.get('rows', '?')} | "
+                f"cols={extraction.get('cols', '?')} | "
+                f"bbox={extraction.get('bbox', '?')}"
+            )
+
+        if attempts:
+            st.markdown("**候选区解析尝试**")
+            for attempt in attempts:
+                ok = "成功" if attempt.get("succeeded") else "失败"
+                parser = attempt.get("parser", "?")
+                rows = attempt.get("rows", 0)
+                cols = attempt.get("cols", 0)
+                reason = attempt.get("failure_reason", "")
+                line = f"- {parser}: {ok}"
+                if attempt.get("succeeded"):
+                    line += f" | {rows}x{cols}"
+                if reason:
+                    line += f" | {reason}"
+                st.caption(line)
+
+        if dedup_replaced:
+            st.markdown("**去重移除的子集/重复表格**")
+            for item in dedup_replaced:
+                st.caption(
+                    f"- {item.get('parser', '?')} | {item.get('reason', '?')}="
+                    f"{item.get('score', '?')} | bbox={item.get('bbox', '?')}"
+                )
+
+        if quality:
+            st.markdown("**结构质量**")
+            q1, q2, q3, q4 = st.columns(4)
+            q1.metric("一致性", f"{quality.get('consistency_score', 0):.2f}")
+            q2.metric("填充率", f"{quality.get('fill_rate', 0):.2f}")
+            q3.metric("正文比例", f"{quality.get('prose_cell_ratio', 0):.2f}")
+            q4.metric("质量标记", "需处理" if quality.get("fallback_to_vision") else "通过")
+            reasons = quality.get("fallback_reasons", [])
+            if reasons:
+                st.caption("quality reasons: " + ", ".join(reasons))
+
+
+def render_table_judge_diagnostics(metadata: dict) -> None:
+    rule_category = metadata.get("rule_failure_category")
+    rule_action = metadata.get("rule_recommended_action")
+    llm_category = metadata.get("llm_failure_category")
+    llm_action = metadata.get("llm_recommended_action")
+    llm_error = metadata.get("llm_error")
+    if not any([
+        rule_category,
+        rule_action,
+        llm_category,
+        llm_action,
+        llm_error,
+        metadata.get("auto_action"),
+        metadata.get("bbox_candidates_tried"),
+        metadata.get("excluded_from_storage"),
+        metadata.get("storage_exclusion_reason"),
+        metadata.get("unparseable_reason"),
+    ]):
+        return
+
+    st.markdown("**Rule / LLM Judge**")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Rule", rule_category or "-")
+    c2.metric("Action", rule_action or "-")
+    c3.metric("Mode", metadata.get("llm_decision_mode", "off"))
+    reasons = metadata.get("rule_reasons", [])
+    if reasons:
+        st.caption("rule reasons: " + " | ".join(str(item) for item in reasons))
+
+    if llm_error:
+        st.caption(f"LLM Judge error: {llm_error}")
+    elif llm_category or llm_action:
+        c4, c5, c6 = st.columns(3)
+        c4.metric("LLM", llm_category or "-")
+        c5.metric("LLM action", llm_action or "-")
+        c6.metric("Agree", "yes" if metadata.get("rule_llm_agree") else "no")
+        reason = metadata.get("llm_reason")
+        if reason:
+            st.caption(f"LLM reason: {reason}")
+
+    if metadata.get("llm_decision_mode") == "shadow":
+        st.caption("诊断报告模式：LLM Judge 仅记录建议，不改变解析结果。")
+    elif metadata.get("auto_action_allowed"):
+        st.caption("默认质量控制：该建议允许执行一次安全自动动作。")
+
+    decision_reason = metadata.get("auto_decision_reason")
+    if decision_reason:
+        st.caption("auto decision: " + str(decision_reason))
+
+    auto_fields = [
+        f"action={metadata.get('auto_action') or '-'}",
+        f"attempted={bool(metadata.get('auto_action_attempted'))}",
+        f"succeeded={bool(metadata.get('auto_action_succeeded'))}",
+    ]
+    if metadata.get("excluded_from_storage"):
+        auto_fields.append("excluded_from_storage=yes")
+    if metadata.get("storage_exclusion_reason"):
+        auto_fields.append(f"storage_reason={metadata.get('storage_exclusion_reason')}")
+    if metadata.get("unparseable_reason"):
+        auto_fields.append(f"unparseable={metadata.get('unparseable_reason')}")
+    if metadata.get("auto_action") or metadata.get("auto_action_attempted"):
+        st.caption("auto control: " + " | ".join(str(item) for item in auto_fields))
+
+    if metadata.get("bbox_candidates_tried") or metadata.get("bbox_candidate_best"):
+        st.caption(
+            "bbox candidates: "
+            f"tried={len(metadata.get('bbox_candidates_tried') or [])} | "
+            f"adopted={bool(metadata.get('bbox_candidate_adopted'))} | "
+            f"best={metadata.get('bbox_candidate_best') or {}} | "
+            f"reason={metadata.get('bbox_candidate_reason') or '-'}"
+        )
+
+    repair_actions = metadata.get("table_repair_actions") or []
+    if repair_actions:
+        st.caption("table repair: " + " | ".join(str(item) for item in repair_actions))
+
+
+def collect_table_debug_rows(chunks: list[dict], verdicts: dict | None = None) -> list[dict]:
+    verdicts = verdicts or {}
+    rows: list[dict] = []
+    for chunk in chunks:
+        if chunk.get("content_type") != "table":
+            continue
+        verdict = verdicts.get(chunk.get("chunk_id", ""), {})
+        metadata = chunk.get("metadata", {})
+        region = metadata.get("table_region") or {}
+        quality = metadata.get("structural_quality") or {}
+        attempts = metadata.get("region_extraction_attempts") or []
+        failed_attempts = [a for a in attempts if not a.get("succeeded")]
+        succeeded_attempts = [a for a in attempts if a.get("succeeded")]
+        llm_action, llm_label = _table_llm_action(metadata)
+        issue_type = verdict.get("issue_type", "")
+        if issue_type == "false_positive":
+            llm_action = "judge_false_positive"
+            llm_label = "Judge 已判定不是表格：标记不入库，候选仍保留"
+        storage_decision = {}
+        try:
+            from src.judge.table_judge import build_storage_decision
+            storage_decision = build_storage_decision(
+                content_type=chunk.get("content_type", ""),
+                metadata=metadata,
+            )
+        except Exception:
+            storage_decision = {}
+        excluded = bool(
+            issue_type == "false_positive"
+            or storage_decision.get("excluded_from_storage", metadata.get("excluded_from_storage"))
+        )
+        storage_reason = (
+            storage_decision.get("storage_exclusion_reason")
+            if storage_decision
+            else metadata.get("storage_exclusion_reason", "")
+        )
+        parsed = not bool(metadata.get("table_region_unparsed"))
+        usable = bool(parsed and not excluded)
+        if excluded:
+            table_status = "不入库候选"
+        elif not parsed:
+            table_status = "未解析候选"
+        elif metadata.get("vision_fallback_needed") or metadata.get("structure_reparse_needed"):
+            table_status = "结构需处理"
+        else:
+            table_status = "可用表格"
+        rows.append({
+            "chunk_id": chunk.get("chunk_id", ""),
+            "table_label": metadata.get("table_label") or metadata.get("caption") or "",
+            "table_caption": metadata.get("table_caption") or metadata.get("caption") or "",
+            "page": chunk.get("page", "?"),
+            "parser": metadata.get("parser", "?"),
+            "region_id": region.get("region_id", ""),
+            "region_band": region.get("band", "none"),
+            "region_score": region.get("confidence", None),
+            "match": metadata.get("table_region_match", "none"),
+            "unparsed": bool(metadata.get("table_region_unparsed")),
+            "usable_table": usable,
+            "table_status": table_status,
+            "vision_needed": bool(metadata.get("vision_fallback_needed")),
+            "vision_attempted": bool(metadata.get("vision_fallback_attempted")),
+            "llm_action": llm_action,
+            "llm_label": llm_label,
+            "rule_category": metadata.get("rule_failure_category", ""),
+            "rule_action": metadata.get("rule_recommended_action", ""),
+            "llm_category": metadata.get("llm_failure_category", ""),
+            "llm_recommended_action": metadata.get("llm_recommended_action", ""),
+            "llm_decision_mode": metadata.get("llm_decision_mode", "off"),
+            "safe_auto_action": bool(metadata.get("safe_auto_action")),
+            "human_review_required": bool(metadata.get("human_review_required")),
+            "excluded_from_storage": excluded,
+            "storage_exclusion_reason": storage_reason or "",
+            "table_candidate_score": metadata.get("table_candidate_score", None),
+            "table_candidate_tier": metadata.get("table_candidate_tier", ""),
+            "table_repair_actions": " | ".join(str(item) for item in (metadata.get("table_repair_actions") or [])),
+            "judge_passed": verdict.get("passed", None),
+            "judge_issue_type": issue_type,
+            "rows": metadata.get("rows", 0),
+            "cols": metadata.get("cols", 0),
+            "consistency": quality.get("consistency_score", None),
+            "fill_rate": quality.get("fill_rate", None),
+            "prose_cell_ratio": quality.get("prose_cell_ratio", None),
+            "success_attempts": len(succeeded_attempts),
+            "failed_attempts": len(failed_attempts),
+            "bbox": chunk.get("bbox"),
+            "metadata": metadata,
+            "raw_content": chunk.get("raw_content", ""),
+        })
+    return rows
+
+
+def render_table_debug_tab(result: dict) -> None:
+    chunks = [
+        c for c in result.get("merged_chunks", [])
+        if c.get("content_type") == "table"
+    ]
+    rows = collect_table_debug_rows(chunks)
+    if not rows:
+        st.info("暂无表格调试数据。请先运行预览或完整流水线。")
+        return
+
+    total = len(rows)
+    usable_count = sum(1 for row in rows if row["usable_table"])
+    unparsed = sum(1 for row in rows if row["unparsed"])
+    non_table = sum(1 for row in rows if row["llm_action"] == "judge_false_positive")
+    no_judge = sum(1 for row in rows if row["llm_action"] == "none")
+    excluded_storage = sum(1 for row in rows if row["excluded_from_storage"])
+
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
+    c1.metric("候选总数", total)
+    c2.metric("可用表格", usable_count)
+    c3.metric("不入库候选", excluded_storage)
+    c4.metric("Judge 非表格", non_table)
+    c5.metric("未解析候选", unparsed)
+    c6.metric("未触发 Judge", no_judge)
+
+    pages = sorted({row["page"] for row in rows if row["page"] != "?"})
+    page_options = ["全部"] + [str(page) for page in pages]
+    col_filter1, col_filter2, col_filter3 = st.columns(3)
+    page_filter = col_filter1.selectbox("页码", page_options, key="table_debug_page")
+    status_filter = col_filter2.selectbox(
+        "状态",
+        ["全部", "可用表格", "不入库候选", "未解析候选", "结构质量需处理", "历史视觉兜底记录", "未触发 Judge", "无 region"],
+        key="table_debug_status",
+    )
+    band_filter = col_filter3.selectbox(
+        "候选强度",
+        ["全部", "strong", "gray", "weak", "none"],
+        key="table_debug_band",
+    )
+
+    filtered = rows
+    if page_filter != "全部":
+        filtered = [row for row in filtered if str(row["page"]) == page_filter]
+    if status_filter == "可用表格":
+        filtered = [row for row in filtered if row["usable_table"]]
+    elif status_filter == "未解析候选":
+        filtered = [row for row in filtered if row["unparsed"]]
+    elif status_filter == "结构质量需处理":
+        filtered = [row for row in filtered if row["vision_needed"]]
+    elif status_filter == "不入库候选":
+        filtered = [row for row in filtered if row["excluded_from_storage"]]
+    elif status_filter == "历史视觉兜底记录":
+        filtered = [row for row in filtered if row["llm_action"] == "vision_called"]
+    elif status_filter == "未触发 Judge":
+        filtered = [row for row in filtered if row["llm_action"] == "none"]
+    elif status_filter == "无 region":
+        filtered = [row for row in filtered if row["match"] == "none"]
+    if band_filter != "全部":
+        filtered = [row for row in filtered if row["region_band"] == band_filter]
+
+    st.caption(f"当前显示 {len(filtered)} / {len(rows)} 条")
+    if not filtered:
+        return
+
+    try:
+        import pandas as pd
+
+        table_rows = [
+            {
+                "table": row["table_label"],
+                "caption": row["table_caption"],
+                "page": row["page"],
+                "parser": row["parser"],
+                "region_band": row["region_band"],
+                "score": row["region_score"],
+                "match": row["match"],
+                "status": row["table_status"],
+                "usable": row["usable_table"],
+                "unparsed": row["unparsed"],
+                "vision": row["vision_needed"],
+                "vision_attempted": row["vision_attempted"],
+                "llm": row["llm_label"],
+                "rule": row["rule_category"],
+                "rule_action": row["rule_action"],
+                "llm_judge": row["llm_category"],
+                "llm_action": row["llm_recommended_action"],
+                "llm_mode": row["llm_decision_mode"],
+                "safe_auto": row["safe_auto_action"],
+                "human_review": row["human_review_required"],
+                "storage": "excluded" if row["excluded_from_storage"] else "storable",
+                "storage_reason": row["storage_exclusion_reason"],
+                "candidate_score": row["table_candidate_score"],
+                "candidate_tier": row["table_candidate_tier"],
+                "repair": row["table_repair_actions"],
+                "rows": row["rows"],
+                "cols": row["cols"],
+                "consistency": row["consistency"],
+                "fill": row["fill_rate"],
+                "prose": row["prose_cell_ratio"],
+                "failed_attempts": row["failed_attempts"],
+                "bbox": row["bbox"],
+            }
+            for row in filtered
+        ]
+        st.dataframe(pd.DataFrame(table_rows), width="stretch", hide_index=True)
+    except Exception:
+        pass
+
+    for idx, row in enumerate(filtered):
+        title = (
+            f"p{row['page']} | {row['parser']} | "
+            f"{row['region_band']} {row['region_score'] if row['region_score'] is not None else ''} | "
+            f"{row['table_status']}"
+        )
+        with st.expander(title, expanded=bool(row["unparsed"] or row["vision_needed"])):
+            st.caption(f"chunk_id: `{row['chunk_id']}`")
+            st.caption(f"bbox: {row['bbox']}")
+            render_table_debug_summary(row["metadata"], inline=True)
+            content = row["raw_content"]
+            if content:
+                st.markdown("**解析内容预览**")
+                st.markdown(content[:2000])
 
 
 def render_overview(result: dict) -> None:
@@ -314,7 +830,7 @@ def render_overview(result: dict) -> None:
             c4.metric("Judge 通过", f"{passed} / {total_v}")
         else:
             c4.metric("模式", "快速预览")
-        st.info("ℹ️ 快速预览模式：PyMuPDF 文本 + pdfplumber 表格（跳过 camelot）+ LLM Judge，无 Qwen-VL / 向量索引写入")
+        st.info("ℹ️ 快速预览模式：PyMuPDF 文本 + pdfplumber 表格区域发现/解析 + LLM Judge；不执行图片 VisionParser 或向量索引写入")
 
         # 计时面板（快速预览）
         worker_timing = result.get("worker_timing", {})
@@ -359,10 +875,89 @@ def render_table_tab(
     if not chunks:
         st.info("未检测到表格（pdfplumber 未找到有效表格结构）")
         return
-    st.caption(f"共 {len(chunks)} 个表格块")
-    for i, c in enumerate(chunks):
+
+    rows = collect_table_debug_rows(chunks, verdicts)
+    usable_count = sum(1 for row in rows if row["usable_table"])
+    excluded_count = sum(1 for row in rows if row["excluded_from_storage"])
+    false_positive = sum(1 for row in rows if row["llm_action"] == "judge_false_positive")
+    quality_flagged = sum(1 for row in rows if row["llm_action"] == "vision_pending")
+    no_judge = sum(1 for row in rows if row["llm_action"] == "none")
+    manual_review = sum(1 for row in rows if row["llm_action"] == "manual_review")
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("候选总数", len(chunks))
+    c2.metric("可用表格", usable_count)
+    c3.metric("不入库候选", excluded_count)
+    c4.metric("Judge 非表格", false_positive)
+    c5.metric("未触发 Judge", no_judge)
+
+    if manual_review:
+        st.warning(f"{manual_review} 个未解析候选会保留诊断记录；不会被物理删除。")
+
+    _render_table_region_inventory(rows)
+
+    status_filter = st.selectbox(
+        "表格质量状态",
+        ["可用表格", "全部", "不入库候选", "Judge 判定不是表格", "结构质量需处理", "未触发 Judge", "未解析候选"],
+        key="table_tab_status_v2",
+    )
+
+    filtered_chunks = chunks
+    if status_filter:
+        row_by_id = {row["chunk_id"]: row for row in rows}
+
+        def _keep(chunk: dict) -> bool:
+            row = row_by_id.get(chunk.get("chunk_id", ""))
+            if not row:
+                return False
+            if status_filter == "全部":
+                return True
+            if status_filter == "可用表格":
+                return row["usable_table"]
+            if status_filter == "不入库候选":
+                return row["excluded_from_storage"]
+            if status_filter == "Judge 判定不是表格":
+                return row["llm_action"] == "judge_false_positive"
+            if status_filter == "结构质量需处理":
+                return row["llm_action"] == "vision_pending"
+            if status_filter == "未触发 Judge":
+                return row["llm_action"] == "none"
+            if status_filter == "未解析候选":
+                return row["llm_action"] == "manual_review"
+            return True
+
+        filtered_chunks = [chunk for chunk in chunks if _keep(chunk)]
+
+    st.caption(f"当前显示 {len(filtered_chunks)} / {len(chunks)} 个表格块")
+    for i, c in enumerate(filtered_chunks):
         verdict = verdicts.get(c["chunk_id"])
         render_chunk_card(c, verdict, i)
+
+
+def _render_table_region_inventory(rows: list[dict]) -> None:
+    if not rows:
+        return
+    try:
+        import pandas as pd
+    except Exception:
+        return
+
+    inventory_rows = [
+        {
+            "table": row.get("table_label", ""),
+            "caption": row.get("table_caption", ""),
+            "page": row.get("page", "?"),
+            "bbox": row.get("bbox"),
+            "score": row.get("region_score"),
+            "band": row.get("region_band"),
+            "status": row.get("table_status", ""),
+            "storage": "excluded" if row.get("excluded_from_storage") else "storable",
+            "parser": row.get("parser", "?"),
+        }
+        for row in rows
+    ]
+    with st.expander("表格区域清单", expanded=True):
+        st.dataframe(pd.DataFrame(inventory_rows), width="stretch", hide_index=True)
 
 
 def render_image_tab(result: dict) -> None:
@@ -542,18 +1137,18 @@ def render_saved_tab() -> None:
         if "confirm_clear_saved" not in st.session_state:
             st.session_state.confirm_clear_saved = False
         if not st.session_state.confirm_clear_saved:
-            st.button("🗑️ 清空所有已保存", key="clear_all_saved", use_container_width=True,
+            st.button("🗑️ 清空所有已保存", key="clear_all_saved", width="stretch",
                       on_click=lambda: setattr(st.session_state, "confirm_clear_saved", True))
         else:
             st.warning("⚠️ 将删除所有已保存结果（不含向量库数据）")
             c1, c2 = st.columns(2)
-            if c1.button("✅ 确认", use_container_width=True):
+            if c1.button("✅ 确认", width="stretch"):
                 for item in saved_list:
                     delete_saved(item["file_stem"])
                 st.session_state.confirm_clear_saved = False
                 st.session_state.selected_saved = None
                 st.rerun()
-            if c2.button("❌ 取消", use_container_width=True):
+            if c2.button("❌ 取消", width="stretch"):
                 st.session_state.confirm_clear_saved = False
                 st.rerun()
 
@@ -572,7 +1167,7 @@ def render_saved_tab() -> None:
                 if st.button(
                     f"{category_label(cat)}\n**{title[:60]}**\n可信度: {cred:.2f} | ✅{passed} ❌{failed}\n{saved_at}",
                     key=f"saved_{item['file_stem']}",
-                    use_container_width=True,
+                    width="stretch",
                 ):
                     st.session_state.selected_saved = item["file_stem"]
                     st.rerun()
@@ -769,11 +1364,4 @@ def render_saved_detail(detail: dict, file_stem: str) -> None:
             st.info(quality["classify_reason"])
 
 
-def category_label(cat: str) -> str:
-    labels = {
-        "fermentation_experiment": "🧪 发酵实验",
-        "biosynthesis_review": "📖 合成生物学综述",
-        "other": "📎 其他",
-    }
-    return labels.get(cat, cat)
 

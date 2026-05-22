@@ -7,9 +7,8 @@ import hashlib
 import json
 import logging
 from datetime import datetime
-from pathlib import Path
 
-RESULTS_DIR = Path("data/results")
+from app_config import RESULTS_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -59,11 +58,16 @@ def _generate_chunk_description(content_type: str, raw_content: str) -> str:
     )
 
     try:
-        resp = client.chat.completions.create(
-            model="deepseek-chat",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=80,
-            temperature=0.3,
+        from src.judge.llm_runtime import run_llm_call
+
+        resp = run_llm_call(
+            lambda: client.chat.completions.create(
+                model="deepseek-chat",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=80,
+                temperature=0.3,
+            ),
+            label="deepseek-chunk-description",
         )
         return resp.choices[0].message.content.strip()
     except Exception as e:

@@ -81,7 +81,8 @@ cp .env.example .env
 # 编辑 .env，填入真实 API Key
 ```
 
-> - **DashScope**：用于 text-embedding-v3（向量化）/ qwen3-vl-plus（图片解析）/ qwen3-rerank（重排序）/ qwen-plus（Agent 检索）。在 [DashScope 控制台](https://dashscope.aliyun.com) 获取。
+> - **OpenAI**：默认用于 `text-embedding-3-large` 向量化，维度为 3072。需要设置 `OPENAI_API_KEY`。
+> - **DashScope**：可选用于旧版向量化 / qwen3-vl-plus（图片解析）/ qwen3-rerank（重排序）/ qwen-plus（Agent 检索）。在 [DashScope 控制台](https://dashscope.aliyun.com) 获取。
 > - **DeepSeek**：用于 Judge 评判 + 质量评估 Map/Reduce。在 [DeepSeek Platform](https://platform.deepseek.com) 获取。
 
 **3. 启动 Qdrant**（默认连接 localhost:6333）
@@ -136,14 +137,14 @@ SortPaper/
 | 组件 | 技术 |
 |---|---|
 | 文本解析 | PyMuPDF (fitz) |
-| 表格解析 | pdfplumber + PyMuPDF + camelot（三引擎自适应） |
+| 表格解析 | pdfplumber-only 提取 + 规则/LLM Judge 质量控制 |
 | 图片描述 | qwen3-vl-plus（DashScope） |
 | Vision 兜底 | qwen3-vl-plus 截图重解析（表格结构差时自动） |
 | LLM 裁判 | DeepSeek V4 Pro |
 | 质量评估 | DeepSeek-chat（分类/Map）+ DeepSeek V4 Pro（Reduce） |
-| 文本嵌入 | text-embedding-v3（DashScope，Dense + Sparse 双路） |
+| 文本嵌入 | text-embedding-3-large（OpenAI，3072 维 dense） |
 | 重排序 | qwen3-rerank（DashScope） |
-| 向量存储 | Qdrant（Hybrid Search: Dense + Sparse + RRF） |
+| 向量存储 | Qdrant（默认 dense 检索；DashScope provider 保留 Dense + Sparse 混合检索） |
 | Agent 检索 | Qwen-plus（DashScope Function Calling） |
 | 流水线编排 | LangGraph |
 | 图形界面 | Streamlit |

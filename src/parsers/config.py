@@ -17,12 +17,21 @@ from dataclasses import dataclass
 class TableParserConfig:
     """TableParser 参数。"""
 
-    # 前两个解析器（pdfplumber + PyMuPDF）检测到的表格数量少于该值时，自动启用 camelot
-    CAMELOT_TRIGGER_THRESHOLD: int = 2
 
     # ---- pdfplumber 参数 ----
     PDFPLUMBER_SNAP_TOLERANCE: int = 3
     PDFPLUMBER_JOIN_TOLERANCE: int = 3
+    PDFPLUMBER_TEXT_SNAP_TOLERANCE: int = 5
+    PDFPLUMBER_TEXT_JOIN_TOLERANCE: int = 5
+    PDFPLUMBER_RETRY_SNAP_TOLERANCE: int = 5
+    PDFPLUMBER_RETRY_JOIN_TOLERANCE: int = 5
+    KEYWORD_ENTRY_ENABLED: bool = True    # Only parse table regions anchored by Table/Tab. captions.
+    DISCOVERY_ONLY: bool = False          # Debug mode: emit table regions only; normal flow parses structure.
+    TABLE_PAGE_PREFILTER_ENABLED: bool = True  # Use fast PyMuPDF caption scan before expensive pdfplumber pages.
+    LLM_JUDGE_ENABLED: bool = True
+    LLM_JUDGE_MODEL: str = "deepseek-chat"
+    LLM_JUDGE_SAFE_CONFIDENCE: float = 0.65
+    BBOX_CANDIDATE_ENABLED: bool = True
 
     # ---- 表格有效性验证（仅结构检查，内容判断已迁移至 LLM Judge）----
     MIN_COLS: int = 2                     # 最少列数
@@ -31,10 +40,17 @@ class TableParserConfig:
     BODY_TEXT_CELL_CHARS: int = 50        # 2列表格：任一非空单元格 ≥ 此长度 → 可能是正文
     BODY_TEXT_MIN_CELLS: int = 3          # 2列表格：≥ 此数量的疑似正文单元格 → 拒绝
     THREELINE_COL_GAP_PT: float = 8.0    # 三线表列检测：相邻列之间的最小间距（pt）
+    GARBLED_CELL_RATIO_REJECT: float = 0.4
+    PROSE_MIXED_ROW_RATIO_REJECT: float = 0.25
+    PROSE_CELL_RATIO_REPARSE: float = 0.30
+    DESCRIPTIVE_COLUMN_MIN_CONSISTENCY: float = 0.90
+    DESCRIPTIVE_COLUMN_MIN_FILL_RATE: float = 0.70
+    DESCRIPTIVE_COLUMN_MIN_ROWS: int = 4
+    DESCRIPTIVE_COLUMN_MIN_COLS: int = 3
 
     # ---- Vision fallback：pdfplumber 质量不够时切 Vision 重解析 ----
     VISION_FALLBACK_ENABLED: bool = True   # 是否启用 Vision 兜底
-    VISION_FALLBACK_MODEL: str = "qwen3-vl-plus"  # Vision 模型（Qwen3-VL 最新）
+    VISION_FALLBACK_MODEL: str = "gpt-5.5"  # OpenAI 视觉模型
     VISION_FALLBACK_MIN_CONSISTENCY: float = 0.8  # 列数一致性低于此值触发 fallback
     VISION_FALLBACK_MIN_FILL_RATE: float = 0.4    # 填充率低于此值触发 fallback
     VISION_FALLBACK_DPI: int = 150        # 截图表区域时的渲染 DPI
@@ -58,12 +74,40 @@ class TableParserConfig:
     # ---- bbox 精修 (_refine_table_bbox) ----
     REFINE_BBOX_SEARCH_UPWARD_RATIO: float = 0.4  # 碎片上方搜索起始偏移（页高比例）
 
+    # ---- 表格区域检测 ----
+    REGION_MIN_KEEP_SCORE: float = 0.25
+    REGION_MERGE_IOU: float = 0.80
+    REGION_LINE_SNAP: float = 3.0
+    REGION_CAPTION_SCAN_DEPTH: float = 620.0
+    KEYWORD_MAX_TABLE_HEIGHT_PT: float = 500.0
+    KEYWORD_LINE_SNAP: float = 3.0
+    HORIZONTAL_LINE_BBOX_WIDTH_RATIO: float = 1.35
+    THREELINE_MIN_HEADER_GAP: float = 6.0
+    THREELINE_MAX_HEADER_GAP: float = 45.0
+    THREELINE_MIN_BODY_GAP: float = 45.0
+    THREELINE_IDEAL_HEADER_GAP: float = 14.0
+    THREELINE_HEADER_GAP_PENALTY: float = 2.0
+
     # ---- 表格合并 ----
     MERGE_X_OVERLAP_RATIO: float = 0.5    # x 方向重叠度 ≥ 此值才考虑合并
     MERGE_Y_GAP_MAX: float = 100.0        # y 方向间隙 ≤ 此值才考虑合并（pt）
 
     # ---- 去重 ----
     DEDUP_IOU_THRESHOLD: float = 0.5
+    DEDUP_CONTAINED_RATIO: float = 0.85
+    DEDUP_SUBSET_CONTAINED_RATIO: float = 0.60
+    DEDUP_SUBSET_MAX_AREA_RATIO: float = 0.75
+    SAME_REGION_DEDUP_CONTAINED_RATIO: float = 0.80
+    SAME_REGION_DEDUP_MIN_PRIORITY_DELTA: float = 1.0
+    SAME_REGION_EXACT_BBOX_TOLERANCE: float = 3.0
+    CHUNK_SCORE_CONSISTENCY_WEIGHT: float = 5.0
+    CHUNK_SCORE_FILL_WEIGHT: float = 3.0
+    CHUNK_SCORE_ROW_WEIGHT: float = 0.25
+    CHUNK_SCORE_COL_WEIGHT: float = 0.20
+    CHUNK_SCORE_MAX_ROWS: int = 12
+    CHUNK_SCORE_MAX_COLS: int = 8
+    CHUNK_SCORE_VISION_PENALTY: float = 4.0
+    CHUNK_SCORE_UNPARSED_PENALTY: float = 30.0
 
 
 # ──────────────────────────────────────────────
@@ -96,7 +140,7 @@ class LayoutConfig:
 class VisionParserConfig:
     """VisionParser 参数。"""
 
-    VISION_MODEL: str = "qwen3-vl-plus"   # DashScope 视觉模型（qwen-vl-max 已下线）
+    VISION_MODEL: str = "gpt-5.5"         # OpenAI 视觉模型
     MIN_AREA_PT2: float = 5000.0          # PDF 坐标面积阈值（pt²）
     MIN_PIXEL_AREA: int = 10000           # 像素面积阈值（px²）
     CAPTION_SEARCH_RANGE: float = 80.0    # 图注查找范围（pt）

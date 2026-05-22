@@ -124,7 +124,7 @@ SortPaper/
 | 이미지 캡션 | qwen3-vl-plus (DashScope) |
 | LLM 심판 | DeepSeek V4 Pro |
 | 품질 평가 | DeepSeek V4 Pro(분류/Map) + DeepSeek V4 Pro(Reduce) |
-| 임베딩 | text-embedding-v3 (DashScope, Dense+Sparse) |
+| 임베딩 | text-embedding-3-large (OpenAI, 3072d dense) |
 | 재정렬 | qwen3-rerank (DashScope) |
 | 벡터 저장소 | Qdrant (Hybrid Search: Dense + Sparse + RRF) |
 | Agent | Qwen-plus (DashScope Function Calling) |

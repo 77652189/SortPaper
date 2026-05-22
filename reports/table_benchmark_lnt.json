@@ -1,0 +1,749 @@
+{
+  "parsers": [
+    "region_guided",
+    "pdfplumber",
+    "pymupdf",
+    "camelot"
+  ],
+  "pdf_count": 1,
+  "pdf_reports": [
+    {
+      "pdf": "C:\\Users\\63097\\Documents\\CursorProject\\PaperSort\\SortPaper\\data\\results\\2022-AAA-Engineering Escherichia coli for the High-Titer Biosynthesis of Lacto-N-tetraose.pdf.pdf",
+      "detect_ms": 1219,
+      "regions": [
+        {
+          "region_id": "table_region_p2_52.4_671.5_563.5_800.9",
+          "source": "table_region_detector",
+          "page": 2,
+          "bbox": [
+            52.4346,
+            671.5172,
+            563.4724000000003,
+            800.901
+          ],
+          "confidence": 0.75,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                315.4388000000005,
+                675.5172,
+                555.4724000000003,
+                684.5172
+              ],
+              "details": {
+                "text": "Table S1. The listed amplified genes were inserted between the"
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                52.4346,
+                671.5172,
+                563.4724000000003,
+                800.901
+              ],
+              "details": {
+                "lines": 11
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                52.4346,
+                671.5172,
+                563.4724000000003,
+                800.901
+              ],
+              "details": {
+                "ratio": 0.933
+              }
+            }
+          ]
+        },
+        {
+          "region_id": "table_region_p3_43.5_53.7_563.5_518.9",
+          "source": "table_region_detector",
+          "page": 3,
+          "bbox": [
+            43.4576,
+            53.67999999999995,
+            563.458,
+            518.883
+          ],
+          "confidence": 0.9,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                51.4771,
+                57.67999999999995,
+                279.4001,
+                67.67999999999995
+              ],
+              "details": {
+                "text": "Table 1. E. coli Strains and Plasmids Used in this Study"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                43.4576,
+                53.67999999999995,
+                563.458,
+                518.883
+              ],
+              "details": {
+                "count": 6
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                43.4576,
+                53.67999999999995,
+                563.458,
+                518.883
+              ],
+              "details": {
+                "lines": 47
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.15,
+              "reason": "high_numeric_density",
+              "bbox": [
+                43.4576,
+                53.67999999999995,
+                563.458,
+                518.883
+              ],
+              "details": {
+                "ratio": 0.297
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                43.4576,
+                53.67999999999995,
+                563.458,
+                518.883
+              ],
+              "details": {
+                "ratio": 0.817
+              }
+            },
+            {
+              "source": "negative",
+              "score": -0.3,
+              "reason": "long_sentence_block",
+              "bbox": [
+                43.4576,
+                53.67999999999995,
+                563.458,
+                518.883
+              ],
+              "details": {
+                "lines": 4
+              }
+            }
+          ]
+        },
+        {
+          "region_id": "table_region_p4_43.5_300.9_299.5_640.2",
+          "source": "table_region_detector",
+          "page": 4,
+          "bbox": [
+            43.4576,
+            300.86,
+            299.4631,
+            640.188
+          ],
+          "confidence": 1.0,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                51.47820000000002,
+                304.86,
+                291.4442,
+                314.86
+              ],
+              "details": {
+                "text": "Table 2, after 48 h of induced fermentation of B1, the titers"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                43.4576,
+                300.86,
+                299.4631,
+                640.188
+              ],
+              "details": {
+                "count": 6
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                43.4576,
+                300.86,
+                299.4631,
+                640.188
+              ],
+              "details": {
+                "lines": 29
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.15,
+              "reason": "high_numeric_density",
+              "bbox": [
+                43.4576,
+                300.86,
+                299.4631,
+                640.188
+              ],
+              "details": {
+                "ratio": 0.35
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                43.4576,
+                300.86,
+                299.4631,
+                640.188
+              ],
+              "details": {
+                "ratio": 0.988
+              }
+            }
+          ]
+        },
+        {
+          "region_id": "table_region_p8_50.6_53.5_170.7_760.0",
+          "source": "table_region_detector",
+          "page": 8,
+          "bbox": [
+            50.64359999999999,
+            53.46652232999986,
+            170.73299551,
+            759.9751
+          ],
+          "confidence": 0.65,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "rotated_table_caption",
+              "bbox": [
+                56.64359999999999,
+                517.0051,
+                70.64359999999999,
+                753.9751
+              ],
+              "details": {
+                "text": "Table3.ComparisonofCellFactoriestoProduceLNT"
+              }
+            },
+            {
+              "source": "rotation",
+              "score": 0.3,
+              "reason": "rotated_text_block",
+              "bbox": [
+                50.64359999999999,
+                53.46652232999986,
+                170.73299551,
+                759.9751
+              ],
+              "details": {
+                "chars": 833
+              }
+            }
+          ]
+        }
+      ],
+      "parser_summaries": {
+        "region_guided": {
+          "duration_ms": 566,
+          "chunks": 3,
+          "error": ""
+        },
+        "pdfplumber": {
+          "duration_ms": 553,
+          "chunks": 3,
+          "error": ""
+        },
+        "pymupdf": {
+          "duration_ms": 767,
+          "chunks": 0,
+          "error": ""
+        },
+        "camelot": {
+          "duration_ms": 4951,
+          "chunks": 2,
+          "error": ""
+        }
+      },
+      "results": [
+        {
+          "pdf": "2022-AAA-Engineering Escherichia coli for the High-Titer Biosynthesis of Lacto-N-tetraose.pdf.pdf",
+          "page": 2,
+          "table_label": "Table S1",
+          "caption": "Table S1. The listed amplified genes were inserted between the",
+          "region_id": "table_region_p2_52.4_671.5_563.5_800.9",
+          "region_bbox": [
+            52.4346,
+            671.5172,
+            563.4724000000003,
+            800.901
+          ],
+          "region_confidence": 0.75,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 566,
+          "rows": 8,
+          "cols": 3,
+          "chunk_bbox": [
+            54.582800000000034,
+            675.5172,
+            555.4796000000005,
+            778.3625999999999
+          ],
+          "overlap": 1.0,
+          "failure_reason": "",
+          "preview": "| Bacterial Strains and | Plasmid Constructio | n. The bacterial | | --- | --- | --- | | trains and plasmids used | in this work are listed | in Table 1. All | | rimers used for plasmid | construction are listed i | n Table S1. The | | odon"
+        },
+        {
+          "pdf": "2022-AAA-Engineering Escherichia coli for the High-Titer Biosynthesis of Lacto-N-tetraose.pdf.pdf",
+          "page": 3,
+          "table_label": "Table 1",
+          "caption": "Table 1. E. coli Strains and Plasmids Used in this Study",
+          "region_id": "table_region_p3_43.5_53.7_563.5_518.9",
+          "region_bbox": [
+            43.4576,
+            53.67999999999995,
+            563.458,
+            518.883
+          ],
+          "region_confidence": 0.9,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 566,
+          "rows": 45,
+          "cols": 3,
+          "chunk_bbox": [
+            43.4576,
+            53.67999999999995,
+            563.458,
+            518.883
+          ],
+          "overlap": 1.0,
+          "failure_reason": "",
+          "preview": "| strainsor plasmids | characteristics | source | | --- | --- | --- | | strains |  |  | | DH5α | F−,ϕ80d,lacZΔM15,endA1,recA1,hsdR17 (rK−mK−),supE44,thi-1,gyrA96,relA1,Δ (lacZYAargF)U169 | Invitrogen (CA,USA) | | BL21(DE3) | F−,ompT,hsdSB(r"
+        },
+        {
+          "pdf": "2022-AAA-Engineering Escherichia coli for the High-Titer Biosynthesis of Lacto-N-tetraose.pdf.pdf",
+          "page": 4,
+          "table_label": "Table 2",
+          "caption": "Table 2, after 48 h of induced fermentation of B1, the titers",
+          "region_id": "table_region_p4_43.5_300.9_299.5_640.2",
+          "region_bbox": [
+            43.4576,
+            300.86,
+            299.4631,
+            640.188
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 566,
+          "rows": 55,
+          "cols": 3,
+          "chunk_bbox": [
+            70.1851,
+            304.86,
+            275.24019999999996,
+            634.153
+          ],
+          "overlap": 1.0,
+          "failure_reason": "",
+          "preview": "| strain | LN | T II | | --- | --- | --- | | B1 |  | 0.37 | | B2 |  | 1.67 | | B3 |  | 0.79 | | B4 |  | 1.20 | | B5 |  | 0.51 | | B6 |  | 1.00 | | B7 |  | 1.87 | | B8 |  | 2.15 | | B9 |  | 1.04 | | B10 |  | 0.91 | | B11 |  | 1.01 | | B12 | "
+        },
+        {
+          "pdf": "2022-AAA-Engineering Escherichia coli for the High-Titer Biosynthesis of Lacto-N-tetraose.pdf.pdf",
+          "page": 8,
+          "table_label": "Table 3",
+          "caption": "Table3.ComparisonofCellFactoriestoProduceLNT",
+          "region_id": "table_region_p8_50.6_53.5_170.7_760.0",
+          "region_bbox": [
+            50.64359999999999,
+            53.46652232999986,
+            170.73299551,
+            759.9751
+          ],
+          "region_confidence": 0.65,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": false,
+          "duration_ms": 566,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        },
+        {
+          "pdf": "2022-AAA-Engineering Escherichia coli for the High-Titer Biosynthesis of Lacto-N-tetraose.pdf.pdf",
+          "page": 2,
+          "table_label": "Table S1",
+          "caption": "Table S1. The listed amplified genes were inserted between the",
+          "region_id": "table_region_p2_52.4_671.5_563.5_800.9",
+          "region_bbox": [
+            52.4346,
+            671.5172,
+            563.4724000000003,
+            800.901
+          ],
+          "region_confidence": 0.75,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 553,
+          "rows": 8,
+          "cols": 3,
+          "chunk_bbox": [
+            54.582800000000034,
+            675.5172,
+            555.4796000000005,
+            778.3625999999999
+          ],
+          "overlap": 1.0,
+          "failure_reason": "",
+          "preview": "| Bacterial Strains and | Plasmid Constructio | n. The bacterial | | --- | --- | --- | | trains and plasmids used | in this work are listed | in Table 1. All | | rimers used for plasmid | construction are listed i | n Table S1. The | | odon"
+        },
+        {
+          "pdf": "2022-AAA-Engineering Escherichia coli for the High-Titer Biosynthesis of Lacto-N-tetraose.pdf.pdf",
+          "page": 3,
+          "table_label": "Table 1",
+          "caption": "Table 1. E. coli Strains and Plasmids Used in this Study",
+          "region_id": "table_region_p3_43.5_53.7_563.5_518.9",
+          "region_bbox": [
+            43.4576,
+            53.67999999999995,
+            563.458,
+            518.883
+          ],
+          "region_confidence": 0.9,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 553,
+          "rows": 45,
+          "cols": 3,
+          "chunk_bbox": [
+            43.4576,
+            53.67999999999995,
+            563.458,
+            518.883
+          ],
+          "overlap": 1.0,
+          "failure_reason": "",
+          "preview": "| strainsor plasmids | characteristics | source | | --- | --- | --- | | strains |  |  | | DH5α | F−,ϕ80d,lacZΔM15,endA1,recA1,hsdR17 (rK−mK−),supE44,thi-1,gyrA96,relA1,Δ (lacZYAargF)U169 | Invitrogen (CA,USA) | | BL21(DE3) | F−,ompT,hsdSB(r"
+        },
+        {
+          "pdf": "2022-AAA-Engineering Escherichia coli for the High-Titer Biosynthesis of Lacto-N-tetraose.pdf.pdf",
+          "page": 4,
+          "table_label": "Table 2",
+          "caption": "Table 2, after 48 h of induced fermentation of B1, the titers",
+          "region_id": "table_region_p4_43.5_300.9_299.5_640.2",
+          "region_bbox": [
+            43.4576,
+            300.86,
+            299.4631,
+            640.188
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 553,
+          "rows": 55,
+          "cols": 3,
+          "chunk_bbox": [
+            70.1851,
+            304.86,
+            275.24019999999996,
+            634.153
+          ],
+          "overlap": 1.0,
+          "failure_reason": "",
+          "preview": "| strain | LN | T II | | --- | --- | --- | | B1 |  | 0.37 | | B2 |  | 1.67 | | B3 |  | 0.79 | | B4 |  | 1.20 | | B5 |  | 0.51 | | B6 |  | 1.00 | | B7 |  | 1.87 | | B8 |  | 2.15 | | B9 |  | 1.04 | | B10 |  | 0.91 | | B11 |  | 1.01 | | B12 | "
+        },
+        {
+          "pdf": "2022-AAA-Engineering Escherichia coli for the High-Titer Biosynthesis of Lacto-N-tetraose.pdf.pdf",
+          "page": 8,
+          "table_label": "Table 3",
+          "caption": "Table3.ComparisonofCellFactoriestoProduceLNT",
+          "region_id": "table_region_p8_50.6_53.5_170.7_760.0",
+          "region_bbox": [
+            50.64359999999999,
+            53.46652232999986,
+            170.73299551,
+            759.9751
+          ],
+          "region_confidence": 0.65,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": false,
+          "duration_ms": 553,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        },
+        {
+          "pdf": "2022-AAA-Engineering Escherichia coli for the High-Titer Biosynthesis of Lacto-N-tetraose.pdf.pdf",
+          "page": 2,
+          "table_label": "Table S1",
+          "caption": "Table S1. The listed amplified genes were inserted between the",
+          "region_id": "table_region_p2_52.4_671.5_563.5_800.9",
+          "region_bbox": [
+            52.4346,
+            671.5172,
+            563.4724000000003,
+            800.901
+          ],
+          "region_confidence": 0.75,
+          "region_band": "strong",
+          "parser": "pymupdf",
+          "succeeded": false,
+          "duration_ms": 767,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        },
+        {
+          "pdf": "2022-AAA-Engineering Escherichia coli for the High-Titer Biosynthesis of Lacto-N-tetraose.pdf.pdf",
+          "page": 3,
+          "table_label": "Table 1",
+          "caption": "Table 1. E. coli Strains and Plasmids Used in this Study",
+          "region_id": "table_region_p3_43.5_53.7_563.5_518.9",
+          "region_bbox": [
+            43.4576,
+            53.67999999999995,
+            563.458,
+            518.883
+          ],
+          "region_confidence": 0.9,
+          "region_band": "strong",
+          "parser": "pymupdf",
+          "succeeded": false,
+          "duration_ms": 767,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        },
+        {
+          "pdf": "2022-AAA-Engineering Escherichia coli for the High-Titer Biosynthesis of Lacto-N-tetraose.pdf.pdf",
+          "page": 4,
+          "table_label": "Table 2",
+          "caption": "Table 2, after 48 h of induced fermentation of B1, the titers",
+          "region_id": "table_region_p4_43.5_300.9_299.5_640.2",
+          "region_bbox": [
+            43.4576,
+            300.86,
+            299.4631,
+            640.188
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "pymupdf",
+          "succeeded": false,
+          "duration_ms": 767,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        },
+        {
+          "pdf": "2022-AAA-Engineering Escherichia coli for the High-Titer Biosynthesis of Lacto-N-tetraose.pdf.pdf",
+          "page": 8,
+          "table_label": "Table 3",
+          "caption": "Table3.ComparisonofCellFactoriestoProduceLNT",
+          "region_id": "table_region_p8_50.6_53.5_170.7_760.0",
+          "region_bbox": [
+            50.64359999999999,
+            53.46652232999986,
+            170.73299551,
+            759.9751
+          ],
+          "region_confidence": 0.65,
+          "region_band": "strong",
+          "parser": "pymupdf",
+          "succeeded": false,
+          "duration_ms": 767,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        },
+        {
+          "pdf": "2022-AAA-Engineering Escherichia coli for the High-Titer Biosynthesis of Lacto-N-tetraose.pdf.pdf",
+          "page": 2,
+          "table_label": "Table S1",
+          "caption": "Table S1. The listed amplified genes were inserted between the",
+          "region_id": "table_region_p2_52.4_671.5_563.5_800.9",
+          "region_bbox": [
+            52.4346,
+            671.5172,
+            563.4724000000003,
+            800.901
+          ],
+          "region_confidence": 0.75,
+          "region_band": "strong",
+          "parser": "camelot",
+          "succeeded": false,
+          "duration_ms": 4951,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        },
+        {
+          "pdf": "2022-AAA-Engineering Escherichia coli for the High-Titer Biosynthesis of Lacto-N-tetraose.pdf.pdf",
+          "page": 3,
+          "table_label": "Table 1",
+          "caption": "Table 1. E. coli Strains and Plasmids Used in this Study",
+          "region_id": "table_region_p3_43.5_53.7_563.5_518.9",
+          "region_bbox": [
+            43.4576,
+            53.67999999999995,
+            563.458,
+            518.883
+          ],
+          "region_confidence": 0.9,
+          "region_band": "strong",
+          "parser": "camelot",
+          "succeeded": true,
+          "duration_ms": 4951,
+          "rows": 72,
+          "cols": 3,
+          "chunk_bbox": [
+            43.46147292000002,
+            53.71124019413833,
+            565.4358945200001,
+            457.44388080656245
+          ],
+          "overlap": 0.996,
+          "failure_reason": "",
+          "preview": "| strains or plasmids | characteristics | source | | --- | --- | --- | | strains |  |  | | DH5α | F−, ϕ80d, lacZΔM15, endA1, recA1, hsdR17 | Invitrogen | |  | (rK−mK−), supE44, thi-1, gyrA96, relA1, Δ | (CA, USA) | |  | (lacZYAargF)U169 |  "
+        },
+        {
+          "pdf": "2022-AAA-Engineering Escherichia coli for the High-Titer Biosynthesis of Lacto-N-tetraose.pdf.pdf",
+          "page": 4,
+          "table_label": "Table 2",
+          "caption": "Table 2, after 48 h of induced fermentation of B1, the titers",
+          "region_id": "table_region_p4_43.5_300.9_299.5_640.2",
+          "region_bbox": [
+            43.4576,
+            300.86,
+            299.4631,
+            640.188
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "camelot",
+          "succeeded": true,
+          "duration_ms": 4951,
+          "rows": 10,
+          "cols": 8,
+          "chunk_bbox": [
+            41.477999999999994,
+            321.39836965358626,
+            565.4789999999999,
+            765.1946009765625
+          ],
+          "overlap": 0.939,
+          "failure_reason": "",
+          "preview": "| and LNT Titers |  | in Shake-Flask Cultivation |  |  |  |  |  | | --- | --- | --- | --- | --- | --- | --- | --- | | strain |  | LNT II titer (g/L) |  |  | LNT titer (g/L) |  |  | | B1 |  | 0.37 ± 0.05 |  |  | 0.22 ± 0.03 |  |  | | B2 |  |"
+        },
+        {
+          "pdf": "2022-AAA-Engineering Escherichia coli for the High-Titer Biosynthesis of Lacto-N-tetraose.pdf.pdf",
+          "page": 8,
+          "table_label": "Table 3",
+          "caption": "Table3.ComparisonofCellFactoriestoProduceLNT",
+          "region_id": "table_region_p8_50.6_53.5_170.7_760.0",
+          "region_bbox": [
+            50.64359999999999,
+            53.46652232999986,
+            170.73299551,
+            759.9751
+          ],
+          "region_confidence": 0.65,
+          "region_band": "strong",
+          "parser": "camelot",
+          "succeeded": false,
+          "duration_ms": 4951,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        }
+      ]
+    }
+  ]
+}

@@ -36,6 +36,7 @@ from src.judge.llm_judge import JudgeVerdict, LLMJudge
 from src.judge.paper_evaluator import PaperQualityEvaluator
 from src.parsers import LayoutChunk, LayoutMerger, PyMuPDFParser, TableParser, VisionParser
 from src.store.qdrant_store import QdrantStore
+from src.judge.table_judge import build_storage_decision, build_table_embedding_text
 
 logger = logging.getLogger(__name__)
 
@@ -208,8 +209,8 @@ def table_worker_node(state: PipelineState) -> dict:
     print(f"[debug] table_worker_node: retries={retries}", flush=True)
 
     if not prev_verdicts:
-        # 首轮：关键词引导 + pdfplumber（含三线表/表头框几何提取）+ PyMuPDF + camelot
-        parser = TableParser(state["pdf_path"])
+        # 首轮：关键词引导 + pdfplumber（含三线表/表头框几何提取）
+        parser = TableParser(state["pdf_path"], enable_vision_fallback=False)
         new_chunks = parser.parse(strategy="all")
         existing: dict[str, LayoutChunk] = {}
         for chunk in new_chunks:
@@ -223,8 +224,6 @@ def table_worker_node(state: PipelineState) -> dict:
     # retry：根据 issue_type 针对性重试
     failed_ids: set[str] = set()
     false_positive_ids: set[str] = set()
-    retry_pages: dict[str, set[int]] = {"camelot": set(), "pymupdf": set()}
-
     print(f"[debug] table_worker retry | verdicts={len(prev_verdicts)}", flush=True)
     for v in prev_verdicts:
         cid = v.get("chunk_id", "")
@@ -237,42 +236,19 @@ def table_worker_node(state: PipelineState) -> dict:
             false_positive_ids.add(cid)
             print(f"[debug]   -> false_positive: discarding, skip retry", flush=True)
         elif issue == "structure_error":
-            page = _page_from_chunk_id(cid)
-            if page:
-                retry_pages["camelot"].add(page)
-                print(f"[debug]   -> structure_error: camelot page {page}", flush=True)
+            print("[debug]   -> structure_error: no alternate table parser configured", flush=True)
         elif issue == "missing_content":
-            page = _page_from_chunk_id(cid)
-            if page:
-                retry_pages["pymupdf"].add(page)
-                print(f"[debug]   -> missing_content: pymupdf page {page}", flush=True)
+            print("[debug]   -> missing_content: no alternate table parser configured", flush=True)
 
     logger.warning(
-        "table_worker retry %d/%d | paper=%s | false_positive=%d | camelot_pages=%s | pymupdf_pages=%s",
+        "table_worker retry %d/%d | paper=%s | false_positive=%d",
         retries + 1, MAX_RETRIES, state.get("paper_id", "?"),
-        len(false_positive_ids), sorted(retry_pages["camelot"]), sorted(retry_pages["pymupdf"]),
+        len(false_positive_ids),
     )
 
     # 保留非失败 chunk
     existing = {c.chunk_id: c for c in state.get("table_chunks", [])
                 if c.chunk_id not in failed_ids}
-
-    # camelot retry：只扫失败 chunk 所在页
-    if retry_pages["camelot"]:
-        print(f"[debug] calling camelot on pages {sorted(retry_pages['camelot'])}", flush=True)
-        parser = TableParser(state["pdf_path"])
-        camelot_pages = sorted(retry_pages["camelot"])
-        retry_chunks = parser.parse(strategy="camelot_only", camelot_pages=camelot_pages)
-        for chunk in retry_chunks:
-            existing[chunk.chunk_id] = chunk
-
-    # pymupdf retry：同样只扫相关页
-    if retry_pages["pymupdf"]:
-        print(f"[debug] calling pymupdf_only", flush=True)
-        parser = TableParser(state["pdf_path"])
-        retry_chunks = parser.parse(strategy="pymupdf_only")
-        for chunk in retry_chunks:
-            existing[chunk.chunk_id] = chunk
 
     print(f"[debug] retry result: keeping {len(existing)} chunks (discarded {len(failed_ids) - len(existing)} failed)", flush=True)
 
@@ -359,11 +335,16 @@ def _rewrite_image_desc(original: str, feedback: str) -> str:
             base_url="https://api.deepseek.com/v1",
             timeout=30.0,
         )
-        resp = client.chat.completions.create(
-            model="deepseek-chat",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=2048,
-            temperature=0.2,
+        from src.judge.llm_runtime import run_llm_call
+
+        resp = run_llm_call(
+            lambda: client.chat.completions.create(
+                model="deepseek-chat",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=2048,
+                temperature=0.2,
+            ),
+            label="deepseek-image-rewrite",
         )
         return resp.choices[0].message.content or ""
     except Exception as e:
@@ -512,14 +493,28 @@ def judge_table_node(state: PipelineState) -> dict:
         return {"table_verdicts": [{"chunk_id": "", "passed": True, "score": 1.0, "feedback": "no tables"}], "routes_done": {"table"}}
 
     prev_verdicts = {v["chunk_id"]: v for v in state.get("table_verdicts", [])}
-    need_judge = [c for c in chunks if not prev_verdicts.get(c.chunk_id, {}).get("passed")]
+    verdict_map: dict[str, dict] = dict(prev_verdicts)
+    for chunk in chunks:
+        if chunk.metadata.get("table_region_discovery_only") and chunk.chunk_id not in verdict_map:
+            verdict_map[chunk.chunk_id] = {
+                "chunk_id": chunk.chunk_id,
+                "passed": True,
+                "score": chunk.metadata.get("table_region", {}).get("confidence", 1.0),
+                "feedback": "table region discovery only; structure is not judged",
+                "issue_type": "none",
+            }
+
+    need_judge = [
+        c for c in chunks
+        if not c.metadata.get("table_region_discovery_only")
+        and not verdict_map.get(c.chunk_id, {}).get("passed")
+    ]
 
     def _judge_one(chunk):
         v = LLMJudge().judge(chunk.content_type, chunk.raw_content, state["pdf_path"])
         return {"chunk_id": chunk.chunk_id, "passed": v.passed, "score": v.score,
                 "feedback": v.feedback, "issue_type": v.issue_type}
 
-    verdict_map: dict[str, dict] = dict(prev_verdicts)
     if need_judge:
         with ThreadPoolExecutor(max_workers=min(5, len(need_judge))) as pool:
             for nv in pool.map(_judge_one, need_judge):
@@ -567,9 +562,6 @@ def retry_text(state: PipelineState) -> Literal["text_worker", "merge_chunks"]:
 
 
 def retry_table(state: PipelineState) -> Literal["table_worker", "merge_chunks"]:
-    if (any(not v["passed"] for v in state.get("table_verdicts", []))
-            and state.get("table_retries", 0) < MAX_RETRIES):
-        return "table_worker"
     return "merge_chunks"
 
 
@@ -673,13 +665,45 @@ def store_node(state: PipelineState) -> PipelineState:
 
     merged: list[LayoutChunk] = state.get("merged_chunks", [])
     chunk_contexts: dict[str, str] = quality.get("chunk_contexts", {})
+    excluded = 0
+    excluded_tables = 0
 
     for chunk in merged:
+        if chunk.content_type == "table":
+            try:
+                chunk.metadata.update(build_storage_decision(
+                    content_type="table",
+                    metadata=chunk.metadata,
+                ))
+            except Exception:
+                pass
+        if chunk.metadata.get("excluded_from_storage"):
+            excluded += 1
+            if chunk.content_type == "table":
+                excluded_tables += 1
+            logger.info(
+                "跳过不可入库 chunk | paper=%s | chunk_id=%s | reason=%s",
+                state.get("paper_id", "?"),
+                chunk.chunk_id,
+                chunk.metadata.get("storage_exclusion_reason")
+                or chunk.metadata.get("unparseable_reason")
+                or "excluded_from_storage",
+            )
+            continue
+
         v = verdicts_map.get(chunk.chunk_id)
         if v and v["passed"]:
             context = chunk_contexts.get(chunk.chunk_id, "")
             raw = chunk.raw_content
             display = f"{context}\n\n{raw}" if context else raw
+            embed_content = (
+                build_table_embedding_text(
+                    raw_content=raw,
+                    metadata=chunk.metadata,
+                ) or raw
+                if chunk.content_type == "table"
+                else raw
+            )
 
             metadata = {
                 **chunk.metadata,
@@ -708,7 +732,7 @@ def store_node(state: PipelineState) -> PipelineState:
                 paper_id=state["paper_id"],
                 worker_type=chunk.content_type,
                 content=display,
-                embed_content=raw,
+                embed_content=embed_content,
                 metadata=metadata,
             )
 
@@ -729,9 +753,19 @@ def store_node(state: PipelineState) -> PipelineState:
             len(failed),
             [v["chunk_id"] for v in failed],
         )
-        return {"status": "partial", "stored": store.count, "failed": len(failed)}
+        return {
+            "status": "partial",
+            "stored": store.count,
+            "failed": len(failed),
+            "excluded": excluded,
+            "excluded_tables": excluded_tables,
+        }
 
-    return {"status": "done"}
+    return {
+        "status": "done",
+        "excluded": excluded,
+        "excluded_tables": excluded_tables,
+    }
 
 
 # ─── 图构建 ────────────────────────────────────────────────────────────────────

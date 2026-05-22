@@ -5,6 +5,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
+from src.judge.llm_runtime import run_llm_call
 from src.judge.prompts import IMAGE_JUDGE_PROMPT, SUMMARY_PROMPT, TABLE_JUDGE_PROMPT, TEXT_JUDGE_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -54,11 +55,14 @@ class LLMJudge:
             raise ValueError("DEEPSEEK_API_KEY 未设置")
 
         client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com/v1", timeout=60.0)
-        response = client.chat.completions.create(
-            model=self.deepseek_model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.2,
-            max_tokens=2048,
+        response = run_llm_call(
+            lambda: client.chat.completions.create(
+                model=self.deepseek_model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.2,
+                max_tokens=2048,
+            ),
+            label="deepseek-judge",
         )
         return response.choices[0].message.content or ""
 

@@ -1,0 +1,1393 @@
+{
+  "parsers": [
+    "camelot"
+  ],
+  "pdf_count": 10,
+  "pdf_reports": [
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\2026-04-10-毕赤酵母合成乳蛋白相关参考文献-郭施琪\\毕赤酵母（及组学）相关\\2009 Genome, secretome and glucose transport highlight unique.pdf",
+      "detect_ms": 1663,
+      "regions": [
+        {
+          "region_id": "table_region_p3_47.1_434.6_562.0_792.0",
+          "source": "table_region_detector",
+          "page": 3,
+          "bbox": [
+            47.14,
+            434.6057599999999,
+            562.0397720000001,
+            792.0
+          ],
+          "confidence": 1.0,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                55.14,
+                438.6057599999999,
+                554.0397720000001,
+                448.3257599999999
+              ],
+              "details": {
+                "text": "Table 1: Genome statistics overview similar methods for K. lactis [15] and C. albicans [16]"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                47.14,
+                434.6057599999999,
+                562.0397720000001,
+                792.0
+              ],
+              "details": {
+                "count": 4
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                47.14,
+                434.6057599999999,
+                562.0397720000001,
+                792.0
+              ],
+              "details": {
+                "lines": 42
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                47.14,
+                434.6057599999999,
+                562.0397720000001,
+                792.0
+              ],
+              "details": {
+                "ratio": 0.991
+              }
+            }
+          ]
+        },
+        {
+          "region_id": "table_region_p5_47.1_106.7_562.0_769.3",
+          "source": "table_region_detector",
+          "page": 5,
+          "bbox": [
+            47.14,
+            106.73540000000003,
+            562.04,
+            769.26
+          ],
+          "confidence": 1.0,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                55.14,
+                110.73540000000003,
+                202.114044,
+                118.71540000000005
+              ],
+              "details": {
+                "text": "Table 2: Secreted proteins of P. pastoris"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                47.14,
+                106.73540000000003,
+                562.04,
+                769.26
+              ],
+              "details": {
+                "count": 44
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                47.14,
+                106.73540000000003,
+                562.04,
+                769.26
+              ],
+              "details": {
+                "lines": 30
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.15,
+              "reason": "high_numeric_density",
+              "bbox": [
+                47.14,
+                106.73540000000003,
+                562.04,
+                769.26
+              ],
+              "details": {
+                "ratio": 0.345
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                47.14,
+                106.73540000000003,
+                562.04,
+                769.26
+              ],
+              "details": {
+                "ratio": 0.936
+              }
+            }
+          ]
+        }
+      ],
+      "parser_summaries": {
+        "camelot": {
+          "duration_ms": 1713,
+          "chunks": 0,
+          "error": ""
+        }
+      },
+      "results": [
+        {
+          "pdf": "2009 Genome, secretome and glucose transport highlight unique.pdf",
+          "page": 3,
+          "table_label": "Table 1",
+          "caption": "Table 1: Genome statistics overview similar methods for K. lactis [15] and C. albicans [16]",
+          "region_id": "table_region_p3_47.1_434.6_562.0_792.0",
+          "region_bbox": [
+            47.14,
+            434.6057599999999,
+            562.0397720000001,
+            792.0
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "camelot",
+          "succeeded": false,
+          "duration_ms": 1713,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        },
+        {
+          "pdf": "2009 Genome, secretome and glucose transport highlight unique.pdf",
+          "page": 5,
+          "table_label": "Table 2",
+          "caption": "Table 2: Secreted proteins of P. pastoris",
+          "region_id": "table_region_p5_47.1_106.7_562.0_769.3",
+          "region_bbox": [
+            47.14,
+            106.73540000000003,
+            562.04,
+            769.26
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "camelot",
+          "succeeded": false,
+          "duration_ms": 1713,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        }
+      ]
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\2026-04-10-毕赤酵母合成乳蛋白相关参考文献-郭施琪\\毕赤酵母（及组学）相关\\2022 Improving recombinant protein production by yeast.pdf",
+      "detect_ms": 9005,
+      "regions": [],
+      "parser_summaries": {
+        "camelot": {
+          "duration_ms": 0,
+          "chunks": 0,
+          "error": ""
+        }
+      },
+      "results": []
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\功能文献汇总\\功能文献\\6-SL\\Serotype-specific differences in inhibition of reovirus infectivity by human-milk glycans are determined by viral attachment protein σ1.pdf",
+      "detect_ms": 1043,
+      "regions": [
+        {
+          "region_id": "table_region_p8_84.5_56.1_500.9_467.4",
+          "source": "table_region_detector",
+          "page": 8,
+          "bbox": [
+            84.466,
+            56.103560000000016,
+            500.945,
+            467.36854200000005
+          ],
+          "confidence": 1.0,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                92.4661,
+                60.103560000000016,
+                115.83370228,
+                66.4795600000001
+              ],
+              "details": {
+                "text": "Table1"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                84.466,
+                56.103560000000016,
+                500.945,
+                467.36854200000005
+              ],
+              "details": {
+                "count": 10
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                84.466,
+                56.103560000000016,
+                500.945,
+                467.36854200000005
+              ],
+              "details": {
+                "lines": 31
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.15,
+              "reason": "high_numeric_density",
+              "bbox": [
+                84.466,
+                56.103560000000016,
+                500.945,
+                467.36854200000005
+              ],
+              "details": {
+                "ratio": 0.305
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                84.466,
+                56.103560000000016,
+                500.945,
+                467.36854200000005
+              ],
+              "details": {
+                "ratio": 0.855
+              }
+            }
+          ]
+        }
+      ],
+      "parser_summaries": {
+        "camelot": {
+          "duration_ms": 754,
+          "chunks": 1,
+          "error": ""
+        }
+      },
+      "results": [
+        {
+          "pdf": "Serotype-specific differences in inhibition of reovirus infectivity by human-milk glycans are determined by viral attachment protein σ1.pdf",
+          "page": 8,
+          "table_label": "Table 1",
+          "caption": "Table1",
+          "region_id": "table_region_p8_84.5_56.1_500.9_467.4",
+          "region_bbox": [
+            84.466,
+            56.103560000000016,
+            500.945,
+            467.36854200000005
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "camelot",
+          "succeeded": true,
+          "duration_ms": 754,
+          "rows": 8,
+          "cols": 9,
+          "chunk_bbox": [
+            88.47549143999998,
+            46.41995368728021,
+            496.9893142799999,
+            264.5294839695314
+          ],
+          "overlap": 0.956,
+          "failure_reason": "",
+          "preview": "| Table 1 |  |  |  |  |  |  |  |  | | --- | --- | --- | --- | --- | --- | --- | --- | --- | | Summary of results. |  |  |  |  |  |  |  |  | |  | MTS assaya |  | Infectivity assayb |  |  |  | HAI assayc |  | |  |  |  | T1L |  | T3D |  | T1L "
+        }
+      ]
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\文献汇总整理（市场那边调研的文献）\\1.0 岩藻糖基乳糖资料\\2019-2023年文献资料\\2-FL\\2023-Identification and Characterization of a Novel α-L-Fucosidase from Enterococcus gallinarum and Its Application for Production of 20-Fucosyllactose.pdf",
+      "detect_ms": 1974,
+      "regions": [
+        {
+          "region_id": "table_region_p3_158.1_307.2_567.3_790.9",
+          "source": "table_region_detector",
+          "page": 3,
+          "bbox": [
+            158.098,
+            307.2116624,
+            567.2760000000001,
+            790.8994532
+          ],
+          "confidence": 1.0,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                166.098,
+                311.2116624,
+                559.2743877951999,
+                320.3215248
+              ],
+              "details": {
+                "text": "Table1.Theconversionrateofeightstrainswithtransfucosylationactivity.Theconversionratewas"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                158.098,
+                307.2116624,
+                567.2760000000001,
+                790.8994532
+              ],
+              "details": {
+                "count": 3
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                158.098,
+                307.2116624,
+                567.2760000000001,
+                790.8994532
+              ],
+              "details": {
+                "lines": 26
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.15,
+              "reason": "high_numeric_density",
+              "bbox": [
+                158.098,
+                307.2116624,
+                567.2760000000001,
+                790.8994532
+              ],
+              "details": {
+                "ratio": 0.44
+              }
+            }
+          ]
+        }
+      ],
+      "parser_summaries": {
+        "camelot": {
+          "duration_ms": 467,
+          "chunks": 0,
+          "error": ""
+        }
+      },
+      "results": [
+        {
+          "pdf": "2023-Identification and Characterization of a Novel α-L-Fucosidase from Enterococcus gallinarum and Its Application for Production of 20-Fucosyllactose.pdf",
+          "page": 3,
+          "table_label": "Table 1",
+          "caption": "Table1.Theconversionrateofeightstrainswithtransfucosylationactivity.Theconversionratewas",
+          "region_id": "table_region_p3_158.1_307.2_567.3_790.9",
+          "region_bbox": [
+            158.098,
+            307.2116624,
+            567.2760000000001,
+            790.8994532
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "camelot",
+          "succeeded": false,
+          "duration_ms": 467,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        }
+      ]
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\文献汇总整理（市场那边调研的文献）\\学习班\\j.mimet.2011.04.018.pdf",
+      "detect_ms": 1199,
+      "regions": [
+        {
+          "region_id": "table_region_p2_34.5_53.4_569.5_713.0",
+          "source": "table_region_detector",
+          "page": 2,
+          "bbox": [
+            34.5197,
+            53.375747219999994,
+            569.5443437,
+            713.0288135999999
+          ],
+          "confidence": 1.0,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                42.5197,
+                57.375747219999994,
+                561.5443437,
+                65.34594721999997
+              ],
+              "details": {
+                "text": "Table1 laboratory media (Davis et al., 2005). Moreover, this study also"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                34.5197,
+                53.375747219999994,
+                569.5443437,
+                713.0288135999999
+              ],
+              "details": {
+                "count": 12
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                34.5197,
+                53.375747219999994,
+                569.5443437,
+                713.0288135999999
+              ],
+              "details": {
+                "lines": 56
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                34.5197,
+                53.375747219999994,
+                569.5443437,
+                713.0288135999999
+              ],
+              "details": {
+                "ratio": 0.819
+              }
+            }
+          ]
+        },
+        {
+          "region_id": "table_region_p2_34.5_559.9_569.5_793.7",
+          "source": "table_region_detector",
+          "page": 2,
+          "bbox": [
+            34.5197,
+            559.882936,
+            569.543,
+            793.701
+          ],
+          "confidence": 0.95,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                310.507,
+                563.882936,
+                332.4098352,
+                570.2589360000001
+              ],
+              "details": {
+                "text": "Table3"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                34.5197,
+                559.882936,
+                569.543,
+                793.701
+              ],
+              "details": {
+                "count": 12
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                34.5197,
+                559.882936,
+                569.543,
+                793.701
+              ],
+              "details": {
+                "lines": 14
+              }
+            }
+          ]
+        }
+      ],
+      "parser_summaries": {
+        "camelot": {
+          "duration_ms": 1069,
+          "chunks": 0,
+          "error": ""
+        }
+      },
+      "results": [
+        {
+          "pdf": "j.mimet.2011.04.018.pdf",
+          "page": 2,
+          "table_label": "Table 1",
+          "caption": "Table1 laboratory media (Davis et al., 2005). Moreover, this study also",
+          "region_id": "table_region_p2_34.5_53.4_569.5_713.0",
+          "region_bbox": [
+            34.5197,
+            53.375747219999994,
+            569.5443437,
+            713.0288135999999
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "camelot",
+          "succeeded": false,
+          "duration_ms": 1069,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        },
+        {
+          "pdf": "j.mimet.2011.04.018.pdf",
+          "page": 2,
+          "table_label": "Table 3",
+          "caption": "Table3",
+          "region_id": "table_region_p2_34.5_559.9_569.5_793.7",
+          "region_bbox": [
+            34.5197,
+            559.882936,
+            569.543,
+            793.701
+          ],
+          "region_confidence": 0.95,
+          "region_band": "strong",
+          "parser": "camelot",
+          "succeeded": false,
+          "duration_ms": 1069,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        }
+      ]
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\文献汇总整理（市场那边调研的文献）\\徐惊东-SL文献\\55、cstI晶体结构分析，Structural analysis of the alpha-2,3-sialyltransferase Cst-I from Campylobacter jejuni in apo and substrate-analogue bound forms.pdf",
+      "detect_ms": 976,
+      "regions": [
+        {
+          "region_id": "table_region_p3_310.0_47.6_565.5_712.8",
+          "source": "table_region_detector",
+          "page": 3,
+          "bbox": [
+            309.981,
+            47.57437700000003,
+            565.452,
+            712.824226
+          ],
+          "confidence": 1.0,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                317.981,
+                51.57437700000003,
+                496.76048,
+                60.05537700000002
+              ],
+              "details": {
+                "text": "Table1: DataCollectionandRefinementStatistics"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                309.981,
+                47.57437700000003,
+                565.452,
+                712.824226
+              ],
+              "details": {
+                "count": 5
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                309.981,
+                47.57437700000003,
+                565.452,
+                712.824226
+              ],
+              "details": {
+                "lines": 57
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.15,
+              "reason": "high_numeric_density",
+              "bbox": [
+                309.981,
+                47.57437700000003,
+                565.452,
+                712.824226
+              ],
+              "details": {
+                "ratio": 0.236
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                309.981,
+                47.57437700000003,
+                565.452,
+                712.824226
+              ],
+              "details": {
+                "ratio": 0.868
+              }
+            }
+          ]
+        },
+        {
+          "region_id": "table_region_p3_46.6_433.9_565.8_781.7",
+          "source": "table_region_detector",
+          "page": 3,
+          "bbox": [
+            46.560119799999995,
+            433.87267539999993,
+            565.8115099999999,
+            781.6644436
+          ],
+          "confidence": 0.55,
+          "band": "gray",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                54.56138240000007,
+                437.87267539999993,
+                557.4712757999998,
+                449.4074457999997
+              ],
+              "details": {
+                "text": "Table 1. membersofCAZyfamily42),andanadditionalC-terminal"
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                46.560119799999995,
+                433.87267539999993,
+                565.8115099999999,
+                781.6644436
+              ],
+              "details": {
+                "lines": 36
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                46.560119799999995,
+                433.87267539999993,
+                565.8115099999999,
+                781.6644436
+              ],
+              "details": {
+                "ratio": 0.902
+              }
+            },
+            {
+              "source": "negative",
+              "score": -0.2,
+              "reason": "section_like_body_region",
+              "bbox": [
+                46.560119799999995,
+                433.87267539999993,
+                565.8115099999999,
+                781.6644436
+              ]
+            }
+          ]
+        }
+      ],
+      "parser_summaries": {
+        "camelot": {
+          "duration_ms": 831,
+          "chunks": 0,
+          "error": ""
+        }
+      },
+      "results": [
+        {
+          "pdf": "55、cstI晶体结构分析，Structural analysis of the alpha-2,3-sialyltransferase Cst-I from Campylobacter jejuni in apo and substrate-analogue bound forms.pdf",
+          "page": 3,
+          "table_label": "Table 1",
+          "caption": "Table1: DataCollectionandRefinementStatistics",
+          "region_id": "table_region_p3_310.0_47.6_565.5_712.8",
+          "region_bbox": [
+            309.981,
+            47.57437700000003,
+            565.452,
+            712.824226
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "camelot",
+          "succeeded": false,
+          "duration_ms": 831,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        },
+        {
+          "pdf": "55、cstI晶体结构分析，Structural analysis of the alpha-2,3-sialyltransferase Cst-I from Campylobacter jejuni in apo and substrate-analogue bound forms.pdf",
+          "page": 3,
+          "table_label": "Table 1",
+          "caption": "Table 1. membersofCAZyfamily42),andanadditionalC-terminal",
+          "region_id": "table_region_p3_46.6_433.9_565.8_781.7",
+          "region_bbox": [
+            46.560119799999995,
+            433.87267539999993,
+            565.8115099999999,
+            781.6644436
+          ],
+          "region_confidence": 0.55,
+          "region_band": "gray",
+          "parser": "camelot",
+          "succeeded": false,
+          "duration_ms": 831,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        }
+      ]
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\文献汇总整理（市场那边调研的文献）\\徐惊东-SL文献\\72、△arcA△iclR引入nox完全消除溢流代谢，Biosensor-Assisted Multitarget Gene Fine-Tuning for N‑Acetylneuraminic Acid Production in Escherichia coli with Sole Carbon Source Glucose.pdf",
+      "detect_ms": 1922,
+      "regions": [
+        {
+          "region_id": "table_region_p2_43.5_56.7_563.5_721.9",
+          "source": "table_region_detector",
+          "page": 2,
+          "bbox": [
+            43.4576,
+            56.684999999999945,
+            563.458,
+            721.934
+          ],
+          "confidence": 0.9,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                51.4771,
+                60.684999999999945,
+                197.9901,
+                70.68499999999995
+              ],
+              "details": {
+                "text": "Table 1. Strains Used in This Study"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                43.4576,
+                56.684999999999945,
+                563.458,
+                721.934
+              ],
+              "details": {
+                "count": 4
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                43.4576,
+                56.684999999999945,
+                563.458,
+                721.934
+              ],
+              "details": {
+                "lines": 42
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.15,
+              "reason": "high_numeric_density",
+              "bbox": [
+                43.4576,
+                56.684999999999945,
+                563.458,
+                721.934
+              ],
+              "details": {
+                "ratio": 0.228
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                43.4576,
+                56.684999999999945,
+                563.458,
+                721.934
+              ],
+              "details": {
+                "ratio": 0.856
+              }
+            },
+            {
+              "source": "negative",
+              "score": -0.3,
+              "reason": "long_sentence_block",
+              "bbox": [
+                43.4576,
+                56.684999999999945,
+                563.458,
+                721.934
+              ],
+              "details": {
+                "lines": 3
+              }
+            }
+          ]
+        },
+        {
+          "region_id": "table_region_p3_43.5_432.9_563.5_589.9",
+          "source": "table_region_detector",
+          "page": 3,
+          "bbox": [
+            43.47749999999999,
+            432.8959,
+            563.4842000000001,
+            589.9144999999999
+          ],
+          "confidence": 0.75,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                51.47749999999999,
+                436.8959,
+                291.46610000000004,
+                445.8959
+              ],
+              "details": {
+                "text": "TableS1, andall primers usedforplasmid construction arelisted in"
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                43.47749999999999,
+                432.8959,
+                563.4842000000001,
+                589.9144999999999
+              ],
+              "details": {
+                "lines": 24
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                43.47749999999999,
+                432.8959,
+                563.4842000000001,
+                589.9144999999999
+              ],
+              "details": {
+                "ratio": 0.919
+              }
+            }
+          ]
+        }
+      ],
+      "parser_summaries": {
+        "camelot": {
+          "duration_ms": 2641,
+          "chunks": 1,
+          "error": ""
+        }
+      },
+      "results": [
+        {
+          "pdf": "72、△arcA△iclR引入nox完全消除溢流代谢，Biosensor-Assisted Multitarget Gene Fine-Tuning for N‑Acetylneuraminic Acid Production in Escherichia coli with Sole Carbon Source Glucose.pdf",
+          "page": 2,
+          "table_label": "Table 1",
+          "caption": "Table 1. Strains Used in This Study",
+          "region_id": "table_region_p2_43.5_56.7_563.5_721.9",
+          "region_bbox": [
+            43.4576,
+            56.684999999999945,
+            563.458,
+            721.934
+          ],
+          "region_confidence": 0.9,
+          "region_band": "strong",
+          "parser": "camelot",
+          "succeeded": true,
+          "duration_ms": 2641,
+          "rows": 19,
+          "cols": 3,
+          "chunk_bbox": [
+            43.461421889999954,
+            48.747523939951634,
+            565.42794723,
+            536.7019580665626
+          ],
+          "overlap": 0.98,
+          "failure_reason": "",
+          "preview": "| strains | characteristics | reference | | --- | --- | --- | | E. coli | cloning host | lab stock | | JM109 |  |  | | E. coli BL21 | biosensor characterization strain | lab stock | | (DE3) |  |  | | nanA::Ptac |  |  | | nanT |  |  | | E. c"
+        },
+        {
+          "pdf": "72、△arcA△iclR引入nox完全消除溢流代谢，Biosensor-Assisted Multitarget Gene Fine-Tuning for N‑Acetylneuraminic Acid Production in Escherichia coli with Sole Carbon Source Glucose.pdf",
+          "page": 3,
+          "table_label": "Table S1",
+          "caption": "TableS1, andall primers usedforplasmid construction arelisted in",
+          "region_id": "table_region_p3_43.5_432.9_563.5_589.9",
+          "region_bbox": [
+            43.47749999999999,
+            432.8959,
+            563.4842000000001,
+            589.9144999999999
+          ],
+          "region_confidence": 0.75,
+          "region_band": "strong",
+          "parser": "camelot",
+          "succeeded": false,
+          "duration_ms": 2641,
+          "rows": 0,
+          "cols": 0,
+          "chunk_bbox": null,
+          "overlap": 0.0,
+          "failure_reason": "no overlapping table chunk produced for this region",
+          "preview": ""
+        }
+      ]
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\文献汇总整理（市场那边调研的文献）\\徐惊东-SL文献\\84、新型α2,6-SiaT Sm6ST，Simonsiella muelleri α2,6-sialyltransferase enables efficient biosynthesis of 6′-sialyllactose in both plasmid-dependent and plasmid-free engineered Escherichia coli.pdf",
+      "detect_ms": 1768,
+      "regions": [
+        {
+          "region_id": "table_region_p3_29.6_53.1_565.7_391.6",
+          "source": "table_region_detector",
+          "page": 3,
+          "bbox": [
+            29.587400000000002,
+            53.09094700000003,
+            565.662,
+            391.63684995999995
+          ],
+          "confidence": 1.0,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                37.5874,
+                57.09094700000003,
+                369.3852901,
+                64.26394700000003
+              ],
+              "details": {
+                "text": "Table 1 Table 1 (continued)"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                29.587400000000002,
+                53.09094700000003,
+                565.662,
+                391.63684995999995
+              ],
+              "details": {
+                "count": 12
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                29.587400000000002,
+                53.09094700000003,
+                565.662,
+                391.63684995999995
+              ],
+              "details": {
+                "lines": 43
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.15,
+              "reason": "high_numeric_density",
+              "bbox": [
+                29.587400000000002,
+                53.09094700000003,
+                565.662,
+                391.63684995999995
+              ],
+              "details": {
+                "ratio": 0.292
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                29.587400000000002,
+                53.09094700000003,
+                565.662,
+                391.63684995999995
+              ],
+              "details": {
+                "ratio": 0.933
+              }
+            }
+          ]
+        },
+        {
+          "region_id": "table_region_p9_29.6_53.1_565.7_401.8",
+          "source": "table_region_detector",
+          "page": 9,
+          "bbox": [
+            29.587400000000002,
+            53.09094700000003,
+            565.663,
+            401.8461931499999
+          ],
+          "confidence": 0.9,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                37.5874,
+                57.09094700000003,
+                62.77395490000001,
+                64.26394700000003
+              ],
+              "details": {
+                "text": "Table 2"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                29.587400000000002,
+                53.09094700000003,
+                565.663,
+                401.8461931499999
+              ],
+              "details": {
+                "count": 10
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                29.587400000000002,
+                53.09094700000003,
+                565.663,
+                401.8461931499999
+              ],
+              "details": {
+                "lines": 35
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.15,
+              "reason": "high_numeric_density",
+              "bbox": [
+                29.587400000000002,
+                53.09094700000003,
+                565.663,
+                401.8461931499999
+              ],
+              "details": {
+                "ratio": 0.223
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                29.587400000000002,
+                53.09094700000003,
+                565.663,
+                401.8461931499999
+              ],
+              "details": {
+                "ratio": 0.968
+              }
+            },
+            {
+              "source": "negative",
+              "score": -0.3,
+              "reason": "long_sentence_block",
+              "bbox": [
+                29.587400000000002,
+                53.09094700000003,
+                565.663,
+                401.8461931499999
+              ],
+              "details": {
+                "lines": 12
+              }
+            }
+          ]
+        }
+      ],
+      "parser_summaries": {
+        "camelot": {
+          "duration_ms": 1429,
+          "chunks": 2,
+          "error": ""
+        }
+      },
+      "results": [
+        {
+          "pdf": "84、新型α2,6-SiaT Sm6ST，Simonsiella muelleri α2,6-sialyltransferase enables efficient biosynthesis of 6′-sialyllactose in both plasmid-dependent and plasmid-free engineered Escherichia coli.pdf",
+          "page": 3,
+          "table_label": "Table 1",
+          "caption": "Table 1 Table 1 (continued)",
+          "region_id": "table_region_p3_29.6_53.1_565.7_391.6",
+          "region_bbox": [
+            29.587400000000002,
+            53.09094700000003,
+            565.662,
+            391.63684995999995
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "camelot",
+          "succeeded": true,
+          "duration_ms": 1429,
+          "rows": 39,
+          "cols": 4,
+          "chunk_bbox": [
+            33.5968,
+            37.24344296733955,
+            570.01456221,
+            735.2371088695313
+          ],
+          "overlap": 0.993,
+          "failure_reason": "",
+          "preview": "| Strains | Characteristics | Source |  | | --- | --- | --- | --- | |  |  |  | BL-6SL32 BL21ZAK harboring plasmids pET-1BCA-2Mh(US)m  This | | BL21ZAK | E. coli BL21(DE3) ΔlacZΔnanAΔnanK | This | and pCD-Sm6ST study | |  |  | study | BL-6SL"
+        },
+        {
+          "pdf": "84、新型α2,6-SiaT Sm6ST，Simonsiella muelleri α2,6-sialyltransferase enables efficient biosynthesis of 6′-sialyllactose in both plasmid-dependent and plasmid-free engineered Escherichia coli.pdf",
+          "page": 9,
+          "table_label": "Table 2",
+          "caption": "Table 2",
+          "region_id": "table_region_p9_29.6_53.1_565.7_401.8",
+          "region_bbox": [
+            29.587400000000002,
+            53.09094700000003,
+            565.663,
+            401.8461931499999
+          ],
+          "region_confidence": 0.9,
+          "region_band": "strong",
+          "parser": "camelot",
+          "succeeded": true,
+          "duration_ms": 1429,
+          "rows": 13,
+          "cols": 5,
+          "chunk_bbox": [
+            33.5968,
+            40.38383559058593,
+            561.7074804900001,
+            349.90506046953124
+          ],
+          "overlap": 0.959,
+          "failure_reason": "",
+          "preview": "| Host cell | α2,6-SiaT | Metabolic engineering strategy | Titer | Reference | | --- | --- | --- | --- | --- | | E. coli DH1 | Truncated α2,6-SiaT (Δ2–17) from | Gene deletion: ΔlacZ ΔlacA ΔnanKETA. | 34.000 g/L (23.000 g/L | (Drouillard | "
+        }
+      ]
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\文献汇总整理（市场那边调研的文献）\\徐惊东-SL文献\\一种基因工程构建的重组大肠杆菌及生物合成6’-唾液乳糖的方法.pdf",
+      "detect_ms": 31,
+      "regions": [],
+      "parser_summaries": {
+        "camelot": {
+          "duration_ms": 0,
+          "chunks": 0,
+          "error": ""
+        }
+      },
+      "results": []
+    },
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\文献汇总整理（市场那边调研的文献）\\徐惊东-SL文献\\解脂耶氏酵母\\解脂耶氏酵母表达调控工具的开发及天然产物合成的研究进展.pdf",
+      "detect_ms": 6141,
+      "regions": [],
+      "parser_summaries": {
+        "camelot": {
+          "duration_ms": 0,
+          "chunks": 0,
+          "error": ""
+        }
+      },
+      "results": []
+    }
+  ]
+}

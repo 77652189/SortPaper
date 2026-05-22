@@ -1,0 +1,221 @@
+{
+  "parsers": [
+    "region_guided",
+    "pdfplumber"
+  ],
+  "pdf_count": 1,
+  "pdf_reports": [
+    {
+      "pdf": "C:\\Users\\63097\\Desktop\\文献备份\\文献\\功能文献汇总\\功能文献\\6-SL\\Potential effects of a human milk oligosaccharide 6′‑sialyllactoseon angiotensin II‑induced aortic aneurysm via p90RSKTGF‑βSMAD2signaling pathway.pdf",
+      "detect_ms": 4734,
+      "regions": [
+        {
+          "region_id": "table_region_p4_43.0_551.8_552.3_775.2",
+          "source": "table_region_detector",
+          "page": 4,
+          "bbox": [
+            43.023601531,
+            551.755801026,
+            552.251480102,
+            775.2392
+          ],
+          "confidence": 1.0,
+          "band": "strong",
+          "evidence": [
+            {
+              "source": "caption",
+              "score": 0.35,
+              "reason": "near_table_caption",
+              "bbox": [
+                51.023601531,
+                555.755801026,
+                156.151601531,
+                566.261801026
+              ],
+              "details": {
+                "text": "Table 1 Primers used for qRT-"
+              }
+            },
+            {
+              "source": "lines",
+              "score": 0.3,
+              "reason": "multiple_wide_horizontal_lines",
+              "bbox": [
+                43.023601531,
+                551.755801026,
+                552.251480102,
+                775.2392
+              ],
+              "details": {
+                "count": 6
+              }
+            },
+            {
+              "source": "alignment",
+              "score": 0.3,
+              "reason": "repeated_x_alignment",
+              "bbox": [
+                43.023601531,
+                551.755801026,
+                552.251480102,
+                775.2392
+              ],
+              "details": {
+                "lines": 13
+              }
+            },
+            {
+              "source": "content",
+              "score": 0.1,
+              "reason": "short_cell_like_tokens",
+              "bbox": [
+                43.023601531,
+                551.755801026,
+                552.251480102,
+                775.2392
+              ],
+              "details": {
+                "ratio": 0.983
+              }
+            }
+          ]
+        }
+      ],
+      "region_text_contexts": {
+        "table_region_p4_43.0_551.8_552.3_775.2": {
+          "word_count": 180,
+          "line_count": 14,
+          "long_line_count": 11,
+          "body_word_hits": 3,
+          "numeric_tokens": 6,
+          "single_char_tokens": 2,
+          "avg_token_len": 3.62
+        }
+      },
+      "parser_summaries": {
+        "region_guided": {
+          "duration_ms": 162,
+          "chunks": 1,
+          "error": ""
+        },
+        "pdfplumber": {
+          "duration_ms": 291,
+          "chunks": 1,
+          "error": ""
+        }
+      },
+      "results": [
+        {
+          "pdf": "Potential effects of a human milk oligosaccharide 6′‑sialyllactoseon angiotensin II‑induced aortic aneurysm via p90RSKTGF‑βSMAD2signaling pathway.pdf",
+          "page": 4,
+          "table_label": "Table 1",
+          "caption": "Table 1 Primers used for qRT-",
+          "region_id": "table_region_p4_43.0_551.8_552.3_775.2",
+          "region_bbox": [
+            43.023601531,
+            551.755801026,
+            552.251480102,
+            775.2392
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "region_guided",
+          "succeeded": true,
+          "duration_ms": 162,
+          "rows": 12,
+          "cols": 4,
+          "chunk_bbox": [
+            43.023601531,
+            551.755801026,
+            552.251480102,
+            775.2392
+          ],
+          "overlap": 1.0,
+          "rule_category": "ok",
+          "recommended_action": "accept",
+          "needs_llm_judge": false,
+          "rule_confidence": 0.9,
+          "rule_reasons": "parser_output_passed_quality_checks",
+          "retry_attempted": false,
+          "retry_succeeded": false,
+          "retry_action": "",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "would_retry": false,
+          "would_adjust_bbox": false,
+          "would_drop_candidate": false,
+          "safe_auto_action": false,
+          "human_review_required": false,
+          "auto_action_allowed": false,
+          "auto_decision_reason": "",
+          "failure_reason": "",
+          "preview": "| Primers used for qRT- | Genes | Forward (5′-3′) | Reverse (5′-3′) | | --- | --- | --- | --- | |  |  | GCT CTC AAG GTC ATC CCA | GTTG TGT TTC CAC GCT TGG TTC ACT | |  |  | CCA ACT GAA CGT GAC CAA | AAA CCA GAA GGT GCT GGG TAG GGA AGT AGG C"
+        },
+        {
+          "pdf": "Potential effects of a human milk oligosaccharide 6′‑sialyllactoseon angiotensin II‑induced aortic aneurysm via p90RSKTGF‑βSMAD2signaling pathway.pdf",
+          "page": 4,
+          "table_label": "Table 1",
+          "caption": "Table 1 Primers used for qRT-",
+          "region_id": "table_region_p4_43.0_551.8_552.3_775.2",
+          "region_bbox": [
+            43.023601531,
+            551.755801026,
+            552.251480102,
+            775.2392
+          ],
+          "region_confidence": 1.0,
+          "region_band": "strong",
+          "parser": "pdfplumber",
+          "succeeded": true,
+          "duration_ms": 291,
+          "rows": 12,
+          "cols": 4,
+          "chunk_bbox": [
+            43.023601531,
+            551.755801026,
+            552.251480102,
+            775.2392
+          ],
+          "overlap": 1.0,
+          "rule_category": "ok",
+          "recommended_action": "accept",
+          "needs_llm_judge": false,
+          "rule_confidence": 0.9,
+          "rule_reasons": "parser_output_passed_quality_checks",
+          "retry_attempted": false,
+          "retry_succeeded": false,
+          "retry_action": "",
+          "retry_rows": 0,
+          "retry_cols": 0,
+          "retry_overlap": 0.0,
+          "retry_failure_reason": "",
+          "llm_judge_attempted": false,
+          "llm_failure_category": "",
+          "llm_recommended_action": "",
+          "llm_confidence": 0.0,
+          "llm_reason": "",
+          "llm_error": "",
+          "rule_llm_agree": false,
+          "would_retry": false,
+          "would_adjust_bbox": false,
+          "would_drop_candidate": false,
+          "safe_auto_action": false,
+          "human_review_required": false,
+          "auto_action_allowed": false,
+          "auto_decision_reason": "",
+          "failure_reason": "",
+          "preview": "| Primers used for qRT- | Genes | Forward (5′-3′) | Reverse (5′-3′) | | --- | --- | --- | --- | |  |  | GCT CTC AAG GTC ATC CCA | GTTG TGT TTC CAC GCT TGG TTC ACT | |  |  | CCA ACT GAA CGT GAC CAA | AAA CCA GAA GGT GCT GGG TAG GGA AGT AGG C"
+        }
+      ]
+    }
+  ]
+}

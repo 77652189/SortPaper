@@ -4,15 +4,22 @@ SortPaper Sidebar — 侧边栏组件。
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 import streamlit as st
 
-from app_utils import RESULTS_DIR, build_paper_id
+from app_config import (
+    BATCH_ESTIMATED_MINUTES_PER_PAPER,
+    BATCH_MAX_PAPER_WORKERS,
+    EMBEDDING_API_KEY_ENV,
+    EMBEDDING_MODEL,
+    EMBEDDING_PROVIDER,
+    RESULTS_DIR,
+    SAMPLE_DIR,
+)
+from app_utils import build_paper_id
 
 logger = logging.getLogger(__name__)
 LOGO = "📄"
-SAMPLE_DIR = Path("data/sample_papers")
 
 def sidebar() -> dict:
     """返回 {
@@ -48,8 +55,9 @@ def sidebar() -> dict:
             # 一键入库按钮
             can_batch = bool(batch_files)
             if can_batch:
-                est_min = len(batch_files) * 5  # pipeline 2min + Map-Reduce ~3min
-                st.caption(f"预计耗时约 {est_min} 分钟（每篇最长 15 分钟）")
+                effective_batches = (len(batch_files) + BATCH_MAX_PAPER_WORKERS - 1) // BATCH_MAX_PAPER_WORKERS
+                est_min = effective_batches * BATCH_ESTIMATED_MINUTES_PER_PAPER
+                st.caption(f"预计耗时约 {est_min} 分钟（论文并发 {BATCH_MAX_PAPER_WORKERS}）")
             batch_btn = st.button(
                 "🚀 一键批量入库", disabled=not can_batch,
                 use_container_width=True, type="primary",
@@ -114,13 +122,13 @@ def sidebar() -> dict:
                 st.info(
                     "⏱️ 预计 **1 ~ 2 分钟** | LLM Judge + VisionParser\n"
                     "质量评估和入库请在解析完成后手动触发。\n"
-                    "需 `DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY`。",
+                    f"需 `DEEPSEEK_API_KEY`；入库需 `{EMBEDDING_API_KEY_ENV}`（{EMBEDDING_PROVIDER}:{EMBEDDING_MODEL}）。",
                 )
             elif mode == "一键入库":
                 st.info(
                     "⏱️ 预计 **2 ~ 3 分钟**\n"
                     "自动完成：解析 → Judge → 质量评估 → Qdrant 入库。\n"
-                    "已入库的论文会检测重复。",
+                    f"已入库的论文会检测重复；向量模型：`{EMBEDDING_PROVIDER}:{EMBEDDING_MODEL}`。",
                 )
 
             st.divider()
@@ -141,7 +149,7 @@ def sidebar() -> dict:
     return result
 
 
-def _render_batch_import() -> list[Any]:
+def _render_batch_import() -> list:
     """渲染批量导入 UI，返回用户上传的 UploadedFile 列表。"""
     uploaded = st.file_uploader(
         "拖拽或选择 PDF 文件", type="pdf",

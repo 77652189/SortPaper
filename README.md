@@ -80,7 +80,8 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-> - **DashScope**: text-embedding-v3, qwen3-vl-plus (vision), qwen3-rerank, qwen-plus (agent). Get key at [DashScope Console](https://dashscope.aliyun.com).
+> - **OpenAI**: default embedding provider, `text-embedding-3-large` at 3072 dimensions. Set `OPENAI_API_KEY`.
+> - **DashScope**: optional legacy embeddings / qwen3-vl-plus (vision) / qwen3-rerank / qwen-plus (agent). Get key at [DashScope Console](https://dashscope.aliyun.com).
 > - **DeepSeek**: Judge evaluation + Map-Reduce summarization. Get key at [DeepSeek Platform](https://platform.deepseek.com).
 
 **3. Start Qdrant** (default: localhost:6333)
@@ -130,13 +131,13 @@ SortPaper/
 | Component | Technology |
 |---|---|
 | Text parsing | PyMuPDF (fitz) |
-| Table parsing | pdfplumber + PyMuPDF + camelot (3 engines adaptive) |
+| Table parsing | pdfplumber-only extraction + rule/LLM Judge quality control |
 | Image captioning | qwen3-vl-plus (DashScope) |
 | LLM Judge | DeepSeek V4 Pro |
 | Quality eval | DeepSeek V4 Pro (classify+Map) + DeepSeek V4 Pro (Reduce) |
-| Embedding | text-embedding-v3 (DashScope, Dense + Sparse dual) |
+| Embedding | text-embedding-3-large (OpenAI, 3072d dense) |
 | Reranker | qwen3-rerank (DashScope) |
-| Vector store | Qdrant (Hybrid Search: Dense + Sparse + RRF) |
+| Vector store | Qdrant (dense vector search by default; DashScope provider keeps hybrid dense+sparse mode) |
 | Agent | Qwen-plus (DashScope Function Calling) |
 | Pipeline | LangGraph |
 | GUI | Streamlit |
@@ -151,7 +152,7 @@ SortPaper/
 |---|---|---|
 | 🐋 **DeepSeek V4 Pro** | Judge & Map Evaluator | Evaluates chunk quality, classifies papers, performs Map-Reduce summarization |
 | 🧬 **DeepSeek V4 Pro** | Chief Summarizer | Generates high-quality paper summaries in the Reduce step |
-| 🧬 **text-embedding-v3** | Dual-Index Librarian | Generates dense + sparse vectors for Hybrid Search |
+| 🧬 **text-embedding-3-large** | Dense Librarian | Generates 3072-dimensional vectors for semantic retrieval |
 | 🎯 **qwen3-rerank** | Senior Editor | Re-ranks retrieved chunks for relevance |
 | 👁️ **qwen3-vl-plus** | Visual Analyst | Describes figures, charts, subfigures with structured three-step analysis |
 | 🧠 **Qwen-plus** | Synthesis Agent | Function-calling agent for autonomous multi-round search & synthesis |

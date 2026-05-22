@@ -1,8 +1,8 @@
 """
-图像解析器：使用 PyMuPDF 提取图片 + Qwen-VL 描述，包装为 LayoutChunk。
+图像解析器：使用 PyMuPDF 提取图片 + GPT Vision 描述，包装为 LayoutChunk。
 每个图片作为一个 chunk，携带 bbox 坐标和描述文本。
 
-两阶段：先用 PyMuPDF 提取所有图片数据（快），再并发调 Qwen-VL（慢）。
+两阶段：先用 PyMuPDF 提取所有图片数据（快），再并发调 GPT Vision（慢）。
 """
 
 from __future__ import annotations
@@ -15,8 +15,9 @@ from typing import Any
 
 from src.parsers.layout_chunk import LayoutChunk, infer_column
 from src.parsers.config import VISION as CFG
+from src.parsers.openai_vision import call_openai_vision
 
-MAX_VISION_WORKERS = 7  # Qwen-VL 并发数
+MAX_VISION_WORKERS = 7  # GPT Vision 并发数
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ class VisionParser:
 
         两阶段：
         1. 串行提取：PyMuPDF 获取图片数据（本机操作，极快）
-        2. 并发描述：ThreadPoolExecutor 并发调 Qwen-VL API
+        2. 并发描述：ThreadPoolExecutor 并发调 GPT Vision API
         """
         import fitz
 
@@ -150,11 +151,10 @@ class VisionParser:
     def _describe_single(
         model: str, image_bytes: bytes, ext: str, caption: str, feedback: str | None,
     ) -> str:
-        """静态方法：调用 Qwen-VL，可安全用于 ThreadPoolExecutor。
+        """静态方法：调用 GPT Vision，可安全用于 ThreadPoolExecutor。
         大图自动缩放至 1024px 以内，减少 API 耗时。"""
         import base64
         import io
-        from dashscope import MultiModalConversation
 
         # 大图缩放：最长边超过 1024px 时等比缩小
         try:
@@ -188,40 +188,14 @@ class VisionParser:
         if feedback:
             prompt += f" 上次解析的问题（请避免）：{feedback}"
 
-        try:
-            response = MultiModalConversation.call(
-                model=model,
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {"image": f"data:{mime};base64,{image_b64}"},
-                        {"text": prompt},
-                    ],
-                }],
-                timeout=60,
-            )
-        except Exception:
-            logger.exception("Qwen-VL call failed")
-            return ""
-
-        http_status = getattr(response, "status_code", None)
-        if http_status is not None and http_status != 200:
-            logger.error("Qwen-VL API error %s: %s", getattr(response, "code", ""), getattr(response, "message", ""))
-            return ""
-
-        if not hasattr(response, "output") or not response.output:
-            return ""
-
-        try:
-            content = response.output.choices[0].message.content
-            if isinstance(content, list):
-                return "\n".join(
-                    part.get("text", "") for part in content if isinstance(part, dict)
-                ).strip()
-            return str(content).strip()
-        except Exception:
-            logger.exception("Qwen-VL response parse failed")
-            return ""
+        return call_openai_vision(
+            image_b64=image_b64,
+            mime_type=mime,
+            prompt=prompt,
+            model=model,
+            timeout=60.0,
+            max_output_tokens=2048,
+        )
 
     @staticmethod
     def _normalize_bbox(bbox: Any) -> tuple[float, float, float, float] | None:
