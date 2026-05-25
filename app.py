@@ -229,29 +229,40 @@ def main() -> None:
             st.session_state.batch_results = []
             st.session_state.batch_preview_results = {}
             success_n = skip_n = fail_n = 0
+            skip_existing_n = 0
+            skip_batch_duplicate_n = 0
 
             prepared_jobs: list[dict] = []
-            seen_paper_ids: set[str] = set()
+            seen_paper_ids: dict[str, dict] = {}
             for i, pdf_file in enumerate(batch_files):
                 status.info(f"({i+1}/{len(batch_files)}) 预检查: {pdf_file.name}")
                 try:
-                    file_bytes = pdf_file.read()
+                    file_bytes = pdf_file.getvalue() if hasattr(pdf_file, "getvalue") else pdf_file.read()
                     pid = build_paper_id(file_bytes)
                     if pid in seen_paper_ids:
+                        first_seen = seen_paper_ids[pid]
                         skip_n += 1
+                        skip_batch_duplicate_n += 1
                         st.session_state.batch_results.append({
                             "no": i + 1, "file": pdf_file.name, "paper_id": pid,
-                            "status": "skip", "reason": "本批次重复",
+                            "status": "skip",
+                            "skip_type": "本批次重复",
+                            "duplicate_of": f"{first_seen['no']}. {first_seen['file']}",
+                            "reason": f"本批次重复（同第 {first_seen['no']} 个文件：{first_seen['file']}）",
                         })
                         progress.progress((i + 1) / len(batch_files), f"预检查 {i+1}/{len(batch_files)}")
                         continue
-                    seen_paper_ids.add(pid)
+                    seen_paper_ids[pid] = {"no": i + 1, "file": pdf_file.name}
                     existing_reason = _existing_paper_reason(pid) if batch_mode == "一键入库" else ""
                     if existing_reason:
                         skip_n += 1
+                        skip_existing_n += 1
                         st.session_state.batch_results.append({
                             "no": i + 1, "file": pdf_file.name, "paper_id": pid,
-                            "status": "skip", "reason": existing_reason,
+                            "status": "skip",
+                            "skip_type": "已入库",
+                            "duplicate_of": "",
+                            "reason": existing_reason,
                         })
                         progress.progress((i + 1) / len(batch_files), f"预检查 {i+1}/{len(batch_files)}")
                         continue
@@ -325,6 +336,9 @@ def main() -> None:
                                     success_n += 1
                                 elif result_status == "skip":
                                     skip_n += 1
+                                    reason_text = str(q_result.get("reason", ""))
+                                    if reason_text.startswith("已入库"):
+                                        skip_existing_n += 1
                                 else:
                                     fail_n += 1
                                 preview_result = q_result.pop("preview_result", None)
@@ -339,6 +353,8 @@ def main() -> None:
                                     "file": job["file"],
                                     "paper_id": job["paper_id"],
                                     "status": result_status,
+                                    "skip_type": "已入库" if result_status == "skip" and str(q_result.get("reason", "")).startswith("已入库") else "",
+                                    "duplicate_of": "",
                                     "category": q_result.get("category", "?"),
                                     "chunks": q_result.get("chunks", 0),
                                     "stored": q_result.get("stored", 0),
@@ -369,17 +385,17 @@ def main() -> None:
                         )
                         progress.progress(
                             min(1.0, (completed + partial) / len(batch_files)),
-                            f"完成 {completed}/{len(batch_files)}；运行中 {len(pending)}",
+                            f"完成 {completed}/{len(batch_files)}；待完成 {len(pending)}",
                         )
                         if pending:
-                            running = sorted(
+                            waiting_or_running = sorted(
                                 (
                                     f"{future_jobs[fut]['no']}. {future_jobs[fut]['file']} "
                                     f"({time.time() - future_jobs[fut]['started_at']:.0f}s)"
                                     for fut in pending
                                 )
                             )
-                            status.info("运行中：\n" + "\n".join(running[:5]))
+                            status.info("待完成（排队或运行中）：\n" + "\n".join(waiting_or_running[:5]))
                         if st.session_state.batch_results:
                             import pandas as pd
                             results_view.dataframe(
@@ -392,7 +408,13 @@ def main() -> None:
             status.empty()
 
             st.markdown(f"## ✅ 批量{batch_mode}完成")
-            st.markdown(f"成功 **{success_n}** | 跳过（已入库）**{skip_n}** | 失败 **{fail_n}**")
+            st.markdown(
+                f"成功 **{success_n}** | "
+                f"已入库跳过 **{skip_existing_n}** | "
+                f"本批次重复 **{skip_batch_duplicate_n}** | "
+                f"其他跳过 **{max(skip_n - skip_existing_n - skip_batch_duplicate_n, 0)}** | "
+                f"失败 **{fail_n}**"
+            )
 
             if st.session_state.batch_results:
                 import pandas as pd

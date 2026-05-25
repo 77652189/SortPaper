@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,10 @@ def openai_embedding_client_kwargs(api_key: str) -> dict[str, Any]:
     if OPENAI_EMBEDDING_BASE_URL:
         kwargs["base_url"] = OPENAI_EMBEDDING_BASE_URL
     return kwargs
+
+
+def dashscope_rerank_api_key() -> str:
+    return _env_value("DASHSCOPE_API_KEY")
 
 
 def _env_value(name: str, default: str = "") -> str:
@@ -67,6 +72,11 @@ from app_config import (
 )
 
 logger = logging.getLogger(__name__)
+
+QUERY_STOPWORDS = {
+    "the", "and", "for", "with", "from", "that", "this", "what", "how",
+    "are", "was", "were", "into", "over", "high", "problem",
+}
 
 COLLECTION_NAME = "papers"
 DENSE_VECTOR_NAME = "dense"              # 密集向量名
@@ -350,7 +360,7 @@ class QdrantStore:
         qdrant_filter = self._build_filter(filter_kwargs)
 
         # Rerank 模式多召回一些候选
-        fetch_multiplier = 3 if rerank else 2
+        fetch_multiplier = 8 if rerank else 2
         if self._uses_sparse_vectors and sparse_dict:
             sparse_indices = sorted(sparse_dict.keys())
             sparse_values = [sparse_dict[i] for i in sparse_indices]
@@ -395,9 +405,74 @@ class QdrantStore:
 
         # Rerank: 用 qwen3-rerank 对候选集重新打分排序
         if rerank and results:
+            results = self._merge_lexical_candidates(
+                query=query,
+                results=results,
+                qdrant_filter=qdrant_filter,
+                limit=limit * 4,
+            )
             results = self._rerank(query, results, top_n=limit)
+            results = self._apply_query_relevance_boost(query, results)
 
         return results[:limit]
+
+    def _merge_lexical_candidates(
+        self,
+        *,
+        query: str,
+        results: list[dict[str, Any]],
+        qdrant_filter: models.Filter | None,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        lexical = self._lexical_candidates(query, qdrant_filter=qdrant_filter, limit=limit)
+        seen = {item["id"] for item in results}
+        for item in lexical:
+            if item["id"] in seen:
+                continue
+            seen.add(item["id"])
+            results.append(item)
+        return results
+
+    def _lexical_candidates(
+        self,
+        query: str,
+        *,
+        qdrant_filter: models.Filter | None,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        if not self._query_relevance_terms(query):
+            return []
+
+        scored: list[dict[str, Any]] = []
+        offset = None
+        while True:
+            points, offset = self.client.scroll(
+                collection_name=self.collection,
+                scroll_filter=qdrant_filter,
+                limit=500,
+                with_payload=True,
+                with_vectors=False,
+                offset=offset,
+            )
+            for point in points:
+                payload = point.payload or {}
+                lexical_score = self._lexical_match_score(
+                    query,
+                    self._rerank_document_text(payload),
+                )
+                if lexical_score <= 0:
+                    continue
+                scored.append({
+                    "id": point.id,
+                    "score": lexical_score,
+                    "payload": payload,
+                    "lexical_score": lexical_score,
+                })
+            if offset is None:
+                break
+
+        scored.sort(key=lambda item: item["lexical_score"], reverse=True)
+        return scored[:limit]
 
     def _rerank(
         self,
@@ -409,9 +484,12 @@ class QdrantStore:
         import dashscope
         from http import HTTPStatus
 
-        documents = [c["payload"].get("content", "") for c in candidates]
+        documents = [self._rerank_document_text(c["payload"]) for c in candidates]
         if not documents:
             return candidates
+        api_key = dashscope_rerank_api_key()
+        if not api_key:
+            raise ValueError("DASHSCOPE_API_KEY 未设置，无法使用 qwen3-rerank")
 
         resp = dashscope.TextReRank.call(
             model="qwen3-rerank",
@@ -420,28 +498,30 @@ class QdrantStore:
             top_n=min(top_n, len(documents)),
             return_documents=False,
             instruct="Given a scientific paper search query, retrieve relevant passages that answer the query.",
+            api_key=api_key,
         )
 
         if resp.status_code != HTTPStatus.OK:
             logger.warning("Rerank 失败，回退到原始排序 | code=%s msg=%s", resp.code, resp.message)
             return candidates
 
-        # 按 rerank 结果重排
+        # 按 rerank 结果重排，rank_map 的 key 是 rerank 返回的原始候选下标。
         rank_map = {
             r.get("index", -1): r.get("relevance_score", 0.0)
             for r in (resp.output.get("results") if isinstance(resp.output, dict)
                       else getattr(resp.output, "results", []))
         }
-        reranked = sorted(
-            candidates,
-            key=lambda c, i=iter(range(len(candidates))): rank_map.get(next(i), 0.0),
+        ranked_pairs = sorted(
+            enumerate(candidates),
+            key=lambda item: rank_map.get(item[0], 0.0),
             reverse=True,
         )
-        # 更新 score 为 rerank 分数
-        for i, item in enumerate(reranked):
-            new_score = rank_map.get(i, item["score"])
+        reranked = []
+        for original_index, item in ranked_pairs:
+            new_score = rank_map.get(original_index, item["score"])
             item["score"] = new_score
             item["reranked"] = True
+            reranked.append(item)
 
         logger.info(
             "Rerank %d → %d | tokens=%s",
@@ -449,6 +529,119 @@ class QdrantStore:
             resp.usage.get("total_tokens", "?") if resp.usage else "?",
         )
         return reranked
+
+    @classmethod
+    def _apply_query_relevance_boost(
+        cls,
+        query: str,
+        results: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        for item in results:
+            lexical_score = cls._lexical_match_score(
+                query,
+                cls._rerank_document_text(item["payload"]),
+            )
+            if lexical_score <= 0:
+                continue
+            item["lexical_score"] = lexical_score
+            item["rerank_score"] = item.get("score", 0.0)
+            boost_cap = 1.0 if cls._query_requires_strict_anchor(query) else 0.35
+            item["score"] = float(item.get("score", 0.0) or 0.0) + min(lexical_score, boost_cap)
+        return sorted(results, key=lambda item: item.get("score", 0.0), reverse=True)
+
+    @staticmethod
+    def _rerank_document_text(payload: dict[str, Any]) -> str:
+        fields = [
+            payload.get("paper_title", ""),
+            payload.get("category", ""),
+            ", ".join(map(str, payload.get("target_products") or [])),
+            ", ".join(map(str, payload.get("organisms") or [])),
+            payload.get("paper_summary", ""),
+            payload.get("content", ""),
+        ]
+        return "\n".join(str(field) for field in fields if field)
+
+    @classmethod
+    def _lexical_match_score(cls, query: str, text: str) -> float:
+        normalized = cls._normalize_search_text(text)
+        if not cls._has_required_query_anchor(query, normalized):
+            return 0.0
+        score = 0.0
+        for term, weight in cls._query_relevance_terms(query).items():
+            if term == "lnt":
+                continue
+            if term in normalized:
+                score += weight
+        if "fermentation_experiment" in normalized or "fermentation experiment" in normalized:
+            score += 0.12
+        return score
+
+    @classmethod
+    def _has_required_query_anchor(cls, query: str, normalized_text: str) -> bool:
+        if cls._query_requires_strict_anchor(query):
+            return (
+                "lnt ii" in normalized_text
+                or "lacto n triose ii" in normalized_text
+                or "lacto-n-triose ii" in normalized_text
+            )
+        return True
+
+    @classmethod
+    def _query_requires_strict_anchor(cls, query: str) -> bool:
+        normalized_query = cls._normalize_search_text(query)
+        return "lnt ii" in normalized_query or "lnt-ii" in normalized_query
+
+    @classmethod
+    def _query_relevance_terms(cls, query: str) -> dict[str, float]:
+        normalized = cls._normalize_search_text(query)
+        terms: dict[str, float] = {}
+
+        def add(term: str, weight: float) -> None:
+            key = cls._normalize_search_text(term)
+            if key:
+                terms[key] = max(terms.get(key, 0.0), weight)
+
+        for token in re.findall(r"[a-z0-9][a-z0-9'′-]{2,}", normalized):
+            if token not in QUERY_STOPWORDS:
+                add(token, 0.04)
+        for phrase in re.findall(
+            r"\b[a-z0-9][a-z0-9'′-]*\s+(?:i|ii|iii|iv|v|vi|vii|viii|ix|x)\b",
+            normalized,
+        ):
+            add(phrase, 0.18)
+
+        if "lnt ii" in normalized or "lnt-ii" in normalized:
+            add("lnt ii", 0.30)
+            add("lacto-n-triose ii", 0.30)
+            add("lacto n triose ii", 0.30)
+            add("lgtA", 0.12)
+            add("RBS", 0.10)
+        if "大肠杆菌" in query:
+            add("escherichia coli", 0.16)
+            add("e. coli", 0.16)
+        if "代谢" in query:
+            add("metabolic", 0.08)
+            add("carbon flux", 0.12)
+        if "路径" in query or "途径" in query:
+            add("pathway", 0.08)
+            add("biosynthesis pathway", 0.10)
+        if "中间产物" in query:
+            add("intermediate", 0.10)
+        if "残留" in query or "过高" in query or "积累" in query:
+            add("accumulation", 0.10)
+            add("accumulated", 0.10)
+        if "改造" in query or "逻辑" in query:
+            add("engineering", 0.08)
+            add("strategy", 0.08)
+        return terms
+
+    @staticmethod
+    def _normalize_search_text(value: str) -> str:
+        text = str(value).lower()
+        text = text.replace("\u00ad", "")
+        text = re.sub(r"[\u2010-\u2015−]", "-", text)
+        text = re.sub(r"[^a-z0-9\u4e00-\u9fff]+", " ", text)
+        return re.sub(r"\s+", " ", text).strip()
 
     @staticmethod
     def _build_filter(filter_kwargs: dict[str, Any] | None) -> models.Filter | None:

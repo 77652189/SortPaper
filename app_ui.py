@@ -1039,6 +1039,12 @@ def _render_manual_search(paper_id: str | None = None) -> None:
     query = st.text_input("输入检索关键词或问题", placeholder="e.g. lacto-N-tetraose biosynthesis yield",
                           key="manual_query")
     top_k = st.slider("返回条数", 1, 10, 5, key="manual_top_k")
+    use_quality_filter = st.checkbox(
+        "仅检索质量解析后的可执行实验论文",
+        value=False,
+        help="过滤掉综述、专利和低行动价值 chunk；需要全库探索时可取消勾选",
+        key="manual_quality_filter",
+    )
     use_rerank = st.checkbox("启用 Rerank（qwen3-rerank 二次排序）", value=True,
                               help="先 Hybrid 召回，再用 Rerank 模型精排", key="manual_rerank")
     if st.button("🔍 检索", key="manual_search_btn"):
@@ -1046,8 +1052,15 @@ def _render_manual_search(paper_id: str | None = None) -> None:
             st.warning("请输入查询内容")
             return
         spinner_text = "Hybrid 检索 + Rerank 中…" if use_rerank else "Hybrid 检索中…"
+        filter_kwargs = {"is_actionable": True} if use_quality_filter else None
         with st.spinner(spinner_text):
-            results = qdrant_search(query, paper_id, top_k, rerank=use_rerank)
+            results = qdrant_search(
+                query,
+                paper_id,
+                top_k,
+                rerank=use_rerank,
+                filter_kwargs=filter_kwargs,
+            )
         if not results:
             st.warning("未找到相关结果")
             return
@@ -1059,9 +1072,27 @@ def _render_manual_search(paper_id: str | None = None) -> None:
             content = payload.get("content", "")
             pg = payload.get("page", "?")
             paper_title = payload.get("paper_title", "?")
+            category = payload.get("category", "")
+            credibility = payload.get("credibility")
+            fermentation_relevance = payload.get("fermentation_relevance")
+            products = payload.get("target_products") or []
+            organisms = payload.get("organisms") or []
             reranked = "🔁 " if r.get("reranked") else ""
             paper_info = f" | {paper_title[:40]}" if paper_id is None else ""
             with st.expander(f"{reranked}📌 相似度={score:.4f} | {wtype} | p{pg}{paper_info}", expanded=True):
+                quality_bits = []
+                if category:
+                    quality_bits.append(f"分类: {category_label(category)}")
+                if credibility is not None:
+                    quality_bits.append(f"可信度: {float(credibility):.2f}")
+                if fermentation_relevance is not None:
+                    quality_bits.append(f"发酵相关性: {float(fermentation_relevance):.2f}")
+                if products:
+                    quality_bits.append("产品: " + ", ".join(map(str, products[:4])))
+                if organisms:
+                    quality_bits.append("菌株/宿主: " + ", ".join(map(str, organisms[:4])))
+                if quality_bits:
+                    st.caption(" | ".join(quality_bits))
                 if wtype == "table":
                     st.markdown(content)
                 else:

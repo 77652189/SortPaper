@@ -5,7 +5,6 @@ SortPaper Pipeline — 解析、评估、入库编排。
 from __future__ import annotations
 
 import logging
-import os
 import tempfile
 import threading
 import time
@@ -318,193 +317,14 @@ def run_pipeline(
 
 
 def store_parsed_chunks(result: dict) -> dict:
-    """手动入库：将已解析的 pipeline 结果存入 Qdrant。
+    """手动入库：将已解析的 pipeline 结果存入 Qdrant。"""
+    from src.store.chunk_storage import store_parsed_result_chunks
 
-    返回 {"stored": int, "failed": int, "duplicate": bool, ...}。
-    """
-    from src.store.qdrant_store import QdrantStore
-    from qdrant_client.http import models
-
-    store = QdrantStore()
-    paper_id = result.get("paper_id", "?")
-    verdicts = result.get("verdicts", {})
-    merged = result.get("merged_chunks", [])
-    paper_title = str(
-        result.get("filename")
-        or result.get("paper_title")
-        or result.get("title")
-        or paper_id
+    return store_parsed_result_chunks(
+        result,
+        embedding_api_key_env=EMBEDDING_API_KEY_ENV,
+        embed_content_for_chunk=_embedding_content_for_chunk,
     )
-
-    if not (os.getenv(EMBEDDING_API_KEY_ENV) or os.getenv(f"\ufeff{EMBEDDING_API_KEY_ENV}") or "").strip():
-        attempted = 0
-        for chunk in merged:
-            verdict = verdicts.get(chunk.get("chunk_id", ""))
-            if not verdict:
-                continue
-            if verdict.get("passed") or (
-                chunk.get("content_type") == "table"
-                and verdict.get("issue_type") != "false_positive"
-            ):
-                attempted += 1
-        return {
-            "stored": 0,
-            "degraded": 0,
-            "failed": attempted,
-            "excluded": 0,
-            "duplicate": False,
-            "attempted": attempted,
-            "missing_verdicts": 0,
-            "error": f"缺少 {EMBEDDING_API_KEY_ENV}，无法生成向量入库",
-        }
-
-    # ── 重复检测 ──
-    existing_count = store.client.count(
-        collection_name=store.collection,
-        count_filter=models.Filter(
-            must=[models.FieldCondition(key="paper_id", match=models.MatchValue(value=paper_id))]
-        ),
-    ).count
-    if existing_count > 0:
-        logger.warning(
-            "重复入库被阻止 | paper_id=%s | 已存在 %d 条记录 | 将跳过 %d 条新记录",
-            paper_id, existing_count, len([c for c in merged if verdicts.get(c.get("chunk_id", ""), {}).get("passed")]),
-        )
-        return {
-            "stored": 0,
-            "degraded": 0,
-            "failed": 0,
-            "excluded": 0,
-            "duplicate": True,
-            "existing_count": existing_count,
-            "attempted": 0,
-        }
-
-    stored = 0
-    degraded = 0
-    failed = 0
-    excluded = 0
-    excluded_tables = 0
-    excluded_reasons: dict[str, int] = {}
-    first_store_error = ""
-
-    def _record_excluded(chunk: dict) -> None:
-        nonlocal excluded, excluded_tables
-        excluded += 1
-        if chunk.get("content_type") == "table":
-            excluded_tables += 1
-        metadata = chunk.get("metadata", {}) or {}
-        reason = str(
-            metadata.get("storage_exclusion_reason")
-            or metadata.get("unparseable_reason")
-            or "excluded_from_storage"
-        )
-        excluded_reasons[reason] = excluded_reasons.get(reason, 0) + 1
-
-    def _build_metadata(chunk: dict, v: dict, quality_label: str = "clean") -> dict:
-        raw_content = chunk.get("raw_content", "")
-        chunk_metadata = dict(chunk.get("metadata", {}) or {})
-        return {
-            **chunk_metadata,
-            "page": chunk.get("page"),
-            "bbox": chunk.get("bbox"),
-            "column": chunk.get("column"),
-            "order_in_page": chunk.get("order_in_page"),
-            "global_order": chunk.get("global_order"),
-            "chunk_id": chunk.get("chunk_id"),
-            "content_type": chunk.get("content_type", "text"),
-            "table_quality": quality_label if chunk.get("content_type") == "table" else "",
-            "score": v.get("score"),
-            "paper_title": paper_title,
-            "raw_content": raw_content,
-            "enrichment_status": "pending",
-        }, raw_content
-
-    attempted = 0
-    missing_verdicts = 0
-
-    for chunk in merged:
-        cid = chunk.get("chunk_id", "")
-        metadata = chunk.get("metadata", {}) or {}
-        if chunk.get("content_type") == "table":
-            try:
-                from src.judge.table_judge import build_storage_decision
-                storage_decision = build_storage_decision(
-                    content_type="table",
-                    metadata=metadata,
-                )
-                metadata.update(storage_decision)
-                chunk["metadata"] = metadata
-            except Exception:
-                pass
-        if metadata.get("excluded_from_storage"):
-            _record_excluded(chunk)
-            continue
-
-        v = verdicts.get(cid)
-        if not v:
-            missing_verdicts += 1
-            continue
-        ct = chunk.get("content_type", "text")
-
-        if v.get("passed"):
-            # 通过 → 正常存储
-            attempted += 1
-            meta, display = _build_metadata(chunk, v, "clean")
-            try:
-                store.add(
-                    paper_id=paper_id, worker_type=ct,
-                    content=display,
-                    embed_content=_embedding_content_for_chunk(chunk),
-                    metadata=meta,
-                )
-                stored += 1
-            except Exception as e:
-                logger.error("入库失败 chunk_id=%s: %s", cid, e)
-                if not first_store_error:
-                    first_store_error = f"{type(e).__name__}: {str(e)[:300]}"
-                failed += 1
-
-        elif ct == "table" and v.get("issue_type") != "false_positive":
-            # 表格解析质量差但非误检 → 降级存储（保留原始数据）
-            attempted += 1
-            meta, display = _build_metadata(chunk, v, "degraded")
-            meta["judge_feedback"] = v.get("feedback", "")
-            try:
-                store.add(
-                    paper_id=paper_id, worker_type=ct,
-                    content=display,
-                    embed_content=_embedding_content_for_chunk(chunk),
-                    metadata=meta,
-                )
-                degraded += 1
-            except Exception as e:
-                logger.error("降级入库失败 chunk_id=%s: %s", cid, e)
-                if not first_store_error:
-                    first_store_error = f"{type(e).__name__}: {str(e)[:300]}"
-                failed += 1
-
-        elif ct == "table" and v.get("issue_type") == "false_positive":
-            metadata.setdefault("excluded_from_storage", True)
-            metadata.setdefault("storage_exclusion_reason", "quality judge marked table as false positive")
-            chunk["metadata"] = metadata
-            _record_excluded(chunk)
-
-        # false_positive → 不入库（参考文献/图注等），解析候选仍保留在结果中
-
-    store.save("")
-    return {
-        "stored": stored,
-        "degraded": degraded,
-        "failed": failed,
-        "excluded": excluded,
-        "excluded_tables": excluded_tables,
-        "excluded_reasons": excluded_reasons,
-        "attempted": attempted,
-        "missing_verdicts": missing_verdicts,
-        "error": first_store_error,
-    }
-
 
 
 def evaluate_parsed_chunks(result: dict) -> dict:

@@ -1,21 +1,21 @@
 <div align="center">
 
-# 📄 SortPaper
+# SortPaper
 
-**学術論文の解析・品質評価・セマンティック検索パイプライン**
+**学術論文の解析、品質評価、ベクトル保存、セマンティック検索**
 
 [![Python](https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white)](https://python.org)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.5+-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io)
 [![LangGraph](https://img.shields.io/badge/LangGraph-pipeline-4A90D9)](https://github.com/langchain-ai/langgraph)
-[![Qdrant](https://img.shields.io/badge/Qdrant-Hybrid--Search-DC382D)](https://qdrant.tech)
-[![DeepSeek](https://img.shields.io/badge/DeepSeek V4 Pro%20%26%20v4--pro-4D6BFE)](https://deepseek.com)
-[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+[![Qdrant](https://img.shields.io/badge/Qdrant-Hybrid--Search-5B21B6)](https://qdrant.tech)
+[![DashScope](https://img.shields.io/badge/DashScope-Embedding%20%7C%20Rerank%20%7C%20Vision-FF6A00)](https://dashscope.aliyun.com)
+[![DeepSeek](https://img.shields.io/badge/DeepSeek-Judge%20%7C%20Quality-4D6BFE)](https://deepseek.com)
 
 **言語：**
-[🇬🇧 English](README.md) &nbsp;|&nbsp;
-[🇨🇳 中文](README.zh.md) &nbsp;|&nbsp;
-🇯🇵 日本語 &nbsp;|&nbsp;
-[🇰🇷 한국어](README.ko.md)
+[English](README.md) &nbsp;|&nbsp;
+[中文](README.zh.md) &nbsp;|&nbsp;
+日本語 &nbsp;|&nbsp;
+[한국어](README.ko.md)
 
 </div>
 
@@ -23,127 +23,122 @@
 
 ## 概要
 
-**SortPaper** はローカルファーストの学術論文処理パイプラインです。PDFから構造化コンテンツ（テキスト・表・画像）を抽出し、LLM判定で各チャンクの品質を評価、通過チャンクをQdrantベクトルデータベースに格納（Hybrid Search: Dense + Sparse + RRF + Rerank）、Streamlit GUIで閲覧・検索・一括インポートを提供します。
+**SortPaper** はローカルファーストの論文処理ツールです。PDF からテキスト、表、画像を解析して `LayoutChunk` にまとめ、LLM Judge で品質を評価し、論文レベルの分類・要約・メタデータを付与して Qdrant に保存します。その後、セマンティック検索と Agent による回答生成に利用します。
 
-## ✨ 主な機能
+現在のコードベースは、大きなアプリケーションファイルから明確なレイヤー構造へ整理中です。目的は単なる chunk 化ではなく、「どの論文が回答を支えているか」「証拠がどこにあるか」「信頼できるか」を追跡できる検索基盤を作ることです。
+
+## 主な機能
 
 | 機能 | 説明 |
 |---|---|
-| 📝 テキスト抽出 | PyMuPDFによるレイアウト対応テキスト分割（2段組み検出対応） |
-| 📋 表検出 | pdfplumber + PyMuPDF + camelot 3エンジン、枠線なし表にも対応 |
-| 🖼️ 画像キャプション | qwen3-vl-plusがサブ図を独立識別し自然言語説明を生成 |
-| ⚖️ LLM判定 | DeepSeek V4 Proで各チャンクを品質評価、合格済みはリトライ時にスキップ |
-| 💾 Qdrantストレージ | Hybrid Search + qwen3-rerank二次ソートで高精度検索 |
-| 📉 降格ストレージ | 表の構造不良は「degraded」として保存、誤検出（参考文献等）は破棄 |
-| 🔁 スマートリトライ | 画像リトライはDeepSeek文章書換（再読込不要）、表リトライはパーサー切替 |
-| 🖥️ GUI | ワンクリック取込・バッチドラッグ＆ドロップ・ベクトルライブラリ管理 |
-| 📊 品質評価 | 4段階：分類 → Map-Reduce要約 → チャンク文脈構築 → 保存 |
-| 🤖 Agent検索 | Qwen-plusが自律的に関数呼出しで複数ラウンド検索・総合提案 |
+| テキスト解析 | PyMuPDF によるレイアウト対応 chunk 化 |
+| 表解析 | pdfplumber / PyMuPDF / camelot 系の戦略、領域検出、後処理、品質判定 |
+| 画像解析 | qwen3-vl-plus による図・サブ図の説明生成 |
+| LLM Judge | chunk 単位の品質評価、低価値 chunk の除外、degraded 結果の保持 |
+| 論文品質評価 | 分類、Map-Reduce 要約、chunk context、産物・菌株・信頼度 metadata |
+| Qdrant 保存 | chunk 単位のベクトル保存、論文単位削除、重複確認、payload 更新 |
+| セマンティック検索 | DashScope embedding、Qdrant hybrid search、qwen3-rerank、品質 metadata 表示 |
+| Agent 検索 | Qwen-plus の tool calling による複数ラウンドの文献検索と統合回答 |
+| Streamlit UI | 単一論文解析、ワンクリック取込、バッチ取込、ベクトルライブラリ管理 |
 
-## 🏗️ アーキテクチャ
+## アーキテクチャ
 
-```
+```text
 PDF
- │
- ▼
-コーディネーター
- │
- ├──► Text Worker   ──► Judge (DeepSeek) ──┐
- ├──► Table Worker  ──► Judge (DeepSeek) ──┤──► Merge ──► Qdrant
- └──► Image Worker  ──► Judge (DeepSeek) ──┘
-  (qwen3-vl-plus)     ▲                      │
-                     └── リトライ（書換）─────┘
+ |
+ v
+Streamlit UI
+ |
+ v
+Pipeline Orchestration
+ |
+ +--> Text Parser  --> LLM Judge --+
+ +--> Table Parser --> LLM Judge --+--> Merge --> Quality Eval --> Qdrant
+ +--> Image Parser --> LLM Judge --+
+                                      |
+                                      v
+                              Search / Agent Answer
 ```
 
-**レイヤー構造：**
+| レイヤー | 主なファイル | 役割 |
+|---|---|---|
+| UI | `app.py`, `app_ui.py`, `app_sidebar.py` | 画面、入力、結果表示、ベクトルライブラリ操作 |
+| オーケストレーション | `app_pipeline.py`, `src/graph/pipeline_graph.py` | プレビュー、フルパイプライン、ワンクリック取込、品質評価 |
+| データモデル | `src/parsers/layout_chunk.py` | テキスト・表・画像共通の chunk 表現 |
+| パーサー | `src/parsers/*` | PDF のテキスト、表、画像抽出 |
+| 表モジュール | `src/parsers/table/*` | 領域検出、抽出、清掃、重複排除、fallback、Judge metadata |
+| Judge | `src/judge/*` | chunk 品質、表品質、論文レベル評価 |
+| Store | `src/store/qdrant_store.py`, `src/store/chunk_storage.py` | embedding、保存、検索、rerank、payload 更新 |
+| Agent | `src/agent/literature_agent.py` | 検索 tool を使った統合回答 |
 
-- **解析層** — PyMuPDFParser、TableParser（pdfplumber+PyMuPDF+camelot）、VisionParser（qwen3-vl-plus）
-- **判定層** — LLMJudge（DeepSeek V4 Pro、セクション対応プロンプト）
-- **品質評価層** — PaperQualityEvaluator（分類→Map-Reduce）、ReduceはDeepSeek V4 Pro
-- **ストレージ層** — QdrantStore（Hybrid Search + Rerank）
-- **オーケストレーション** — LangGraph 並列fan-out/fan-in + 合格スキップリトライ
-         └──── リトライ（最大3回）────────────┘
-```
-
-**レイヤー構成：**
-
-- **パーサー層** — `PyMuPDFParser`、`TableParser`、`VisionParser`
-- **判定層** — `LLMJudge`（qwen-max、セクション対応プロンプト）
-- **ストア層** — `QdrantStore`（text-embedding-3-large、3072次元）
-- **オーケストレーション** — LangGraphファンアウト/ファインイン状態機械
-
-## 🚀 クイックスタート
-
-**1. クローン＆依存パッケージのインストール**
+## クイックスタート
 
 ```bash
-git clone https://github.com/77652189/SortPaper.git
-cd SortPaper
 pip install -r requirements.txt
 ```
 
-**2. DashScope APIキーの設定**
+プロジェクトディレクトリに `.env` を作成します。
 
 ```bash
-cp .env.example .env
+DASHSCOPE_API_KEY=your_dashscope_key
+DEEPSEEK_API_KEY=your_deepseek_key
 ```
 
-> [DashScopeコンソール](https://dashscope.aliyun.com)でAPIキーを取得してください。¥20のチャージで約10本の論文を処理できます。
+任意設定：
 
-**3. GUIの起動**
+```bash
+SORTPAPER_EMBEDDING_PROVIDER=dashscope
+OPENAI_API_KEY=your_openai_key
+OPENAI_EMBEDDING_BASE_URL=https://api.openai.com/v1
+```
+
+Qdrant を起動します。
+
+```bash
+docker run -p 6333:6333 qdrant/qdrant
+```
+
+UI を起動します。
 
 ```bash
 streamlit run app.py
 ```
 
-ブラウザで **http://localhost:8501** を開いてください。
+ブラウザで `http://localhost:8501` を開きます。
 
-## 🖥️ GUIの使い方
+## 検索品質について
 
-1. **PDFを選択** — 任意のPDFをアップロード、またはサンプル論文から選択
-2. **モードを選択：**
-   - **クイックプレビュー** — ローカルパーサーのみ、即時結果、APIコストなし
-   - **フルパイプライン** — Judge実行、品質評価・保存は手動トリガー
-   - **ワンクリック取込** — 解析→判定→評価→保存、全自動
-3. **🚀 解析開始をクリック**
-4. タブで結果を確認：
-   - 📊 概要 · 📝 テキスト · 🖼️ 画像 · 📋 表 · 📐 PDF復元 · 🔍 検索
-5. **ベクトルライブラリ** — サイドバーで登録論文一覧表示・論文別削除
+セマンティック検索は、すでに取り込まれている論文からしか回答できません。主論文が未登録の場合、rerank が正常でも、レビュー論文、引用箇所、近いテーマの論文だけが返ることがあります。
 
-## 📁 プロジェクト構成
+検索結果が悪い場合は、まず対象論文がベクトルライブラリに存在するか確認してください。次に品質評価 metadata が付いているか、返ってきた chunk が原著論文・レビュー・引用箇所のどれかを確認し、その後で query、hybrid search、rerank、UI filter を調整します。
 
-```
+## プロジェクト構成
+
+```text
 SortPaper/
-├── app.py                    # Streamlit GUI
-├── src/
-│   ├── parsers/              # 各種パーサー（PyMuPDF/pdfplumber/camelot/VL）
-│   ├── judge/                # LLM裁判官 + プロンプト
-│   ├── store/                # Qdrantストア（Hybrid Search）
-│   ├── agent/                # 文献検索Agent
-│   └── graph/                # LangGraphパイプライン
-└── data/sample_papers/       # サンプルPDF
++-- app.py
++-- app_sidebar.py
++-- app_ui.py
++-- app_pipeline.py
++-- app_utils.py
++-- app_config.py
++-- src/
+|   +-- agent/
+|   +-- graph/
+|   +-- judge/
+|   +-- parsers/
+|   |   +-- table/
+|   |   +-- layout_chunk.py
+|   +-- store/
+|       +-- qdrant_store.py
+|       +-- chunk_storage.py
++-- tests/
++-- data/
 ```
 
-## 🛠️ 技術スタック
+## テスト
 
-| コンポーネント | 技術 |
-|---|---|
-| テキスト解析 | PyMuPDF (fitz) |
-| 表解析 | pdfplumber + PyMuPDF + camelot（3エンジン） |
-| 画像キャプション | qwen3-vl-plus (DashScope) |
-| LLM判定 | DeepSeek V4 Pro |
-| 品質評価 | DeepSeek V4 Pro（分類/Map）+ DeepSeek V4 Pro（Reduce） |
-| 埋め込み | text-embedding-3-large (OpenAI, 3072d dense) |
-| リランカー | qwen3-rerank (DashScope) |
-| ベクトルストア | Qdrant（Hybrid Search: Dense + Sparse + RRF） |
-| Agent | Qwen-plus (DashScope Function Calling) |
-| パイプライン | LangGraph |
-| GUI | Streamlit |
+```bash
+pytest -q
+```
 
----
-
-<div align="center">
-
-Made with ❤️ &nbsp;·&nbsp; [GitHub Issues](https://github.com/77652189/SortPaper/issues)
-
-</div>

@@ -6,13 +6,10 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-import re
 
 from src.judge.table_judge import (
-    build_auto_decision,
     BBoxCandidate,
     build_bbox_candidates,
-    build_storage_decision,
     build_text_context,
     classify_table_result,
     compare_table_candidate_scores,
@@ -23,14 +20,16 @@ from src.judge.table_judge import (
 from src.parsers.layout_chunk import LayoutChunk
 from src.parsers.config import TABLE_PARSER as CFG
 from src.parsers.table import cleanup
+from src.parsers.table import dedup
 from src.parsers.table import geometry
+from src.parsers.table import judge_metadata
+from src.parsers.table import region_chunks
 from src.parsers.table.diagnostics import (
     attach_region_attempts,
     attach_region_diagnostics,
     build_region_attempts,
     bbox_iou,
     bbox_overlap_ratio,
-    find_best_region,
 )
 from src.parsers.table.keyword_extractor import KeywordGuidedTableExtractor
 from src.parsers.table.models import TableRegion
@@ -118,78 +117,19 @@ class TableParser:
             return []
 
     def _region_discovery_chunks(self, regions: list[TableRegion]) -> list[LayoutChunk]:
-        chunks: list[LayoutChunk] = []
-        for index, region in enumerate(regions):
-            if region.band == "weak":
-                continue
-            caption = self._region_caption_text(region)
-            table_label = self._table_label_from_caption(caption)
-            metadata = {
-                "parser": "table_region_detector",
-                "rows": 0,
-                "cols": 0,
-                "table_region": region.to_metadata(),
-                "table_label": table_label,
-                "table_caption": caption,
-                "table_region_match": "region_only",
-                "table_region_unparsed": True,
-                "table_region_discovery_only": True,
-                "manual_review_needed": True,
-                "structure_extraction_pending": True,
-                "structure_reparse_needed": True,
-                "vision_fallback_disabled": True,
-                "vision_fallback_attempted": False,
-                "vision_fallback_succeeded": False,
-                "caption": caption,
-                "unparsed_region_reason": (
-                    "table region discovery mode: structure extraction is intentionally disabled"
-                ),
-                "region_extraction_attempts": [],
-            }
-            raw_content = self._region_discovery_content(region, caption)
-            chunks.append(LayoutChunk(
-                content_type="table",
-                raw_content=raw_content,
-                page=region.page,
-                bbox=region.bbox,
-                column=2,
-                order_in_page=index,
-                metadata=metadata,
-            ))
-        return chunks
+        return region_chunks.region_discovery_chunks(regions)
 
     @staticmethod
     def _region_caption_text(region: TableRegion) -> str:
-        for evidence in region.evidence:
-            if evidence.source == "caption":
-                return str(evidence.details.get("text", "")).strip()
-        return ""
+        return region_chunks.region_caption_text(region)
 
     @staticmethod
     def _table_label_from_caption(caption: str) -> str:
-        match = re.search(
-            r"\b(supplementary\s+table|table|tab\.)\s*(s?\d+)\b",
-            caption,
-            re.IGNORECASE,
-        )
-        if not match:
-            return ""
-        prefix = "Supplementary Table" if "supplementary" in match.group(1).lower() else "Table"
-        return f"{prefix} {match.group(2).upper()}"
+        return region_chunks.table_label_from_caption(caption)
 
     @staticmethod
     def _region_discovery_content(region: TableRegion, caption: str) -> str:
-        bbox = ", ".join(f"{value:.1f}" for value in region.bbox)
-        lines = [
-            "[Table region detected]",
-            f"page: {region.page}",
-            f"bbox: [{bbox}]",
-            f"confidence: {region.confidence:.2f}",
-            f"band: {region.band}",
-        ]
-        if caption:
-            lines.insert(1, f"caption: {caption}")
-        return "\n".join(lines)
+        return region_chunks.region_discovery_content(region, caption)
 
     def _unparsed_region_chunks(
         self,
@@ -197,62 +137,7 @@ class TableParser:
         regions: list[TableRegion],
         attempts_by_region: dict[str, list[dict]] | None = None,
     ) -> list[LayoutChunk]:
-        attempts_by_region = attempts_by_region or {}
-        placeholders: list[LayoutChunk] = []
-        for region in regions:
-            if region.band == "weak":
-                continue
-            if not self._should_emit_unparsed_placeholder(region):
-                continue
-            probe = LayoutChunk(
-                content_type="table",
-                raw_content="",
-                page=region.page,
-                bbox=region.bbox,
-                column=0,
-                order_in_page=0,
-            )
-            if find_best_region(probe, [
-                TableRegion(
-                    page=chunk.page,
-                    bbox=chunk.bbox,
-                    confidence=1.0,
-                    evidence=[],
-                    source="extracted_table",
-                )
-                for chunk in chunks
-                if chunk.content_type == "table"
-            ], min_overlap=0.20):
-                continue
-
-            metadata = {
-                "parser": "table_region_detector",
-                "rows": 0,
-                "cols": 0,
-                "table_region": region.to_metadata(),
-                "table_label": self._table_label_from_caption(self._region_caption_text(region)),
-                "table_caption": self._region_caption_text(region),
-                "table_region_match": "unparsed",
-                "table_region_unparsed": True,
-                "manual_review_needed": True,
-                "structure_extraction_pending": True,
-                "vision_fallback_attempted": False,
-                "vision_fallback_succeeded": False,
-                "unparsed_region_reason": (
-                    "table-like region detected but no structure extractor produced a usable table"
-                ),
-                "region_extraction_attempts": attempts_by_region.get(region.region_id, []),
-            }
-            placeholders.append(LayoutChunk(
-                content_type="table",
-                raw_content="[Table region detected]\nstructure extraction pending",
-                page=region.page,
-                bbox=region.bbox,
-                column=2,
-                order_in_page=0,
-                metadata=metadata,
-            ))
-        return placeholders
+        return region_chunks.unparsed_region_chunks(chunks, regions, attempts_by_region)
 
     def _attach_judge_feedback(
         self,
@@ -320,25 +205,14 @@ class TableParser:
         return chunks
 
     def _attach_region_identity(self, chunk: LayoutChunk, region: TableRegion) -> None:
-        chunk.metadata.setdefault("source_region_id", region.region_id)
-        chunk.metadata.setdefault("table_region", region.to_metadata())
-        chunk.metadata.setdefault("table_region_match", "matched")
-        caption = self._region_caption_text(region)
-        if caption:
-            chunk.metadata.setdefault("table_caption", caption)
-            chunk.metadata.setdefault("caption", caption)
-            chunk.metadata.setdefault("table_label", self._table_label_from_caption(caption))
+        judge_metadata.attach_region_identity(chunk, region)
 
     def _region_for_chunk(
         self,
         chunk: LayoutChunk,
         regions_by_id: dict[str, TableRegion],
     ) -> TableRegion | None:
-        region_id = chunk.metadata.get("source_region_id")
-        if not region_id:
-            region_meta = chunk.metadata.get("table_region") or {}
-            region_id = region_meta.get("region_id")
-        return regions_by_id.get(str(region_id)) if region_id else None
+        return judge_metadata.region_for_chunk(chunk, regions_by_id)
 
     def _collect_region_text_contexts(self, regions: list[TableRegion]) -> dict[str, object]:
         try:
@@ -369,11 +243,7 @@ class TableParser:
 
     @staticmethod
     def _write_rule_feedback(chunk: LayoutChunk, feedback) -> None:
-        chunk.metadata["rule_failure_category"] = feedback.failure_category
-        chunk.metadata["rule_recommended_action"] = feedback.recommended_action
-        chunk.metadata["rule_needs_llm_judge"] = feedback.needs_llm_judge
-        chunk.metadata["rule_confidence"] = round(float(feedback.confidence), 3)
-        chunk.metadata["rule_reasons"] = list(feedback.reasons)
+        judge_metadata.write_rule_feedback(chunk, feedback)
 
     @staticmethod
     def _write_candidate_score(
@@ -383,17 +253,12 @@ class TableParser:
         text_context,
         parser_succeeded: bool,
     ) -> None:
-        score = score_table_candidate(
-            metadata=chunk.metadata,
-            bbox=chunk.bbox,
-            region_bbox=region.bbox,
+        judge_metadata.write_candidate_score(
+            chunk=chunk,
+            region=region,
             text_context=text_context,
             parser_succeeded=parser_succeeded,
-        ).to_dict()
-        chunk.metadata["table_candidate_score"] = score["score"]
-        chunk.metadata["table_candidate_tier"] = score["tier"]
-        chunk.metadata["table_candidate_reasons"] = score["reasons"]
-        chunk.metadata["table_candidate_metrics"] = score["metrics"]
+        )
 
     def _write_llm_feedback(
         self,
@@ -423,49 +288,28 @@ class TableParser:
                 model=str(getattr(CFG, "LLM_JUDGE_MODEL", "deepseek-chat")),
             )
             data = judged.to_dict()
-            chunk.metadata["llm_failure_category"] = data["failure_category"]
-            chunk.metadata["llm_recommended_action"] = data["recommended_action"]
-            chunk.metadata["llm_confidence"] = data["confidence"]
-            chunk.metadata["llm_reason"] = data["reason"]
-            chunk.metadata["llm_error"] = ""
-            chunk.metadata["rule_llm_agree"] = (
-                data["failure_category"] == feedback.failure_category
-                and data["recommended_action"] == feedback.recommended_action
-            )
+            judge_metadata.write_llm_result(chunk, data, feedback)
             self._write_auto_decision(chunk)
         except Exception as exc:
             self._write_llm_error(chunk, f"{type(exc).__name__}: {exc}")
 
     def _write_llm_error(self, chunk: LayoutChunk, error: str) -> None:
-        chunk.metadata["llm_decision_mode"] = "degraded"
-        chunk.metadata["llm_failure_category"] = ""
-        chunk.metadata["llm_recommended_action"] = ""
-        chunk.metadata["llm_confidence"] = 0.0
-        chunk.metadata["llm_reason"] = ""
-        chunk.metadata["llm_error"] = error
-        chunk.metadata["rule_llm_agree"] = False
-        self._write_auto_decision(chunk)
+        judge_metadata.write_llm_error(
+            chunk,
+            error,
+            confidence_threshold=float(getattr(CFG, "LLM_JUDGE_SAFE_CONFIDENCE", 0.65)),
+        )
 
     def _write_auto_decision(self, chunk: LayoutChunk) -> None:
-        decision = build_auto_decision(
-            llm_recommended_action=str(chunk.metadata.get("llm_recommended_action") or ""),
-            llm_confidence=float(chunk.metadata.get("llm_confidence") or 0.0),
-            llm_error=str(chunk.metadata.get("llm_error") or ""),
+        judge_metadata.write_auto_decision(
+            chunk,
             confidence_threshold=float(getattr(CFG, "LLM_JUDGE_SAFE_CONFIDENCE", 0.65)),
             enabled=True,
         )
-        chunk.metadata.update(decision)
 
     @staticmethod
     def _write_storage_decision(chunk: LayoutChunk) -> None:
-        decision = build_storage_decision(
-            content_type=chunk.content_type,
-            metadata=chunk.metadata,
-        )
-        unparseable_reason = decision.pop("unparseable_reason", "")
-        chunk.metadata.update(decision)
-        if unparseable_reason and not chunk.metadata.get("unparseable_reason"):
-            chunk.metadata["unparseable_reason"] = unparseable_reason
+        judge_metadata.write_storage_decision(chunk)
 
     def _assistive_retry_chunk(
         self,
@@ -746,157 +590,23 @@ class TableParser:
 
     @staticmethod
     def _should_emit_unparsed_placeholder(region: TableRegion) -> bool:
-        """Keep preview placeholders useful: show caption-backed or very strong misses only."""
-        evidence_sources = {item.source for item in region.evidence}
-        if "caption" in evidence_sources:
-            return True
-        return region.confidence >= 0.85
+        return region_chunks.should_emit_unparsed_placeholder(region)
 
     @staticmethod
     def _deduplicate_chunks(chunks: list[LayoutChunk]) -> list[LayoutChunk]:
-        """去重：同一区域或包含关系保留结构质量更好的表格候选。"""
-        if not chunks:
-            return chunks
-
-        def compute_iou(b1, b2) -> float:
-            """计算两个 bbox 的 IoU (Intersection over Union)"""
-            if not b1 or not b2:
-                return 0.0
-            x0_1, y0_1, x1_1, y1_1 = b1
-            x0_2, y0_2, x1_2, y1_2 = b2
-
-            # 计算交集
-            x0_inter = max(x0_1, x0_2)
-            y0_inter = max(y0_1, y0_2)
-            x1_inter = min(x1_1, x1_2)
-            y1_inter = min(y1_1, y1_2)
-
-            if x0_inter >= x1_inter or y0_inter >= y1_inter:
-                return 0.0
-
-            inter_area = (x1_inter - x0_inter) * (y1_inter - y0_inter)
-            area1 = (x1_1 - x0_1) * (y1_1 - y0_1)
-            area2 = (x1_2 - x0_2) * (y1_2 - y0_2)
-            union_area = area1 + area2 - inter_area
-
-            if union_area <= 0:
-                return 0.0
-            return inter_area / union_area
-
-        unique: list[LayoutChunk] = []
-        for chunk in chunks:
-            duplicate_index: int | None = None
-            duplicate_reason = ""
-            duplicate_score = 0.0
-            for index, existing in enumerate(unique):
-                if chunk.page != existing.page:
-                    continue
-                iou = compute_iou(chunk.bbox, existing.bbox)
-                contained = max(
-                    bbox_overlap_ratio(chunk.bbox, existing.bbox),
-                    bbox_overlap_ratio(existing.bbox, chunk.bbox),
-                )
-                same_region_exact = TableParser._same_region_exact_duplicate(
-                    chunk, existing, iou
-                )
-                same_source_region = TableParser._same_source_region(chunk, existing)
-                if same_source_region and not same_region_exact:
-                    priority_delta = abs(
-                        TableParser._parser_source_priority(str(chunk.metadata.get("parser", "")))
-                        - TableParser._parser_source_priority(str(existing.metadata.get("parser", "")))
-                    )
-                    if (
-                        iou <= CFG.DEDUP_IOU_THRESHOLD
-                        and contained < CFG.SAME_REGION_DEDUP_CONTAINED_RATIO
-                    ) or priority_delta < CFG.SAME_REGION_DEDUP_MIN_PRIORITY_DELTA:
-                        continue
-                subset = TableParser._is_contained_subset(chunk.bbox, existing.bbox)
-                overflow_subset = TableParser._is_overflowing_subset(chunk.bbox, existing.bbox)
-                if (
-                    same_region_exact
-                    or iou > CFG.DEDUP_IOU_THRESHOLD
-                    or contained >= CFG.DEDUP_CONTAINED_RATIO
-                    or subset
-                    or overflow_subset
-                ):
-                    duplicate_index = index
-                    duplicate_score = max(iou, contained)
-                    duplicate_reason = (
-                        "same_region_exact" if same_region_exact
-                        else "iou" if iou > CFG.DEDUP_IOU_THRESHOLD
-                        else "contained_subset" if subset
-                        else "overlap_subset" if overflow_subset
-                        else "contained"
-                    )
-                    break
-
-            if duplicate_index is None:
-                unique.append(chunk)
-                continue
-
-            existing = unique[duplicate_index]
-            if TableParser._chunk_quality_score(chunk) > TableParser._chunk_quality_score(existing):
-                TableParser._record_dedup_replacement(
-                    winner=chunk,
-                    loser=existing,
-                    reason=duplicate_reason,
-                    score=duplicate_score,
-                )
-                unique[duplicate_index] = chunk
-            else:
-                TableParser._record_dedup_replacement(
-                    winner=existing,
-                    loser=chunk,
-                    reason=duplicate_reason,
-                    score=duplicate_score,
-                )
-        return unique
+        return dedup.deduplicate_chunks(chunks)
 
     @staticmethod
     def _expand_vision_clips_by_region(chunks: list[LayoutChunk]) -> list[LayoutChunk]:
-        by_region: dict[tuple[int, str], list[LayoutChunk]] = {}
-        for chunk in chunks:
-            region_id = chunk.metadata.get("source_region_id") or (
-                chunk.metadata.get("table_region") or {}
-            ).get("region_id")
-            if region_id:
-                by_region.setdefault((chunk.page, region_id), []).append(chunk)
-
-        for group in by_region.values():
-            if len(group) < 2:
-                continue
-            union_bbox = TableParser._bbox_union(*(chunk.bbox for chunk in group))
-            for chunk in group:
-                if chunk.metadata.get("vision_fallback_needed"):
-                    TableParser._expand_vision_clip_bbox(chunk, union_bbox)
-                    chunk.metadata["region_fragment_count_for_vision_clip"] = len(group)
-        return chunks
+        return dedup.expand_vision_clips_by_region(chunks)
 
     @staticmethod
     def _is_contained_subset(a: tuple, b: tuple) -> bool:
-        a_area = TableParser._bbox_area(a)
-        b_area = TableParser._bbox_area(b)
-        if a_area <= 0 or b_area <= 0:
-            return False
-
-        small, large = (a, b) if a_area <= b_area else (b, a)
-        small_area = min(a_area, b_area)
-        large_area = max(a_area, b_area)
-        area_ratio = small_area / large_area
-        if area_ratio > CFG.DEDUP_SUBSET_MAX_AREA_RATIO:
-            return False
-
-        return bbox_overlap_ratio(small, large) >= CFG.DEDUP_SUBSET_CONTAINED_RATIO
+        return dedup.is_contained_subset(a, b)
 
     @staticmethod
     def _same_source_region(a: LayoutChunk, b: LayoutChunk) -> bool:
-        a_region = a.metadata.get("source_region_id") or (
-            a.metadata.get("table_region") or {}
-        ).get("region_id")
-        b_region = b.metadata.get("source_region_id") or (
-            b.metadata.get("table_region") or {}
-        ).get("region_id")
-        return bool(a_region and b_region and a_region == b_region and a.page == b.page)
+        return dedup.same_source_region(a, b)
 
     @staticmethod
     def _same_region_exact_duplicate(
@@ -904,50 +614,15 @@ class TableParser:
         b: LayoutChunk,
         iou: float,
     ) -> bool:
-        if not TableParser._same_source_region(a, b):
-            return False
-        if iou >= 0.95:
-            return True
-
-        diffs = [abs(float(av) - float(bv)) for av, bv in zip(a.bbox, b.bbox)]
-        return max(diffs, default=float("inf")) <= CFG.SAME_REGION_EXACT_BBOX_TOLERANCE
+        return dedup.same_region_exact_duplicate(a, b, iou)
 
     @staticmethod
     def _is_overflowing_subset(a: tuple, b: tuple) -> bool:
-        """Detect a table fragment whose bbox spills into nearby prose.
-
-        Some PDF text extractors merge a left-column table row with same-y right-column
-        body text. The fragment is not geometrically contained, but its vertical span
-        and left edge still place it inside the parent table region.
-        """
-        a_area = TableParser._bbox_area(a)
-        b_area = TableParser._bbox_area(b)
-        if a_area <= 0 or b_area <= 0:
-            return False
-
-        small, large = (a, b) if a_area <= b_area else (b, a)
-        sx0, sy0, sx1, sy1 = small
-        lx0, ly0, lx1, ly1 = large
-        small_h = max(0.0, sy1 - sy0)
-        vertical_overlap = max(0.0, min(sy1, ly1) - max(sy0, ly0))
-        if small_h <= 0 or vertical_overlap / small_h < 0.85:
-            return False
-
-        left_inside = lx0 - 12 <= sx0 <= lx1 + 12
-        starts_inside_vertically = ly0 - 12 <= sy0 <= ly1 + 12
-        horizontal_overlap = max(0.0, min(sx1, lx1) - max(sx0, lx0))
-        small_w = max(0.0, sx1 - sx0)
-        return (
-            left_inside
-            and starts_inside_vertically
-            and small_w > 0
-            and horizontal_overlap / small_w >= 0.35
-        )
+        return dedup.is_overflowing_subset(a, b)
 
     @staticmethod
     def _bbox_area(bbox: tuple) -> float:
-        x0, y0, x1, y1 = bbox
-        return max(0.0, float(x1) - float(x0)) * max(0.0, float(y1) - float(y0))
+        return dedup.bbox_area(bbox)
 
     @staticmethod
     def _record_dedup_replacement(
@@ -957,101 +632,36 @@ class TableParser:
         reason: str,
         score: float,
     ) -> None:
-        if TableParser._should_expand_vision_clip_from_dedup(winner, loser):
-            TableParser._expand_vision_clip_bbox(winner, loser.bbox)
-
-        winner.metadata.setdefault("dedup_replaced", []).append({
-            "chunk_id": loser.chunk_id,
-            "parser": loser.metadata.get("parser", ""),
-            "bbox": [float(value) for value in loser.bbox],
-            "reason": reason,
-            "score": round(float(score), 3),
-        })
-
-    @staticmethod
-    def _should_expand_vision_clip_from_dedup(winner: LayoutChunk, loser: LayoutChunk) -> bool:
-        if not winner.metadata.get("vision_fallback_needed"):
-            return False
-        if winner.page != loser.page:
-            return False
-
-        winner_region = winner.metadata.get("source_region_id") or (
-            winner.metadata.get("table_region") or {}
-        ).get("region_id")
-        loser_region = loser.metadata.get("source_region_id") or (
-            loser.metadata.get("table_region") or {}
-        ).get("region_id")
-        if winner_region and loser_region and winner_region == loser_region:
-            return True
-
-        return TableParser._is_vertically_related_fragment(winner.bbox, loser.bbox)
-
-    @staticmethod
-    def _expand_vision_clip_bbox(chunk: LayoutChunk, extra_bbox: tuple) -> None:
-        current_bbox = tuple(chunk.metadata.get("vision_clip_bbox") or chunk.bbox)
-        expanded = TableParser._bbox_union(current_bbox, chunk.bbox, extra_bbox)
-        chunk.metadata["vision_clip_bbox"] = [float(value) for value in expanded]
-        chunk.metadata["refined_bbox"] = [float(value) for value in expanded]
-        chunk.metadata["dedup_expanded_vision_clip"] = True
-
-    @staticmethod
-    def _bbox_union(*bboxes: tuple) -> tuple[float, float, float, float]:
-        valid = [bbox for bbox in bboxes if bbox and len(bbox) == 4]
-        return (
-            min(float(bbox[0]) for bbox in valid),
-            min(float(bbox[1]) for bbox in valid),
-            max(float(bbox[2]) for bbox in valid),
-            max(float(bbox[3]) for bbox in valid),
+        dedup.record_dedup_replacement(
+            winner=winner,
+            loser=loser,
+            reason=reason,
+            score=score,
         )
 
     @staticmethod
+    def _should_expand_vision_clip_from_dedup(winner: LayoutChunk, loser: LayoutChunk) -> bool:
+        return dedup.should_expand_vision_clip_from_dedup(winner, loser)
+
+    @staticmethod
+    def _expand_vision_clip_bbox(chunk: LayoutChunk, extra_bbox: tuple) -> None:
+        dedup.expand_vision_clip_bbox(chunk, extra_bbox)
+
+    @staticmethod
+    def _bbox_union(*bboxes: tuple) -> tuple[float, float, float, float]:
+        return dedup.bbox_union(*bboxes)
+
+    @staticmethod
     def _is_vertically_related_fragment(a: tuple, b: tuple) -> bool:
-        ax0, ay0, ax1, ay1 = a
-        bx0, by0, bx1, by1 = b
-        x_overlap = max(0.0, min(ax1, bx1) - max(ax0, bx0))
-        min_width = min(max(0.0, ax1 - ax0), max(0.0, bx1 - bx0))
-        if min_width <= 0 or x_overlap / min_width < 0.60:
-            return False
-        vertical_gap = max(by0 - ay1, ay0 - by1, 0.0)
-        return vertical_gap <= 80.0
+        return dedup.is_vertically_related_fragment(a, b)
 
     @staticmethod
     def _chunk_quality_score(chunk: LayoutChunk) -> float:
-        metadata = chunk.metadata or {}
-        parser_name = str(metadata.get("parser", ""))
-        source_priority = TableParser._parser_source_priority(parser_name)
-        quality = metadata.get("structural_quality") or {}
-        consistency = float(quality.get("consistency_score", 0.0) or 0.0)
-        fill_rate = float(quality.get("fill_rate", 0.0) or 0.0)
-        rows = int(metadata.get("rows", 0) or 0)
-        cols = int(metadata.get("cols", 0) or 0)
-
-        score = source_priority
-        score += consistency * CFG.CHUNK_SCORE_CONSISTENCY_WEIGHT
-        score += fill_rate * CFG.CHUNK_SCORE_FILL_WEIGHT
-        score += min(rows, CFG.CHUNK_SCORE_MAX_ROWS) * CFG.CHUNK_SCORE_ROW_WEIGHT
-        score += min(cols, CFG.CHUNK_SCORE_MAX_COLS) * CFG.CHUNK_SCORE_COL_WEIGHT
-        if metadata.get("vision_fallback_needed"):
-            score -= CFG.CHUNK_SCORE_VISION_PENALTY
-        if metadata.get("table_region_unparsed"):
-            score -= CFG.CHUNK_SCORE_UNPARSED_PENALTY
-        return score
+        return dedup.chunk_quality_score(chunk)
 
     @staticmethod
     def _parser_source_priority(parser_name: str) -> float:
-        if parser_name.startswith("region_guided_geometry"):
-            return 40.0
-        if parser_name.startswith("pdfplumber_region"):
-            return 38.0
-        if parser_name.startswith("region_guided_text"):
-            return 36.0
-        if parser_name.startswith("keyword_guided"):
-            return 34.0
-        if parser_name.startswith("pdfplumber"):
-            return 30.0
-        if parser_name == "table_region_detector":
-            return 0.0
-        return 10.0
+        return dedup.parser_source_priority(parser_name)
 
     def _post_process_table(
         self, raw_rows: list[list[str | None]], bbox: tuple, page_index: int,

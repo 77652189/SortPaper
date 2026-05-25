@@ -179,16 +179,24 @@ def delete_saved(file_stem: str) -> bool:
 
 # ─── Qdrant 检索 ─────────────────────────────────────────────────────────────
 
-def qdrant_search(query: str, paper_id: str = None, top_k: int = 5, rerank: bool = False) -> list[dict]:
+def qdrant_search(
+    query: str,
+    paper_id: str = None,
+    top_k: int = 5,
+    rerank: bool = False,
+    filter_kwargs: dict | None = None,
+) -> list[dict]:
     import sys
     sys.path.insert(0, ".")
     from src.store.qdrant_store import QdrantStore
 
     store = QdrantStore()
-    filter_kwargs = {"paper_id": paper_id} if paper_id else None
+    filters = dict(filter_kwargs or {})
+    if paper_id:
+        filters["paper_id"] = paper_id
     results = store.search(
         query=query, limit=top_k,
-        filter_kwargs=filter_kwargs, rerank=rerank,
+        filter_kwargs=filters or None, rerank=rerank,
     )
     return [
         {"id": r["id"], "score": r["score"],

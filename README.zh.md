@@ -1,21 +1,21 @@
 <div align="center">
 
-# 📄 SortPaper
+# SortPaper
 
-**学术论文解析、质量评判与语义检索流水线**
+**学术论文解析、质量评估、向量入库与语义检索流水线**
 
 [![Python](https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white)](https://python.org)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.5+-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io)
 [![LangGraph](https://img.shields.io/badge/LangGraph-pipeline-4A90D9)](https://github.com/langchain-ai/langgraph)
-[![Qdrant](https://img.shields.io/badge/Qdrant-vector--db-DC382D)](https://qdrant.tech)
-[![DeepSeek](https://img.shields.io/badge/DeepSeek-chat%20%26%20v4--pro-4D6BFE)](https://deepseek.com)
-[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+[![Qdrant](https://img.shields.io/badge/Qdrant-Hybrid--Search-5B21B6)](https://qdrant.tech)
+[![DashScope](https://img.shields.io/badge/DashScope-Embedding%20%7C%20Rerank%20%7C%20Vision-FF6A00)](https://dashscope.aliyun.com)
+[![DeepSeek](https://img.shields.io/badge/DeepSeek-Judge%20%7C%20Quality-4D6BFE)](https://deepseek.com)
 
 **语言：**
-[🇬🇧 English](README.md) &nbsp;|&nbsp;
-🇨🇳 中文 &nbsp;|&nbsp;
-[🇯🇵 日本語](README.ja.md) &nbsp;|&nbsp;
-[🇰🇷 한국어](README.ko.md)
+[English](README.md) &nbsp;|&nbsp;
+中文 &nbsp;|&nbsp;
+[日本語](README.ja.md) &nbsp;|&nbsp;
+[한국어](README.ko.md)
 
 </div>
 
@@ -23,136 +23,169 @@
 
 ## 项目简介
 
-**SortPaper** 是一个本地优先的学术论文处理流水线。它从 PDF 研究论文中提取结构化内容（文本、表格、图片），通过 LLM 裁判对每个内容块进行质量评估，将通过的块写入 Qdrant 向量数据库，并通过 Streamlit 图形界面提供交互式浏览和语义检索功能。支持单篇解析、一键入库和批量导入。
+**SortPaper** 是一个本地优先的论文处理工具。它从 PDF 中解析文本、表格和图片，统一整理为 `LayoutChunk`，再通过 LLM Judge 和论文级质量评估补充分类、摘要、上下文与可信度信息，最后写入 Qdrant 用于语义检索和 Agent 综合回答。
 
-## ✨ 功能特性
+当前项目正在从“大文件集中式实现”逐步整理为更清晰的分层结构。核心目标不是只把 PDF 切成 chunk，而是让后续检索能够回答“哪些论文真的支持这个结论、证据来自哪里、结果是否可信”。
+
+## 功能特性
 
 | 功能 | 说明 |
 |---|---|
-| 📝 文本提取 | 基于 PyMuPDF 的版面感知文本分块，支持双栏检测 |
-| 📋 表格检测 | pdfplumber + PyMuPDF + camelot 三引擎，自适应无边框表格 |
-| 🖼️ 图片描述 | qwen3-vl-plus 视觉模型，子图独立识别 |
-| ⚖️ LLM 裁判 | DeepSeek V4 Pro 评估每个块的质量，失败最多重试 1 次 |
-| 🔮 Vision 兜底 | 表格结构质量差时自动截图→qwen3-vl-plus 重新解析 |
-| 💾 Qdrant 存储 | Hybrid Search（Dense + Sparse + RRF）+ qwen3-rerank 二次排序 |
-| 📉 降级存储 | 表格解析质量差时保留原始数据（标记 degraded），参考文献误检丢弃 |
-| 🔁 智能重试 | 已通过块自动跳过重判；图片重试用 DeepSeek 文字改写而非重读图 |
-| 🖥️ 图形界面 | Streamlit 网页界面 + 一键入库 + 批量拖拽上传 + 向量库管理 |
-| 📊 质量评估 | 四步评估：分类 → Map-Reduce 摘要 → 构建 chunk 上下文 → 入库 |
-| 🤖 Agent 检索 | Qwen-plus 自主调用工具进行多轮语义检索并综合建议 |
+| 文本解析 | 基于 PyMuPDF 的版面感知文本分块，支持双栏和阅读顺序整理 |
+| 表格解析 | pdfplumber / PyMuPDF / camelot 相关策略，配合表格区域检测、后处理和质量判断 |
+| 图片解析 | qwen3-vl-plus 生成图像或子图说明 |
+| LLM Judge | 对 chunk 进行质量判断，过滤低价值内容并保留必要的降级结果 |
+| 论文质量评估 | 分类、Map-Reduce 摘要、chunk context、产物/菌株/可信度等元数据回写 |
+| Qdrant 入库 | chunk 级向量存储，支持按论文删除、重复检测和 payload 更新 |
+| 语义检索 | DashScope embedding、Qdrant hybrid search、qwen3-rerank，并显示质量元数据 |
+| Agent 检索 | Qwen-plus 通过工具调用执行多轮文献检索和综合回答 |
+| Streamlit 界面 | 单篇解析、一键入库、批量导入、向量库管理、检索调试 |
 
-## 🏗️ 架构
+## 架构概览
 
-```
+```text
 PDF
- │
- ▼
-协调器
- │
- ├──► 文本 Worker  ──► Judge (DeepSeek V4 Pro) ──┐
- ├──► 表格 Worker  ──► Judge (DeepSeek V4 Pro) ──┤──► Merge ──► Qdrant
- └──► 图片 Worker  ──► Judge (DeepSeek V4 Pro) ──┘
-  (qwen3-vl-plus)      ▲                        │
-                      └── Retry（文本改写）──────┘
+ |
+ v
+Streamlit UI
+ |
+ v
+Pipeline Orchestration
+ |
+ +--> Text Parser  --> LLM Judge --+
+ +--> Table Parser --> LLM Judge --+--> Merge --> Quality Eval --> Qdrant
+ +--> Image Parser --> LLM Judge --+
+                                      |
+                                      v
+                              Search / Agent Answer
 ```
 
-**分层架构：**
+主要分层：
 
-- **解析层** — `PyMuPDFParser`、`TableParser`（pdfplumber + PyMuPDF + camelot）、`VisionParser`（qwen3-vl-plus）
-- **评判层** — `LLMJudge`（DeepSeek-chat，章节感知提示词）
-- **质量评估层** — `PaperQualityEvaluator`（分类 → Map-Reduce → chunk 上下文），Reduce 阶段使用 DeepSeek-v4-pro
-- **存储层** — `QdrantStore`（Hybrid Search: Dense + Sparse + RRF，qwen3-rerank 二次排序）
-- **编排层** — LangGraph 并行 fan-out/fan-in 状态机，智能 retry 跳过已通过块
+| 层级 | 关键文件 | 职责 |
+|---|---|---|
+| UI 层 | `app.py`, `app_ui.py`, `app_sidebar.py` | 页面入口、控件、结果展示、向量库操作 |
+| 编排层 | `app_pipeline.py`, `src/graph/pipeline_graph.py` | 预览、完整流水线、一键入库、批量处理、质量分析 |
+| 数据结构 | `src/parsers/layout_chunk.py` | 跨文本、表格、图片的统一 chunk 表示 |
+| 解析层 | `src/parsers/*` | PDF 文本、表格、图片解析 |
+| 表格模块 | `src/parsers/table/*` | 区域检测、结构提取、清洗、去重、降级、Judge 元数据 |
+| Judge 层 | `src/judge/*` | chunk 质量判断、表格判断、论文级质量评估 |
+| 存储层 | `src/store/qdrant_store.py`, `src/store/chunk_storage.py` | embedding、入库、检索、rerank、payload 更新 |
+| Agent 层 | `src/agent/literature_agent.py` | 基于检索工具的多轮综合回答 |
 
-## 🚀 快速开始
+## 快速开始
 
-**1. 克隆项目并安装依赖**
+**1. 安装依赖**
 
 ```bash
-git clone https://github.com/77652189/SortPaper.git
-cd SortPaper
 pip install -r requirements.txt
 ```
 
-**2. 配置 API Keys**
+**2. 配置环境变量**
+
+在项目目录创建 `.env`，至少配置：
 
 ```bash
-cp .env.example .env
-# 编辑 .env，填入真实 API Key
+DASHSCOPE_API_KEY=your_dashscope_key
+DEEPSEEK_API_KEY=your_deepseek_key
 ```
 
-> - **OpenAI**：默认用于 `text-embedding-3-large` 向量化，维度为 3072。需要设置 `OPENAI_API_KEY`。
-> - **DashScope**：可选用于旧版向量化 / qwen3-vl-plus（图片解析）/ qwen3-rerank（重排序）/ qwen-plus（Agent 检索）。在 [DashScope 控制台](https://dashscope.aliyun.com) 获取。
-> - **DeepSeek**：用于 Judge 评判 + 质量评估 Map/Reduce。在 [DeepSeek Platform](https://platform.deepseek.com) 获取。
+可选配置：
 
-**3. 启动 Qdrant**（默认连接 localhost:6333）
+```bash
+SORTPAPER_EMBEDDING_PROVIDER=dashscope
+OPENAI_API_KEY=your_openai_key
+OPENAI_EMBEDDING_BASE_URL=https://api.openai.com/v1
+```
+
+说明：
+
+- 默认 embedding provider 是 `dashscope`，使用 DashScope embedding，并在 Qdrant 中保留 dense + sparse hybrid search。
+- `qwen3-rerank`、`qwen3-vl-plus`、`qwen-plus` 也依赖 `DASHSCOPE_API_KEY`。
+- Judge 和论文质量评估依赖 `DEEPSEEK_API_KEY`。
+- 不要把真实 `.env` 或 API key 提交到仓库。
+
+**3. 启动 Qdrant**
 
 ```bash
 docker run -p 6333:6333 qdrant/qdrant
 ```
 
-**4. 启动图形界面**
+**4. 启动界面**
 
 ```bash
 streamlit run app.py
 ```
 
-在浏览器中打开 **http://localhost:8501**。
+浏览器打开 `http://localhost:8501`。
 
-## 🖥️ 界面使用
+## 使用流程
 
-1. **选择 PDF** — 上传任意 PDF，或从内置示例论文中选择；支持批量拖拽上传
-2. **选择模式：**
-   - **快速预览** — PyMuPDF 文本 + pdfplumber 表格 + LLM Judge，跳过 Qwen-VL 和向量存储
-   - **完整流水线** — 运行 Judge，质量评估和入库需手动触发
-   - **一键入库** — 解析 → Judge → 质量评估 → Qdrant 入库 全自动
-3. **点击 🚀 开始解析**
-4. 在标签页中查看结果：
-   - 📊 概览 · 📝 文本块 · 🖼️ 图片 · 📋 表格 · 📐 PDF 重建 · 🔍 语义检索
-5. **向量库管理**：侧边栏可查看已入库文献列表，支持按论文删除
+1. 在侧边栏上传 PDF，或选择已有样本文献。
+2. 选择运行模式：
+   - 快速预览：解析文本和表格，适合调试解析效果。
+   - 完整流水线：运行解析和 Judge，后续质量评估与入库可手动触发。
+   - 一键入库：解析、Judge、质量评估、Qdrant 入库一次完成。
+3. 在结果页查看文本块、图片、表格、PDF 重建和语义检索。
+4. 在向量库管理区检查已入库论文，必要时按论文删除后重新导入。
+5. 检索结果会展示质量分类、可信度、发酵相关性、产物和菌株等 metadata。
 
-## 📁 项目结构
+## 检索质量注意事项
 
-```
+语义检索只能在已经入库的证据中找答案。如果目标主论文没有导入，系统可能只能返回综述、引用段落或相邻主题论文，即使 rerank 正常也无法生成可靠答案。
+
+排查检索不理想时，建议按这个顺序看：
+
+1. 向量库里是否真的有目标论文。
+2. 目标论文是否完成质量评估，payload 里是否有 `category`、`paper_summary`、`target_products`、`organisms` 等字段。
+3. 返回结果是原始实验论文、综述，还是其他论文中的引用段落。
+4. 再判断 query、hybrid search、rerank 或 UI filter 是否需要调整。
+
+例如 LNT II 问题需要优先确认是否导入了真正的 LNT II 主论文，而不是只导入 HMO 综述或 2'-FL 论文里的引用段落。
+
+## 项目结构
+
+```text
 SortPaper/
-├── app.py                    # Streamlit 主入口
-├── app_utils.py              # 工具函数（保存/加载/检索）
-├── app_pipeline.py           # Pipeline 编排（预览/完整/一键入库）
-├── app_ui.py                 # UI 渲染组件
-├── app_sidebar.py            # 侧边栏
-├── src/
-│   ├── parsers/              # 各类解析器（PyMuPDF / pdfplumber / camelot / VL）
-│   ├── judge/                # LLM 裁判 + 论文质量评估
-│   ├── store/                # Qdrant 向量存储（Hybrid Search）
-│   ├── agent/                # 文献检索 Agent（Qwen function calling）
-│   └── graph/                # LangGraph 流水线编排
-├── tests/                    # 单元测试
-└── data/
-    ├── sample_papers/        # 示例 PDF
-    └── results/              # 解析结果快照
++-- app.py                         # Streamlit 主入口
++-- app_sidebar.py                 # 侧边栏和输入控制
++-- app_ui.py                      # 结果展示、检索页、向量库 UI
++-- app_pipeline.py                # 预览、流水线、一键入库、质量分析
++-- app_utils.py                   # 保存、加载、检索等应用工具
++-- app_config.py                  # 环境变量和共享配置
++-- src/
+|   +-- agent/                     # LiteratureAgent
+|   +-- graph/                     # LangGraph 流水线
+|   +-- judge/                     # LLM Judge 和论文质量评估
+|   +-- parsers/
+|   |   +-- table/                 # 表格检测、提取、清洗、去重、降级
+|   |   +-- layout_chunk.py        # 统一 chunk 数据结构
+|   +-- store/
+|       +-- qdrant_store.py        # Qdrant collection、embedding、检索、rerank
+|       +-- chunk_storage.py       # 解析结果入库边界
++-- tests/                         # 单元测试
++-- data/
+    +-- sample_papers/             # 示例 PDF
+    +-- results/                   # 解析结果快照
 ```
 
-## 🛠️ 技术栈
+## 测试
 
-| 组件 | 技术 |
-|---|---|
-| 文本解析 | PyMuPDF (fitz) |
-| 表格解析 | pdfplumber-only 提取 + 规则/LLM Judge 质量控制 |
-| 图片描述 | qwen3-vl-plus（DashScope） |
-| Vision 兜底 | qwen3-vl-plus 截图重解析（表格结构差时自动） |
-| LLM 裁判 | DeepSeek V4 Pro |
-| 质量评估 | DeepSeek-chat（分类/Map）+ DeepSeek V4 Pro（Reduce） |
-| 文本嵌入 | text-embedding-3-large（OpenAI，3072 维 dense） |
-| 重排序 | qwen3-rerank（DashScope） |
-| 向量存储 | Qdrant（默认 dense 检索；DashScope provider 保留 Dense + Sparse 混合检索） |
-| Agent 检索 | Qwen-plus（DashScope Function Calling） |
-| 流水线编排 | LangGraph |
-| 图形界面 | Streamlit |
+```bash
+pytest -q
+```
 
----
+常用局部测试：
 
-<div align="center">
+```bash
+pytest tests/test_qdrant_point_ids.py -q
+pytest tests/test_chunk_storage.py -q
+pytest tests/table -q
+```
 
-Made with ❤️ &nbsp;·&nbsp; [GitHub Issues](https://github.com/77652189/SortPaper/issues)
+## 开发备注
 
-</div>
+- `app.py` 仍是 Streamlit 主入口，但业务逻辑已经逐步移到 `app_pipeline.py`、`app_ui.py` 和 `src/*`。
+- 表格解析正在模块化，重点关注 `src/parsers/table/parser.py` 与 `dedup.py`、`region_chunks.py`、`judge_metadata.py` 等辅助模块的边界。
+- 入库边界已经下沉到 `src/store/chunk_storage.py`，避免 UI/编排层直接承担 Qdrant 细节。
+- 重构前建议先阅读工作区根目录下的 `../docs/ONBOARDING.md`、`../docs/UNDERSTAND_CHAT_FINDINGS.md` 和 `../docs/UNDERSTAND_DIFF_REVIEW.md`。
