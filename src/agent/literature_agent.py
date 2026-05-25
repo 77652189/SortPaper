@@ -14,11 +14,24 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Any
 
 from src.store.qdrant_store import QdrantStore
 
 logger = logging.getLogger(__name__)
+
+
+def _env_value(name: str, default: str = "") -> str:
+    return (os.getenv(name) or os.getenv(f"\ufeff{name}") or default).strip()
+
+
+def dashscope_agent_api_key() -> str:
+    return _env_value("DASHSCOPE_API_KEY")
+
+
+def deepseek_api_key() -> str:
+    return _env_value("DEEPSEEK_API_KEY")
 
 # ── Tool 定义 ──────────────────────────────────────────────────────────────
 
@@ -110,6 +123,9 @@ class LiteratureAgent:
         ]
 
         final_answer = ""
+        api_key = dashscope_agent_api_key()
+        if not api_key:
+            raise ValueError("DASHSCOPE_API_KEY 未设置，无法使用 Agent 搜索")
 
         for round_idx in range(max_rounds):
             response = dashscope.Generation.call(
@@ -117,6 +133,7 @@ class LiteratureAgent:
                 messages=messages,
                 tools=[SEARCH_TOOL],
                 result_format="message",
+                api_key=api_key,
             )
 
             if response.status_code != HTTPStatus.OK:
@@ -216,7 +233,6 @@ class LiteratureAgent:
 
     def _synthesize(self, query: str, chunks: list[dict[str, Any]]) -> str:
         """强制综合：当 Agent 循环结束但未生成回答时调用。使用 DeepSeek。"""
-        import os
         from openai import OpenAI
 
         docs_text = "\n---\n".join(
@@ -226,8 +242,11 @@ class LiteratureAgent:
         prompt = SYNTHESIS_PROMPT.format(query=query, documents=docs_text)
 
         try:
+            api_key = deepseek_api_key()
+            if not api_key:
+                return f"检索到 {len(chunks)} 个相关 chunk，但 DEEPSEEK_API_KEY 未设置，无法生成综合回答。"
             client = OpenAI(
-                api_key=os.getenv("DEEPSEEK_API_KEY", ""),
+                api_key=api_key,
                 base_url="https://api.deepseek.com/v1",
                 timeout=60.0,
             )
