@@ -18,6 +18,10 @@ build/
 # Jupyter
 .ipynb_checkpoints/
 
+# generated retrieval evaluation outputs
+reports/retrieval_eval_*.json
+reports/agent_context_eval_*.json
+
 # OS
 .DS_Store
 Thumbs.db

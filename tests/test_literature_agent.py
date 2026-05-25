@@ -10,6 +10,9 @@ class FakeStore:
     def search(self, **_kwargs):
         return []
 
+    def expand_neighbor_context(self, *_args, **_kwargs):
+        return []
+
 
 def test_dashscope_agent_api_key_accepts_bom_env(monkeypatch) -> None:
     from src.agent.literature_agent import dashscope_agent_api_key
@@ -64,3 +67,155 @@ def test_agent_generation_missing_dashscope_key_fails_early(monkeypatch) -> None
 
     with pytest.raises(ValueError, match="DASHSCOPE_API_KEY"):
         agent.query("How to improve LNT II production?", max_rounds=1)
+
+
+def test_agent_search_passes_lexical_backfill_to_store(monkeypatch) -> None:
+    import src.agent.literature_agent as literature_agent
+
+    captured: dict[str, object] = {}
+
+    class CapturingStore:
+        def search(self, **kwargs):
+            captured.update(kwargs)
+            return [
+                {
+                    "score": 0.9,
+                    "payload": {
+                        "content": "RBS optimization improved lgtA expression.",
+                        "paper_title": "LNT II paper",
+                        "page": 3,
+                        "content_type": "text",
+                    },
+                }
+            ]
+
+        def expand_neighbor_context(self, *_args, **_kwargs):
+            return []
+
+    monkeypatch.setattr(literature_agent, "QdrantStore", lambda: CapturingStore())
+    monkeypatch.setattr(
+        literature_agent.LiteratureAgent,
+        "_synthesize",
+        lambda self, query, chunks: "answer",
+    )
+
+    agent = literature_agent.LiteratureAgent(lexical_backfill=True)
+    result = agent._execute_tool(
+        "search_literature",
+        {
+            "query": "lacto-N-triose II lgtA",
+            "category": "fermentation_experiment",
+            "credibility_gte": 0.7,
+        },
+    )
+
+    assert captured["query"] == "lacto-N-triose II lgtA"
+    assert captured["rerank"] is True
+    assert captured["lexical_backfill"] is True
+    assert captured["filter_kwargs"] == {
+        "category": "fermentation_experiment",
+        "credibility_gte": 0.7,
+    }
+    assert result[0]["paper_title"] == "LNT II paper"
+
+
+def test_agent_search_keeps_lexical_backfill_disabled_by_default(monkeypatch) -> None:
+    import src.agent.literature_agent as literature_agent
+
+    captured: dict[str, object] = {}
+
+    class CapturingStore:
+        def search(self, **kwargs):
+            captured.update(kwargs)
+            return []
+
+        def expand_neighbor_context(self, *_args, **_kwargs):
+            return []
+
+    monkeypatch.setattr(literature_agent, "QdrantStore", lambda: CapturingStore())
+
+    agent = literature_agent.LiteratureAgent()
+    agent._execute_tool("search_literature", {"query": "lacto-N-triose II"})
+
+    assert captured["lexical_backfill"] is False
+
+
+def test_agent_expands_neighbor_context_without_returning_as_search_hits(monkeypatch) -> None:
+    import src.agent.literature_agent as literature_agent
+
+    captured_context: dict[str, object] = {}
+
+    class CapturingStore:
+        def search(self, **_kwargs):
+            return [
+                {
+                    "score": 0.9,
+                    "payload": {
+                        "paper_id": "paper-1",
+                        "chunk_id": "chunk-1",
+                        "content": "Primary evidence chunk.",
+                        "paper_title": "LNT II paper",
+                        "page": 3,
+                        "content_type": "text",
+                    },
+                }
+            ]
+
+        def expand_neighbor_context(self, results, **kwargs):
+            captured_context.update(kwargs)
+            assert len(results) == 1
+            return [
+                {
+                    "neighbor_source_chunk_id": "chunk-1",
+                    "neighbor_distance": 1,
+                    "payload": {
+                        "paper_id": "paper-1",
+                        "chunk_id": "chunk-2",
+                        "content": "Adjacent explanatory chunk.",
+                        "paper_title": "LNT II paper",
+                        "page": 3,
+                        "content_type": "text",
+                    },
+                }
+            ]
+
+    monkeypatch.setattr(literature_agent, "QdrantStore", lambda: CapturingStore())
+
+    agent = literature_agent.LiteratureAgent(expand_neighbor_context=True)
+    result = agent._execute_tool("search_literature", {"query": "lacto-N-triose II"})
+
+    assert len(result) == 1
+    assert result[0]["content"] == "Primary evidence chunk."
+    assert len(agent._all_chunks) == 2
+    assert agent._all_chunks[1]["_context_expansion"] is True
+    assert agent._all_chunks[1]["_neighbor_source_chunk_id"] == "chunk-1"
+    assert captured_context["per_result_limit"] == 2
+    assert captured_context["total_limit"] == 5
+
+
+def test_agent_can_disable_neighbor_context_expansion(monkeypatch) -> None:
+    import src.agent.literature_agent as literature_agent
+
+    class CapturingStore:
+        def search(self, **_kwargs):
+            return [
+                {
+                    "score": 0.9,
+                    "payload": {
+                        "content": "Primary evidence chunk.",
+                        "paper_title": "LNT II paper",
+                        "page": 3,
+                        "content_type": "text",
+                    },
+                }
+            ]
+
+        def expand_neighbor_context(self, *_args, **_kwargs):
+            raise AssertionError("Neighbor context expansion should be disabled")
+
+    monkeypatch.setattr(literature_agent, "QdrantStore", lambda: CapturingStore())
+
+    agent = literature_agent.LiteratureAgent(expand_neighbor_context=False)
+    agent._execute_tool("search_literature", {"query": "lacto-N-triose II"})
+
+    assert len(agent._all_chunks) == 1

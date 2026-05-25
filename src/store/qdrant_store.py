@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import math
 import os
 import re
 import time
@@ -70,12 +71,14 @@ from app_config import (
     EMBEDDING_PROVIDER,
     OPENAI_EMBEDDING_BASE_URL,
 )
+from src.store.search_text import build_search_text
 
 logger = logging.getLogger(__name__)
 
 QUERY_STOPWORDS = {
     "the", "and", "for", "with", "from", "that", "this", "what", "how",
     "are", "was", "were", "into", "over", "high", "problem",
+    "pdf", "text", "chunk",
 }
 
 COLLECTION_NAME = "papers"
@@ -93,6 +96,8 @@ class QdrantStore:
     ) -> None:
         self.client = QdrantClient(url=url)
         self.collection = collection
+        self._lexical_document_cache: list[dict[str, Any]] | None = None
+        self._lexical_index_cache: dict[str, Any] | None = None
         self._ensure_collection()
 
     # ── 集合管理 ────────────────────────────────────────────────────────────
@@ -286,6 +291,7 @@ class QdrantStore:
             "content": content,
             **metadata,
         }
+        payload["search_text"] = build_search_text(payload)
         for k, v in payload.items():
             if isinstance(v, tuple):
                 payload[k] = list(v)
@@ -308,6 +314,7 @@ class QdrantStore:
                 )
             ],
         )
+        self._invalidate_lexical_cache()
 
     def add_chunks(
         self,
@@ -343,6 +350,8 @@ class QdrantStore:
         score_threshold: float | None = None,
         filter_kwargs: dict[str, Any] | None = None,
         rerank: bool = False,
+        lexical_backfill: bool = False,
+        neighbor_backfill: bool = False,
     ) -> list[dict[str, Any]]:
         """Hybrid Search + 可选 Rerank。
 
@@ -360,7 +369,7 @@ class QdrantStore:
         qdrant_filter = self._build_filter(filter_kwargs)
 
         # Rerank 模式多召回一些候选
-        fetch_multiplier = 8 if rerank else 2
+        fetch_multiplier = 8 if rerank or lexical_backfill or neighbor_backfill else 2
         if self._uses_sparse_vectors and sparse_dict:
             sparse_indices = sorted(sparse_dict.keys())
             sparse_values = [sparse_dict[i] for i in sparse_indices]
@@ -411,10 +420,290 @@ class QdrantStore:
                 qdrant_filter=qdrant_filter,
                 limit=limit * 4,
             )
+            if neighbor_backfill:
+                results = self._merge_neighbor_candidates(
+                    results=results,
+                    qdrant_filter=qdrant_filter,
+                    limit=max(limit * 4, 40),
+                )
             results = self._rerank(query, results, top_n=limit)
+            results = self._apply_query_relevance_boost(query, results)
+        elif lexical_backfill or neighbor_backfill:
+            if lexical_backfill:
+                results = self._merge_lexical_candidates(
+                    query=query,
+                    results=results,
+                    qdrant_filter=qdrant_filter,
+                    limit=max(limit * 4, 40),
+                )
+            if neighbor_backfill:
+                results = self._merge_neighbor_candidates(
+                    results=results,
+                    qdrant_filter=qdrant_filter,
+                    limit=max(limit * 4, 40),
+                )
             results = self._apply_query_relevance_boost(query, results)
 
         return results[:limit]
+
+    def search_evidence(
+        self,
+        query: str,
+        limit: int = 10,
+        score_threshold: float | None = None,
+        filter_kwargs: dict[str, Any] | None = None,
+        rerank: bool = False,
+        lexical_backfill: bool = False,
+        neighbor_backfill: bool = False,
+        paper_limit: int = 10,
+        per_paper_limit: int = 4,
+        lead_paper_limit: int = 12,
+    ) -> list[dict[str, Any]]:
+        """Two-stage retrieval: find papers first, then surface evidence chunks.
+
+        The normal chunk search can find the right paper but miss the best evidence chunk.
+        This method collects a larger candidate pool once, ranks papers from that pool,
+        and then reorders candidates so paper representatives and deeper top-paper
+        evidence are both visible. It avoids repeated embedding calls for the same query.
+        """
+        if limit <= 0:
+            return []
+
+        filters = dict(filter_kwargs or {})
+        if filters.get("paper_id"):
+            return self.search(
+                query=query,
+                limit=limit,
+                score_threshold=score_threshold,
+                filter_kwargs=filters,
+                rerank=rerank,
+                lexical_backfill=lexical_backfill,
+                neighbor_backfill=neighbor_backfill,
+            )
+
+        probe_limit = max(limit * 8, paper_limit * max(per_paper_limit, lead_paper_limit))
+        paper_candidates = self.search(
+            query=query,
+            limit=probe_limit,
+            score_threshold=score_threshold,
+            filter_kwargs=filters or None,
+            rerank=rerank,
+            lexical_backfill=lexical_backfill,
+            neighbor_backfill=neighbor_backfill,
+        )
+        ranked_papers = self._rank_papers_from_results(paper_candidates, limit=paper_limit)
+        if not ranked_papers:
+            return paper_candidates[:limit]
+
+        candidates_by_paper: dict[str, list[dict[str, Any]]] = {paper_id: [] for paper_id in ranked_papers}
+        for result in paper_candidates:
+            paper_id = str((result.get("payload") or {}).get("paper_id") or "")
+            if paper_id in candidates_by_paper:
+                result["paper_rank"] = ranked_papers.index(paper_id) + 1
+                result["evidence_stage"] = "pooled"
+                candidates_by_paper[paper_id].append(result)
+
+        evidence_by_paper: list[list[dict[str, Any]]] = []
+        for paper_index, paper_id in enumerate(ranked_papers):
+            group_limit = (
+                max(per_paper_limit, min(limit, lead_paper_limit))
+                if paper_index == 0
+                else per_paper_limit
+            )
+            evidence_by_paper.append(candidates_by_paper.get(paper_id, [])[:group_limit])
+        prioritized = self._prioritize_evidence_groups(evidence_by_paper)
+        return self._deduplicate_results(prioritized + paper_candidates)[:limit]
+
+    def search_paper_local_evidence(
+        self,
+        query: str,
+        limit: int = 10,
+        score_threshold: float | None = None,
+        filter_kwargs: dict[str, Any] | None = None,
+        rerank: bool = False,
+        lexical_backfill: bool = False,
+        neighbor_backfill: bool = False,
+        paper_limit: int = 8,
+        per_paper_limit: int = 4,
+        lead_paper_limit: int = 12,
+    ) -> list[dict[str, Any]]:
+        """Find likely papers first, then rescore evidence inside those papers."""
+        if limit <= 0:
+            return []
+
+        filters = dict(filter_kwargs or {})
+        if filters.get("paper_id"):
+            return self.search(
+                query=query,
+                limit=limit,
+                score_threshold=score_threshold,
+                filter_kwargs=filters,
+                rerank=rerank,
+                lexical_backfill=lexical_backfill,
+                neighbor_backfill=neighbor_backfill,
+            )
+
+        probe_limit = max(limit * 8, paper_limit * max(per_paper_limit, lead_paper_limit))
+        paper_candidates = self.search(
+            query=query,
+            limit=probe_limit,
+            score_threshold=score_threshold,
+            filter_kwargs=filters or None,
+            rerank=rerank,
+            lexical_backfill=lexical_backfill,
+            neighbor_backfill=neighbor_backfill,
+        )
+        ranked_papers = self._rank_papers_from_results(paper_candidates, limit=paper_limit)
+        if not ranked_papers:
+            return paper_candidates[:limit]
+
+        paper_rank = {paper_id: index + 1 for index, paper_id in enumerate(ranked_papers)}
+        query_terms = self._query_relevance_terms(query)
+        if not query_terms:
+            return paper_candidates[:limit]
+
+        qdrant_filter = self._build_filter(filters or None)
+        requires_strict_anchor = self._query_requires_strict_anchor(query)
+        lexical_index = self._lexical_document_index()
+        evidence_by_paper: dict[str, list[dict[str, Any]]] = {paper_id: [] for paper_id in ranked_papers}
+        for entry in self._lexical_document_entries(qdrant_filter=qdrant_filter):
+            payload = entry.get("payload") or {}
+            paper_id = str(payload.get("paper_id") or "")
+            rank = paper_rank.get(paper_id)
+            if rank is None:
+                continue
+            lexical_score = self._lexical_idf_match_score_from_terms(
+                entry["normalized_text"],
+                query_terms=query_terms,
+                requires_strict_anchor=requires_strict_anchor,
+                lexical_index=lexical_index,
+            )
+            if lexical_score <= 0:
+                continue
+            score = lexical_score + (0.03 / rank)
+            evidence_by_paper[paper_id].append({
+                "id": entry["id"],
+                "score": score,
+                "payload": payload,
+                "lexical_score": lexical_score,
+                "paper_rank": rank,
+                "evidence_stage": "paper_local",
+            })
+
+        evidence_groups: list[list[dict[str, Any]]] = []
+        for index, paper_id in enumerate(ranked_papers):
+            group_limit = (
+                max(per_paper_limit, min(limit, lead_paper_limit))
+                if index == 0
+                else per_paper_limit
+            )
+            group = sorted(
+                evidence_by_paper.get(paper_id, []),
+                key=lambda item: item.get("score", 0.0),
+                reverse=True,
+            )
+            evidence_groups.append(group[:group_limit])
+
+        prioritized = self._prioritize_evidence_groups(evidence_groups)
+        return self._deduplicate_results(prioritized + paper_candidates)[:limit]
+
+    @staticmethod
+    def _rank_papers_from_results(
+        results: list[dict[str, Any]],
+        *,
+        limit: int,
+    ) -> list[str]:
+        ranked: list[str] = []
+        seen = set()
+        for result in results:
+            paper_id = str((result.get("payload") or {}).get("paper_id") or "")
+            if not paper_id or paper_id in seen:
+                continue
+            seen.add(paper_id)
+            ranked.append(paper_id)
+            if len(ranked) >= limit:
+                break
+        return ranked
+
+    @staticmethod
+    def _interleave_ranked_groups(groups: list[list[dict[str, Any]]]) -> list[dict[str, Any]]:
+        interleaved: list[dict[str, Any]] = []
+        max_len = max((len(group) for group in groups), default=0)
+        for index in range(max_len):
+            for group in groups:
+                if index < len(group):
+                    interleaved.append(group[index])
+        return interleaved
+
+    @classmethod
+    def _prioritize_evidence_groups(cls, groups: list[list[dict[str, Any]]]) -> list[dict[str, Any]]:
+        if not groups:
+            return []
+        representatives = [group[0] for group in groups if group]
+        lead_rest = groups[0][1:] if groups[0] else []
+        other_rest = [group[1:] for group in groups[1:] if len(group) > 1]
+        return representatives + lead_rest + cls._interleave_ranked_groups(other_rest)
+
+    @staticmethod
+    def _deduplicate_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        deduped: list[dict[str, Any]] = []
+        seen = set()
+        for result in results:
+            payload = result.get("payload") or {}
+            key = (
+                str(payload.get("paper_id") or ""),
+                str(payload.get("chunk_id") or result.get("id") or ""),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(result)
+        return deduped
+
+    def expand_neighbor_context(
+        self,
+        results: list[dict[str, Any]],
+        *,
+        filter_kwargs: dict[str, Any] | None = None,
+        per_result_limit: int = 2,
+        total_limit: int = 10,
+        window: int = 2,
+    ) -> list[dict[str, Any]]:
+        """Return nearby chunks for already-ranked evidence without changing ranking."""
+        if not results or per_result_limit <= 0 or total_limit <= 0:
+            return []
+
+        qdrant_filter = self._build_filter(filter_kwargs)
+        candidate_limit = max(len(results) * per_result_limit, total_limit)
+        neighbors = self._neighbor_candidates(
+            results,
+            qdrant_filter=qdrant_filter,
+            limit=candidate_limit,
+            window=window,
+        )
+        existing_ids = {item.get("id") for item in results}
+        existing_chunks = {
+            (
+                str((item.get("payload") or {}).get("paper_id") or ""),
+                str((item.get("payload") or {}).get("chunk_id") or item.get("id") or ""),
+            )
+            for item in results
+        }
+
+        context: list[dict[str, Any]] = []
+        for item in neighbors:
+            payload = item.get("payload") or {}
+            key = (
+                str(payload.get("paper_id") or ""),
+                str(payload.get("chunk_id") or item.get("id") or ""),
+            )
+            if item.get("id") in existing_ids or key in existing_chunks:
+                continue
+            item["context_expansion"] = True
+            context.append(item)
+            if len(context) >= total_limit:
+                break
+        return context
 
     def _merge_lexical_candidates(
         self,
@@ -433,6 +722,161 @@ class QdrantStore:
             results.append(item)
         return results
 
+    def _merge_neighbor_candidates(
+        self,
+        *,
+        results: list[dict[str, Any]],
+        qdrant_filter: models.Filter | None,
+        limit: int,
+        window: int = 2,
+    ) -> list[dict[str, Any]]:
+        neighbors = self._neighbor_candidates(
+            results,
+            qdrant_filter=qdrant_filter,
+            limit=limit,
+            window=window,
+        )
+        seen = {item["id"] for item in results}
+        for item in neighbors:
+            if item["id"] in seen:
+                continue
+            seen.add(item["id"])
+            results.append(item)
+        return results
+
+    def _neighbor_candidates(
+        self,
+        results: list[dict[str, Any]],
+        *,
+        qdrant_filter: models.Filter | None,
+        limit: int,
+        window: int,
+    ) -> list[dict[str, Any]]:
+        if not results:
+            return []
+
+        entries_by_paper: dict[str, list[dict[str, Any]]] = {}
+        for entry in self._lexical_document_entries(qdrant_filter=qdrant_filter):
+            paper_id = str((entry.get("payload") or {}).get("paper_id") or "")
+            if not paper_id:
+                continue
+            entries_by_paper.setdefault(paper_id, []).append(entry)
+
+        best_by_id: dict[Any, dict[str, Any]] = {}
+        for seed in results[:limit]:
+            seed_payload = seed.get("payload") or {}
+            paper_id = str(seed_payload.get("paper_id") or "")
+            if not paper_id:
+                continue
+            seed_chunk_id = str(seed_payload.get("chunk_id") or seed.get("id") or "")
+            base_score = float(seed.get("score") or 0.0)
+            for entry in entries_by_paper.get(paper_id, []):
+                payload = entry.get("payload") or {}
+                chunk_id = str(payload.get("chunk_id") or entry.get("id") or "")
+                if chunk_id and chunk_id == seed_chunk_id:
+                    continue
+                distance = self._neighbor_distance(seed_payload, payload, window=window)
+                if distance is None:
+                    continue
+                score = base_score * max(0.55, 0.98 - 0.08 * distance)
+                item = {
+                    "id": entry["id"],
+                    "score": score,
+                    "payload": payload,
+                    "neighbor_score": score,
+                    "neighbor_distance": distance,
+                    "neighbor_source_chunk_id": seed_chunk_id,
+                }
+                existing = best_by_id.get(entry["id"])
+                if existing is None or item["score"] > existing["score"]:
+                    best_by_id[entry["id"]] = item
+
+        neighbors = list(best_by_id.values())
+        neighbors.sort(key=lambda item: item.get("neighbor_score", 0.0), reverse=True)
+        return neighbors[:limit]
+
+    @classmethod
+    def _neighbor_distance(
+        cls,
+        source: dict[str, Any],
+        candidate: dict[str, Any],
+        *,
+        window: int,
+    ) -> int | None:
+        source_global = cls._as_int(source.get("global_order"))
+        candidate_global = cls._as_int(candidate.get("global_order"))
+        if source_global is not None and candidate_global is not None:
+            distance = abs(candidate_global - source_global)
+            return distance if distance <= window else None
+
+        if source.get("page") is None or candidate.get("page") is None:
+            return None
+        if str(source.get("page")) != str(candidate.get("page")):
+            return None
+
+        source_order = cls._as_int(source.get("order_in_page"))
+        candidate_order = cls._as_int(candidate.get("order_in_page"))
+        if source_order is not None and candidate_order is not None:
+            distance = abs(candidate_order - source_order)
+            return distance if distance <= window else None
+
+        return 1 if cls._bbox_centers_are_close(source, candidate) else None
+
+    @staticmethod
+    def _as_int(value: Any) -> int | None:
+        try:
+            if value in (None, ""):
+                return None
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _bbox_centers_are_close(
+        source: dict[str, Any],
+        candidate: dict[str, Any],
+        *,
+        center_ratio: float = 0.12,
+    ) -> bool:
+        source_bbox = QdrantStore._normalize_bbox(source.get("bbox"))
+        candidate_bbox = QdrantStore._normalize_bbox(candidate.get("bbox"))
+        if not source_bbox or not candidate_bbox:
+            return False
+
+        width = QdrantStore._as_float(source.get("page_width")) or QdrantStore._as_float(candidate.get("page_width"))
+        height = QdrantStore._as_float(source.get("page_height")) or QdrantStore._as_float(candidate.get("page_height"))
+        if not width or not height:
+            return False
+
+        sx, sy = QdrantStore._bbox_center(source_bbox)
+        cx, cy = QdrantStore._bbox_center(candidate_bbox)
+        normalized_distance = ((sx / width - cx / width) ** 2 + (sy / height - cy / height) ** 2) ** 0.5
+        return normalized_distance <= center_ratio
+
+    @staticmethod
+    def _as_float(value: Any) -> float | None:
+        try:
+            if value in (None, ""):
+                return None
+            parsed = float(value)
+            return parsed if parsed > 0 else None
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _normalize_bbox(value: Any) -> tuple[float, float, float, float] | None:
+        if not isinstance(value, (list, tuple)) or len(value) != 4:
+            return None
+        try:
+            return tuple(float(item) for item in value)  # type: ignore[return-value]
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _bbox_center(bbox: tuple[float, float, float, float]) -> tuple[float, float]:
+        x0, y0, x1, y1 = bbox
+        return (x0 + x1) / 2.0, (y0 + y1) / 2.0
+
     def _lexical_candidates(
         self,
         query: str,
@@ -440,10 +884,124 @@ class QdrantStore:
         qdrant_filter: models.Filter | None,
         limit: int,
     ) -> list[dict[str, Any]]:
-        if not self._query_relevance_terms(query):
+        query_terms = self._query_relevance_terms(query)
+        if not query_terms:
             return []
+        requires_strict_anchor = self._query_requires_strict_anchor(query)
 
         scored: list[dict[str, Any]] = []
+        for entry in self._lexical_candidate_entries(
+            query_terms=query_terms,
+            qdrant_filter=qdrant_filter,
+            limit=limit,
+        ):
+            lexical_score = self._lexical_match_score_from_terms(
+                entry["normalized_text"],
+                query_terms=query_terms,
+                requires_strict_anchor=requires_strict_anchor,
+            )
+            if lexical_score <= 0:
+                continue
+            scored.append({
+                "id": entry["id"],
+                "score": lexical_score,
+                "payload": entry["payload"],
+                "lexical_score": lexical_score,
+            })
+
+        scored.sort(key=lambda item: item["lexical_score"], reverse=True)
+        return scored[:limit]
+
+    def _lexical_candidate_entries(
+        self,
+        *,
+        query_terms: dict[str, float],
+        qdrant_filter: models.Filter | None,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        if qdrant_filter is not None:
+            return self._lexical_document_entries(qdrant_filter=qdrant_filter)
+
+        index = self._lexical_document_index()
+        term_postings: dict[str, set[int]] = {}
+        for term in query_terms:
+            for index_term in self._lexical_index_terms(term):
+                postings = index["inverted"].get(index_term, set())
+                if postings:
+                    term_postings[index_term] = postings
+
+        if not term_postings:
+            return []
+
+        target_pool_size = max(limit * 8, 1000)
+        max_postings_per_term = max(target_pool_size * 2, 2000)
+        ranked_postings = [
+            item
+            for item in sorted(term_postings.items(), key=lambda item: len(item[1]))
+            if len(item[1]) <= max_postings_per_term
+        ]
+        if not ranked_postings:
+            return []
+
+        candidate_offsets: set[int] = set()
+        selected_terms = 0
+        for _term, postings in ranked_postings:
+            candidate_offsets.update(postings)
+            selected_terms += 1
+            if len(candidate_offsets) >= target_pool_size and selected_terms >= 3:
+                break
+            if selected_terms >= 12:
+                break
+
+        if not candidate_offsets:
+            return []
+        return [index["entries"][offset] for offset in sorted(candidate_offsets)]
+
+    def _lexical_document_index(self) -> dict[str, Any]:
+        cache = getattr(self, "_lexical_index_cache", None)
+        if cache is not None:
+            return cache
+
+        entries = self._lexical_document_entries(qdrant_filter=None)
+        inverted: dict[str, set[int]] = {}
+        for offset, entry in enumerate(entries):
+            for term in self._lexical_index_terms(entry.get("normalized_text", "")):
+                inverted.setdefault(term, set()).add(offset)
+
+        cache = {"entries": entries, "inverted": inverted}
+        self._lexical_index_cache = cache
+        return cache
+
+    @classmethod
+    def _lexical_index_terms(cls, value: str) -> set[str]:
+        normalized = cls._normalize_search_text(value)
+        terms: set[str] = set()
+        for token in re.findall(r"[a-z0-9]+|[\u4e00-\u9fff]+", normalized):
+            if len(token) < 2 or token in QUERY_STOPWORDS:
+                continue
+            terms.add(token)
+        return terms
+
+    def _lexical_document_entries(
+        self,
+        *,
+        qdrant_filter: models.Filter | None,
+    ) -> list[dict[str, Any]]:
+        if qdrant_filter is not None:
+            return self._scroll_lexical_document_entries(qdrant_filter=qdrant_filter)
+
+        cache = getattr(self, "_lexical_document_cache", None)
+        if cache is None:
+            cache = self._scroll_lexical_document_entries(qdrant_filter=None)
+            self._lexical_document_cache = cache
+        return cache
+
+    def _scroll_lexical_document_entries(
+        self,
+        *,
+        qdrant_filter: models.Filter | None,
+    ) -> list[dict[str, Any]]:
+        entries: list[dict[str, Any]] = []
         offset = None
         while True:
             points, offset = self.client.scroll(
@@ -456,23 +1014,17 @@ class QdrantStore:
             )
             for point in points:
                 payload = point.payload or {}
-                lexical_score = self._lexical_match_score(
-                    query,
-                    self._rerank_document_text(payload),
-                )
-                if lexical_score <= 0:
-                    continue
-                scored.append({
+                entries.append({
                     "id": point.id,
-                    "score": lexical_score,
                     "payload": payload,
-                    "lexical_score": lexical_score,
+                    "normalized_text": self._normalize_search_text(
+                        payload.get("search_text") or self._rerank_document_text(payload),
+                    ),
                 })
             if offset is None:
                 break
 
-        scored.sort(key=lambda item: item["lexical_score"], reverse=True)
-        return scored[:limit]
+        return entries
 
     def _rerank(
         self,
@@ -545,46 +1097,149 @@ class QdrantStore:
                 continue
             item["lexical_score"] = lexical_score
             item["rerank_score"] = item.get("score", 0.0)
-            boost_cap = 1.0 if cls._query_requires_strict_anchor(query) else 0.35
+            boost_cap = 1.35 if cls._query_requires_strict_anchor(query) else 0.35
             item["score"] = float(item.get("score", 0.0) or 0.0) + min(lexical_score, boost_cap)
         return sorted(results, key=lambda item: item.get("score", 0.0), reverse=True)
 
-    @staticmethod
-    def _rerank_document_text(payload: dict[str, Any]) -> str:
+    @classmethod
+    def _rerank_document_text(cls, payload: dict[str, Any]) -> str:
         fields = [
-            payload.get("paper_title", ""),
-            payload.get("category", ""),
-            ", ".join(map(str, payload.get("target_products") or [])),
-            ", ".join(map(str, payload.get("organisms") or [])),
-            payload.get("paper_summary", ""),
-            payload.get("content", ""),
+            cls._clean_rerank_title(str(payload.get("paper_title") or "")),
+            cls._clean_rerank_list(payload.get("target_products")),
+            cls._clean_rerank_list(payload.get("organisms")),
+            cls._clean_rerank_field(payload.get("paper_summary", "")),
+            cls._clean_rerank_field(payload.get("content", "")),
         ]
-        return "\n".join(str(field) for field in fields if field)
+        return "\n".join(str(field) for field in fields if str(field).strip())
+
+    @classmethod
+    def _clean_rerank_title(cls, value: str) -> str:
+        text = Path(str(value)).stem
+        text = re.sub(r"\(科研通-ablesci\.com\)", " ", text, flags=re.IGNORECASE)
+        text = re.sub(r"\s+", " ", text.replace("_", " ")).strip()
+        return cls._expand_scientific_aliases(text)
+
+    @classmethod
+    def _clean_rerank_list(cls, value: Any) -> str:
+        if value in (None, "", [], {}):
+            return ""
+        if isinstance(value, str):
+            items = re.split(r"[,;|/]\s*", value)
+        elif isinstance(value, (list, tuple, set)):
+            items = [str(item) for item in value]
+        else:
+            items = [str(value)]
+        cleaned = [
+            cls._expand_scientific_aliases(cls._clean_rerank_field(item))
+            for item in items
+            if str(item).strip()
+        ]
+        return ", ".join(dict.fromkeys(item for item in cleaned if item))
+
+    @classmethod
+    def _clean_rerank_field(cls, value: Any) -> str:
+        text = str(value or "")
+        text = re.sub(r"\[(?:标题|分类|位置|摘要|判断依据|产物|菌株)\]", " ", text)
+        text = re.sub(r"\b(?:text|table|image)\s*\|\s*chunk\s+\d+(?:/\d+)?", " ", text, flags=re.IGNORECASE)
+        text = re.sub(r"\bbiosynthesis_review\b|\bfermentation_experiment\b", " ", text, flags=re.IGNORECASE)
+        text = re.sub(r"\b(?:pdf|text|chunk)\b", " ", text, flags=re.IGNORECASE)
+        text = re.sub(r"\s+", " ", text).strip()
+        return cls._expand_scientific_aliases(text)
+
+    @staticmethod
+    def _expand_scientific_aliases(value: str) -> str:
+        text = str(value)
+        text = re.sub(r"2\s*[\u2032\u2019']?\s*-?\s*fl\b", "2'-FL 2-FL 2-fucosyllactose", text, flags=re.IGNORECASE)
+        text = re.sub(r"3\s*[\u2032\u2019']?\s*-?\s*fl\b", "3-FL 3-fucosyllactose", text, flags=re.IGNORECASE)
+        text = re.sub(r"\blnt\s*ii\b|\blntii\b", "LNT II lacto-N-triose II", text, flags=re.IGNORECASE)
+        text = re.sub(r"\blnnt\b", "LNnT lacto-N-neotetraose", text, flags=re.IGNORECASE)
+        text = re.sub(r"\blnt\b(?!\s*ii)", "LNT lacto-N-tetraose", text, flags=re.IGNORECASE)
+        text = re.sub(r"\be\.\s*coli\b", "E. coli Escherichia coli", text, flags=re.IGNORECASE)
+        return text
 
     @classmethod
     def _lexical_match_score(cls, query: str, text: str) -> float:
-        normalized = cls._normalize_search_text(text)
-        if not cls._has_required_query_anchor(query, normalized):
+        return cls._lexical_match_score_normalized(
+            query,
+            cls._normalize_search_text(text),
+        )
+
+    @classmethod
+    def _lexical_match_score_normalized(cls, query: str, normalized_text: str) -> float:
+        return cls._lexical_match_score_from_terms(
+            normalized_text,
+            query_terms=cls._query_relevance_terms(query),
+            requires_strict_anchor=cls._query_requires_strict_anchor(query),
+        )
+
+    @classmethod
+    def _lexical_match_score_from_terms(
+        cls,
+        normalized_text: str,
+        *,
+        query_terms: dict[str, float],
+        requires_strict_anchor: bool,
+    ) -> float:
+        if requires_strict_anchor and not cls._has_lnt_ii_anchor(normalized_text):
             return 0.0
         score = 0.0
-        for term, weight in cls._query_relevance_terms(query).items():
+        for term, weight in query_terms.items():
             if term == "lnt":
                 continue
-            if term in normalized:
+            if term in normalized_text:
                 score += weight
-        if "fermentation_experiment" in normalized or "fermentation experiment" in normalized:
+        if "fermentation_experiment" in normalized_text or "fermentation experiment" in normalized_text:
             score += 0.12
         return score
 
     @classmethod
+    def _lexical_idf_match_score_from_terms(
+        cls,
+        normalized_text: str,
+        *,
+        query_terms: dict[str, float],
+        requires_strict_anchor: bool,
+        lexical_index: dict[str, Any],
+    ) -> float:
+        if requires_strict_anchor and not cls._has_lnt_ii_anchor(normalized_text):
+            return 0.0
+        score = 0.0
+        for term, weight in query_terms.items():
+            if term == "lnt":
+                continue
+            if term in normalized_text:
+                score += weight * cls._lexical_term_idf(term, lexical_index)
+        if "fermentation_experiment" in normalized_text or "fermentation experiment" in normalized_text:
+            score += 0.12
+        return score
+
+    @classmethod
+    def _lexical_term_idf(cls, term: str, lexical_index: dict[str, Any]) -> float:
+        index_terms = cls._lexical_index_terms(term)
+        if not index_terms:
+            return 1.0
+        total = max(len(lexical_index.get("entries") or []), 1)
+        frequencies = [
+            len(lexical_index["inverted"].get(index_term, set()))
+            for index_term in index_terms
+            if index_term in lexical_index["inverted"]
+        ]
+        document_frequency = min(frequencies) if frequencies else total
+        return 1.0 + math.log((total + 1) / (document_frequency + 1))
+
+    @classmethod
     def _has_required_query_anchor(cls, query: str, normalized_text: str) -> bool:
         if cls._query_requires_strict_anchor(query):
-            return (
-                "lnt ii" in normalized_text
-                or "lacto n triose ii" in normalized_text
-                or "lacto-n-triose ii" in normalized_text
-            )
+            return cls._has_lnt_ii_anchor(normalized_text)
         return True
+
+    @classmethod
+    def _has_lnt_ii_anchor(cls, normalized_text: str) -> bool:
+        return (
+            "lnt ii" in normalized_text
+            or "lacto n triose ii" in normalized_text
+            or "lacto-n-triose ii" in normalized_text
+        )
 
     @classmethod
     def _query_requires_strict_anchor(cls, query: str) -> bool:
@@ -614,8 +1269,8 @@ class QdrantStore:
             add("lnt ii", 0.30)
             add("lacto-n-triose ii", 0.30)
             add("lacto n triose ii", 0.30)
-            add("lgtA", 0.12)
-            add("RBS", 0.10)
+            add("lgtA", 0.20)
+            add("RBS", 0.18)
         if "大肠杆菌" in query:
             add("escherichia coli", 0.16)
             add("e. coli", 0.16)
@@ -637,7 +1292,7 @@ class QdrantStore:
 
     @staticmethod
     def _normalize_search_text(value: str) -> str:
-        text = str(value).lower()
+        text = QdrantStore._expand_scientific_aliases(str(value)).lower()
         text = text.replace("\u00ad", "")
         text = re.sub(r"[\u2010-\u2015−]", "-", text)
         text = re.sub(r"[^a-z0-9\u4e00-\u9fff]+", " ", text)
@@ -696,7 +1351,12 @@ class QdrantStore:
         """删除并重建 collection，清空所有数据。"""
         self.client.delete_collection(collection_name=self.collection)
         self._ensure_collection()
+        self._invalidate_lexical_cache()
         logger.info("Cleared collection '%s'", self.collection)
+
+    def _invalidate_lexical_cache(self) -> None:
+        self._lexical_document_cache = None
+        self._lexical_index_cache = None
 
     def list_papers(self) -> list[dict[str, Any]]:
         """列出已入库的论文（去重 paper_id），每项含 paper_title / paper_id / chunk_count。

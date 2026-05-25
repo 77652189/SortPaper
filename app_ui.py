@@ -1047,11 +1047,19 @@ def _render_manual_search(paper_id: str | None = None) -> None:
     )
     use_rerank = st.checkbox("启用 Rerank（qwen3-rerank 二次排序）", value=True,
                               help="先 Hybrid 召回，再用 Rerank 模型精排", key="manual_rerank")
+    use_lexical_backfill = st.checkbox(
+        "增强 chunk 召回（实验）",
+        value=False,
+        help="额外补入词面匹配候选，可能提升证据 chunk 召回，但首次检索会更慢",
+        key="manual_lexical_backfill",
+    )
     if st.button("🔍 检索", key="manual_search_btn"):
         if not query.strip():
             st.warning("请输入查询内容")
             return
         spinner_text = "Hybrid 检索 + Rerank 中…" if use_rerank else "Hybrid 检索中…"
+        if use_lexical_backfill:
+            spinner_text = spinner_text.replace("中…", " + 增强召回中…")
         filter_kwargs = {"is_actionable": True} if use_quality_filter else None
         with st.spinner(spinner_text):
             results = qdrant_search(
@@ -1060,6 +1068,7 @@ def _render_manual_search(paper_id: str | None = None) -> None:
                 top_k,
                 rerank=use_rerank,
                 filter_kwargs=filter_kwargs,
+                lexical_backfill=use_lexical_backfill,
             )
         if not results:
             st.warning("未找到相关结果")
@@ -1106,6 +1115,12 @@ def _render_agent_search(paper_id: str | None = None) -> None:
                             key="agent_question", height=100)
     max_rounds = st.slider("最大检索轮次", 1, 3, 2, key="agent_rounds",
                             help="每轮可调用一次 search_literature，多轮可换角度再查")
+    use_lexical_backfill = st.checkbox(
+        "增强 chunk 召回（实验）",
+        value=False,
+        help="Agent 检索时额外补入词面匹配候选，可能提升证据 chunk 召回，但首次检索会更慢",
+        key="agent_lexical_backfill",
+    )
 
     if st.button("🤖 Agent 检索", key="agent_search_btn", type="primary"):
         if not question.strip():
@@ -1114,7 +1129,7 @@ def _render_agent_search(paper_id: str | None = None) -> None:
 
         from src.agent.literature_agent import LiteratureAgent
 
-        agent = LiteratureAgent()
+        agent = LiteratureAgent(lexical_backfill=use_lexical_backfill)
         with st.spinner("Agent 分析中（检索 + 综合建议）…"):
             result = agent.query(question, max_rounds=max_rounds)
 

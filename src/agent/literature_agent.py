@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from typing import Any
 
 from src.store.qdrant_store import QdrantStore
@@ -103,8 +104,15 @@ SYNTHESIS_PROMPT = """基于以下文献检索结果，回答用户问题。
 class LiteratureAgent:
     """文献检索 Agent，封装 Qwen function calling 循环。"""
 
-    def __init__(self, model: str = "qwen-plus"):
+    def __init__(
+        self,
+        model: str = "qwen-plus",
+        lexical_backfill: bool = False,
+        expand_neighbor_context: bool = True,
+    ):
         self.model = model
+        self.lexical_backfill = lexical_backfill
+        self.expand_neighbor_context = expand_neighbor_context
         self.store = QdrantStore()
         self._search_history: list[dict[str, Any]] = []
         self._all_chunks: list[dict[str, Any]] = []
@@ -210,11 +218,31 @@ class LiteratureAgent:
         if args.get("credibility_gte"):
             filter_kwargs["credibility_gte"] = args["credibility_gte"]
 
+        started = time.monotonic()
         results = self.store.search(
             query=query,
             limit=5,
             filter_kwargs=filter_kwargs if filter_kwargs else None,
             rerank=True,
+            lexical_backfill=self.lexical_backfill,
+        )
+        elapsed_ms = (time.monotonic() - started) * 1000
+        context_results: list[dict[str, Any]] = []
+        if self.expand_neighbor_context:
+            context_results = self.store.expand_neighbor_context(
+                results,
+                filter_kwargs=filter_kwargs if filter_kwargs else None,
+                per_result_limit=2,
+                total_limit=5,
+            )
+        logger.info(
+            "Agent literature search | lexical_backfill=%s expand_neighbor_context=%s filters=%s hits=%s context_hits=%s elapsed_ms=%.1f",
+            self.lexical_backfill,
+            self.expand_neighbor_context,
+            sorted(filter_kwargs.keys()),
+            len(results),
+            len(context_results),
+            elapsed_ms,
         )
 
         formatted = []
@@ -227,6 +255,12 @@ class LiteratureAgent:
                 "page": p.get("page", "?"),
                 "content_type": p.get("content_type", "text"),
             })
+            self._all_chunks.append(p)
+        for r in context_results:
+            p = dict(r.get("payload", {}) or {})
+            p["_context_expansion"] = True
+            p["_neighbor_source_chunk_id"] = r.get("neighbor_source_chunk_id")
+            p["_neighbor_distance"] = r.get("neighbor_distance")
             self._all_chunks.append(p)
 
         return formatted

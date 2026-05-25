@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import time
 from datetime import datetime
 
 from app_config import RESULTS_DIR
@@ -185,6 +186,7 @@ def qdrant_search(
     top_k: int = 5,
     rerank: bool = False,
     filter_kwargs: dict | None = None,
+    lexical_backfill: bool = False,
 ) -> list[dict]:
     import sys
     sys.path.insert(0, ".")
@@ -194,9 +196,22 @@ def qdrant_search(
     filters = dict(filter_kwargs or {})
     if paper_id:
         filters["paper_id"] = paper_id
+    started = time.monotonic()
     results = store.search(
         query=query, limit=top_k,
-        filter_kwargs=filters or None, rerank=rerank,
+        filter_kwargs=filters or None,
+        rerank=rerank,
+        lexical_backfill=lexical_backfill,
+    )
+    elapsed_ms = (time.monotonic() - started) * 1000
+    logger.info(
+        "Qdrant search | top_k=%s rerank=%s lexical_backfill=%s filters=%s hits=%s elapsed_ms=%.1f",
+        top_k,
+        rerank,
+        lexical_backfill,
+        sorted(filters.keys()),
+        len(results),
+        elapsed_ms,
     )
     return [
         {"id": r["id"], "score": r["score"],

@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from src.store.qdrant_store import (
     QdrantStore,
     dashscope_rerank_api_key,
+    DENSE_VECTOR_NAME,
     openai_embedding_client_kwargs,
     qdrant_point_id,
 )
@@ -127,6 +128,433 @@ def test_lnt_query_boost_promotes_specific_mechanism_chunk() -> None:
 
     assert boosted[0]["id"] == "mechanism"
     assert boosted[0]["lexical_score"] > boosted[1]["lexical_score"]
+
+
+def test_rerank_document_text_cleans_payload_noise_and_keeps_domain_terms() -> None:
+    payload = {
+        "paper_title": "2021-Example_2′-FL_paper(科研通-ablesci.com).pdf",
+        "category": "fermentation_experiment",
+        "target_products": ["2′-FL"],
+        "organisms": ["E. coli"],
+        "paper_summary": "[分类] biosynthesis_review | text | chunk 1/2",
+        "content": "[标题] demo.pdf [位置] text | chunk 3/9 E. coli produces 2′-FL.",
+    }
+
+    text = QdrantStore._rerank_document_text(payload).lower()
+
+    assert "pdf" not in text
+    assert "text | chunk" not in text
+    assert "biosynthesis_review" not in text
+    assert "fermentation_experiment" not in text
+    assert "2-fucosyllactose" in text
+    assert "escherichia coli" in text
+
+
+def test_add_writes_search_text_payload(monkeypatch) -> None:
+    class FakeClient:
+        def __init__(self) -> None:
+            self.points = []
+
+        def get_collection(self, _collection):
+            return SimpleNamespace(
+                config=SimpleNamespace(
+                    params=SimpleNamespace(
+                        vectors={DENSE_VECTOR_NAME: SimpleNamespace(size=2)}
+                    )
+                )
+            )
+
+        def upsert(self, **kwargs):
+            self.points.extend(kwargs["points"])
+
+    store = QdrantStore.__new__(QdrantStore)
+    store.client = FakeClient()
+    store.collection = "papers"
+    store._lexical_document_cache = None
+    monkeypatch.setattr(QdrantStore, "_uses_sparse_vectors", property(lambda _self: False))
+    monkeypatch.setattr(store, "embed", lambda _text: ([0.1, 0.2], {}))
+
+    store.add(
+        paper_id="paper-1",
+        worker_type="text",
+        content="E. coli improves LNTII through lgtA.",
+        metadata={
+            "chunk_id": "chunk-1",
+            "paper_title": "demo.pdf",
+            "target_products": ["LNTII"],
+            "organisms": ["E. coli"],
+        },
+    )
+
+    payload = store.client.points[0].payload
+
+    assert "search_text" in payload
+    assert "lacto-N-triose II" in payload["search_text"]
+    assert "Escherichia coli" in payload["search_text"]
+
+
+def test_lexical_entries_prefer_search_text_over_rerank_text() -> None:
+    class FakeClient:
+        def scroll(self, **_kwargs):
+            return [
+                SimpleNamespace(
+                    id="point-1",
+                    payload={
+                        "paper_id": "paper-1",
+                        "chunk_id": "chunk-1",
+                        "content": "unrelated content",
+                        "search_text": "RBS lgtA lacto-N-triose II",
+                    },
+                )
+            ], None
+
+    store = QdrantStore.__new__(QdrantStore)
+    store.client = FakeClient()
+    store.collection = "papers"
+
+    candidates = store._lexical_candidates(
+        "lacto-N-triose II lgtA",
+        qdrant_filter=None,
+        limit=5,
+    )
+
+    assert candidates[0]["id"] == "point-1"
+
+
+def test_lexical_candidates_cache_unfiltered_scroll_results() -> None:
+    class FakeClient:
+        def __init__(self) -> None:
+            self.scroll_calls = 0
+
+        def scroll(self, **_kwargs):
+            self.scroll_calls += 1
+            return [
+                SimpleNamespace(
+                    id="point-1",
+                    payload={
+                        "paper_id": "paper-1",
+                        "chunk_id": "chunk-1",
+                        "content": (
+                            "RBS optimization improved lgtA expression for "
+                            "lacto-N-triose II biosynthesis."
+                        ),
+                    },
+                )
+            ], None
+
+    store = QdrantStore.__new__(QdrantStore)
+    store.client = FakeClient()
+    store.collection = "papers"
+
+    first = store._lexical_candidates(
+        "lacto-N-triose II lgtA",
+        qdrant_filter=None,
+        limit=5,
+    )
+    second = store._lexical_candidates(
+        "lacto-N-triose II lgtA",
+        qdrant_filter=None,
+        limit=5,
+    )
+
+    assert store.client.scroll_calls == 1
+    assert first[0]["id"] == "point-1"
+    assert second[0]["id"] == "point-1"
+
+
+def test_lexical_candidates_use_index_to_score_only_matching_entries(monkeypatch) -> None:
+    class FakeClient:
+        def scroll(self, **_kwargs):
+            return [
+                SimpleNamespace(
+                    id="point-target",
+                    payload={
+                        "paper_id": "paper-1",
+                        "chunk_id": "chunk-target",
+                        "content": "RBS optimization improved lgtA expression.",
+                    },
+                ),
+                SimpleNamespace(
+                    id="point-noise",
+                    payload={
+                        "paper_id": "paper-2",
+                        "chunk_id": "chunk-noise",
+                        "content": "A distant discussion about unrelated glycan yields.",
+                    },
+                ),
+            ], None
+
+    store = QdrantStore.__new__(QdrantStore)
+    store.client = FakeClient()
+    store.collection = "papers"
+
+    original = QdrantStore._lexical_match_score_from_terms.__func__
+    scored_texts: list[str] = []
+
+    def wrapped(cls, normalized_text, *, query_terms, requires_strict_anchor):
+        scored_texts.append(normalized_text)
+        return original(
+            cls,
+            normalized_text,
+            query_terms=query_terms,
+            requires_strict_anchor=requires_strict_anchor,
+        )
+
+    monkeypatch.setattr(
+        QdrantStore,
+        "_lexical_match_score_from_terms",
+        classmethod(wrapped),
+    )
+
+    candidates = store._lexical_candidates(
+        "lgtA",
+        qdrant_filter=None,
+        limit=5,
+    )
+
+    assert [item["id"] for item in candidates] == ["point-target"]
+    assert len(scored_texts) == 1
+    assert "lgta" in scored_texts[0]
+
+
+def test_neighbor_candidates_add_adjacent_chunks_from_same_paper() -> None:
+    class FakeClient:
+        def scroll(self, **_kwargs):
+            return [
+                SimpleNamespace(
+                    id="point-near",
+                    payload={
+                        "paper_id": "paper-1",
+                        "chunk_id": "chunk-near",
+                        "global_order": 11,
+                        "content": "Nearby evidence chunk.",
+                    },
+                ),
+                SimpleNamespace(
+                    id="point-far",
+                    payload={
+                        "paper_id": "paper-1",
+                        "chunk_id": "chunk-far",
+                        "global_order": 20,
+                        "content": "Far chunk.",
+                    },
+                ),
+                SimpleNamespace(
+                    id="point-other-paper",
+                    payload={
+                        "paper_id": "paper-2",
+                        "chunk_id": "chunk-other",
+                        "global_order": 11,
+                        "content": "Other paper chunk.",
+                    },
+                ),
+            ], None
+
+    store = QdrantStore.__new__(QdrantStore)
+    store.client = FakeClient()
+    store.collection = "papers"
+
+    results = [{
+        "id": "point-seed",
+        "score": 0.8,
+        "payload": {
+            "paper_id": "paper-1",
+            "chunk_id": "chunk-seed",
+            "global_order": 10,
+        },
+    }]
+
+    merged = store._merge_neighbor_candidates(
+        results=results,
+        qdrant_filter=None,
+        limit=5,
+        window=2,
+    )
+
+    assert [item["id"] for item in merged] == ["point-seed", "point-near"]
+    assert merged[1]["neighbor_source_chunk_id"] == "chunk-seed"
+
+
+def test_expand_neighbor_context_returns_only_context_chunks() -> None:
+    class FakeClient:
+        def scroll(self, **_kwargs):
+            return [
+                SimpleNamespace(
+                    id="point-seed",
+                    payload={
+                        "paper_id": "paper-1",
+                        "chunk_id": "chunk-seed",
+                        "global_order": 10,
+                        "content": "Seed chunk.",
+                    },
+                ),
+                SimpleNamespace(
+                    id="point-near",
+                    payload={
+                        "paper_id": "paper-1",
+                        "chunk_id": "chunk-near",
+                        "global_order": 11,
+                        "content": "Nearby context chunk.",
+                    },
+                ),
+            ], None
+
+    store = QdrantStore.__new__(QdrantStore)
+    store.client = FakeClient()
+    store.collection = "papers"
+
+    context = store.expand_neighbor_context(
+        [{
+            "id": "point-seed",
+            "score": 0.8,
+            "payload": {
+                "paper_id": "paper-1",
+                "chunk_id": "chunk-seed",
+                "global_order": 10,
+            },
+        }],
+        total_limit=5,
+    )
+
+    assert [item["id"] for item in context] == ["point-near"]
+    assert context[0]["context_expansion"] is True
+
+
+def test_normalize_search_text_expands_common_hmo_aliases() -> None:
+    normalized = QdrantStore._normalize_search_text(
+        "LNTII, LNnT, 2′-FL, and E. coli"
+    )
+
+    assert "lacto n triose ii" in normalized
+    assert "lacto n neotetraose" in normalized
+    assert "2 fucosyllactose" in normalized
+    assert "escherichia coli" in normalized
+
+
+def test_rank_papers_from_results_keeps_first_unique_order() -> None:
+    results = [
+        {"payload": {"paper_id": "paper-a"}},
+        {"payload": {"paper_id": "paper-a"}},
+        {"payload": {"paper_id": "paper-b"}},
+        {"payload": {"paper_id": ""}},
+        {"payload": {"paper_id": "paper-c"}},
+    ]
+
+    assert QdrantStore._rank_papers_from_results(results, limit=2) == ["paper-a", "paper-b"]
+
+
+def test_interleave_ranked_groups_and_deduplicate_results() -> None:
+    groups = [
+        [
+            {"id": "a1", "payload": {"paper_id": "paper-a", "chunk_id": "1"}},
+            {"id": "a2", "payload": {"paper_id": "paper-a", "chunk_id": "2"}},
+        ],
+        [
+            {"id": "b1", "payload": {"paper_id": "paper-b", "chunk_id": "1"}},
+        ],
+    ]
+
+    interleaved = QdrantStore._interleave_ranked_groups(groups)
+    assert [item["id"] for item in interleaved] == ["a1", "b1", "a2"]
+
+    deduped = QdrantStore._deduplicate_results(interleaved + [interleaved[0]])
+    assert [item["id"] for item in deduped] == ["a1", "b1", "a2"]
+
+
+def test_prioritize_evidence_groups_keeps_representatives_then_lead_depth() -> None:
+    groups = [
+        [{"id": "a1"}, {"id": "a2"}, {"id": "a3"}],
+        [{"id": "b1"}, {"id": "b2"}],
+        [{"id": "c1"}, {"id": "c2"}],
+    ]
+
+    prioritized = QdrantStore._prioritize_evidence_groups(groups)
+
+    assert [item["id"] for item in prioritized] == [
+        "a1", "b1", "c1", "a2", "a3", "b2", "c2",
+    ]
+
+
+def test_search_paper_local_evidence_rescores_chunks_inside_ranked_papers() -> None:
+    class FakeClient:
+        def scroll(self, **_kwargs):
+            return [
+                SimpleNamespace(
+                    id="point-target",
+                    payload={
+                        "paper_id": "paper-1",
+                        "chunk_id": "chunk-target",
+                        "content": "RBS optimization improved lgtA expression for lacto-N-triose II.",
+                    },
+                ),
+                SimpleNamespace(
+                    id="point-noise",
+                    payload={
+                        "paper_id": "paper-1",
+                        "chunk_id": "chunk-noise",
+                        "content": "A generic introduction about human milk oligosaccharides.",
+                    },
+                ),
+                SimpleNamespace(
+                    id="point-other-paper",
+                    payload={
+                        "paper_id": "paper-2",
+                        "chunk_id": "chunk-other",
+                        "content": "RBS optimization improved lgtA expression for lacto-N-triose II.",
+                    },
+                ),
+            ], None
+
+    store = QdrantStore.__new__(QdrantStore)
+    store.client = FakeClient()
+    store.collection = "papers"
+    store.search = lambda **_kwargs: [
+        {
+            "id": "point-representative",
+            "score": 0.9,
+            "payload": {
+                "paper_id": "paper-1",
+                "chunk_id": "chunk-representative",
+                "content": "Paper-level representative hit.",
+            },
+        }
+    ]
+
+    results = store.search_paper_local_evidence(
+        "lacto-N-triose II lgtA",
+        limit=3,
+        lexical_backfill=True,
+    )
+
+    assert results[0]["id"] == "point-target"
+    assert results[0]["evidence_stage"] == "paper_local"
+    assert "point-other-paper" not in [item["id"] for item in results]
+
+
+def test_lexical_idf_score_prefers_rare_matching_terms() -> None:
+    lexical_index = {
+        "entries": [{}, {}, {}, {}],
+        "inverted": {
+            "common": {0, 1, 2, 3},
+            "rare": {0},
+        },
+    }
+    query_terms = {"common": 0.2, "rare": 0.2}
+
+    rare_score = QdrantStore._lexical_idf_match_score_from_terms(
+        "common rare",
+        query_terms=query_terms,
+        requires_strict_anchor=False,
+        lexical_index=lexical_index,
+    )
+    common_score = QdrantStore._lexical_idf_match_score_from_terms(
+        "common",
+        query_terms=query_terms,
+        requires_strict_anchor=False,
+        lexical_index=lexical_index,
+    )
+
+    assert rare_score > common_score
 
 
 def test_list_papers_marks_legacy_without_quality_as_pending() -> None:
