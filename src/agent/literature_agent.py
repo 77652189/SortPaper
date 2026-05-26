@@ -18,9 +18,15 @@ import os
 import time
 from typing import Any
 
+from src.runtime_env import load_project_env
+from src.retrieval.multi_query import multi_query_search
 from src.store.qdrant_store import QdrantStore
 
+load_project_env()
+
 logger = logging.getLogger(__name__)
+
+DEFAULT_DEEPSEEK_SYNTHESIS_MODEL = "deepseek-v4-flash"
 
 
 def _env_value(name: str, default: str = "") -> str:
@@ -109,13 +115,18 @@ class LiteratureAgent:
         model: str = "qwen-plus",
         lexical_backfill: bool = False,
         expand_neighbor_context: bool = True,
+        use_query_rewrite: bool = False,
+        multi_query_recall: bool = False,
     ):
         self.model = model
         self.lexical_backfill = lexical_backfill
         self.expand_neighbor_context = expand_neighbor_context
+        self.use_query_rewrite = use_query_rewrite
+        self.multi_query_recall = multi_query_recall
         self.store = QdrantStore()
         self._search_history: list[dict[str, Any]] = []
         self._all_chunks: list[dict[str, Any]] = []
+        self._last_search_meta: dict[str, Any] = {}
 
     def query(self, user_question: str, max_rounds: int = 3) -> dict[str, Any]:
         """执行 Agent 查询，返回最终回答 + 检索历史。"""
@@ -124,6 +135,7 @@ class LiteratureAgent:
 
         self._search_history = []
         self._all_chunks = []
+        self._last_search_meta = {}
 
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -182,7 +194,10 @@ class LiteratureAgent:
                     )
 
                     tool_result = self._execute_tool(func_name, args)
-                    self._search_history.append({"round": round_idx, "args": args, "hits": len(tool_result)})
+                    history_item = {"round": round_idx, "args": args, "hits": len(tool_result)}
+                    if self._last_search_meta:
+                        history_item["search_meta"] = self._last_search_meta
+                    self._search_history.append(history_item)
 
                     messages.append({
                         "role": "tool",
@@ -208,6 +223,7 @@ class LiteratureAgent:
         if name != "search_literature":
             return [{"error": f"Unknown tool: {name}"}]
 
+        self._last_search_meta = {}
         query = args.get("query", "")
         if not query:
             return [{"error": "query 不能为空"}]
@@ -219,13 +235,28 @@ class LiteratureAgent:
             filter_kwargs["credibility_gte"] = args["credibility_gte"]
 
         started = time.monotonic()
-        results = self.store.search(
-            query=query,
-            limit=5,
-            filter_kwargs=filter_kwargs if filter_kwargs else None,
-            rerank=True,
-            lexical_backfill=self.lexical_backfill,
-        )
+        search_meta: dict[str, Any] = {}
+        if self.use_query_rewrite or self.multi_query_recall:
+            multi_result = multi_query_search(
+                self.store,
+                query,
+                limit=5,
+                filter_kwargs=filter_kwargs if filter_kwargs else None,
+                rerank=True,
+                lexical_backfill=self.lexical_backfill,
+                use_query_rewrite=self.use_query_rewrite or self.multi_query_recall,
+                route_limit=4 if self.multi_query_recall else 2,
+            )
+            results = multi_result.results
+            search_meta = multi_result.metadata()
+        else:
+            results = self.store.search(
+                query=query,
+                limit=5,
+                filter_kwargs=filter_kwargs if filter_kwargs else None,
+                rerank=True,
+                lexical_backfill=self.lexical_backfill,
+            )
         elapsed_ms = (time.monotonic() - started) * 1000
         context_results: list[dict[str, Any]] = []
         if self.expand_neighbor_context:
@@ -236,8 +267,10 @@ class LiteratureAgent:
                 total_limit=5,
             )
         logger.info(
-            "Agent literature search | lexical_backfill=%s expand_neighbor_context=%s filters=%s hits=%s context_hits=%s elapsed_ms=%.1f",
+            "Agent literature search | lexical_backfill=%s query_rewrite=%s multi_query=%s expand_neighbor_context=%s filters=%s hits=%s context_hits=%s elapsed_ms=%.1f",
             self.lexical_backfill,
+            self.use_query_rewrite,
+            self.multi_query_recall,
             self.expand_neighbor_context,
             sorted(filter_kwargs.keys()),
             len(results),
@@ -254,8 +287,10 @@ class LiteratureAgent:
                 "paper_title": p.get("paper_title", ""),
                 "page": p.get("page", "?"),
                 "content_type": p.get("content_type", "text"),
+                "matched_routes": r.get("matched_routes", []),
             })
             self._all_chunks.append(p)
+        self._last_search_meta = search_meta
         for r in context_results:
             p = dict(r.get("payload", {}) or {})
             p["_context_expansion"] = True
@@ -285,7 +320,7 @@ class LiteratureAgent:
                 timeout=60.0,
             )
             response = client.chat.completions.create(
-                model="deepseek-chat",
+                model=_env_value("SORTPAPER_AGENT_SYNTHESIS_MODEL", DEFAULT_DEEPSEEK_SYNTHESIS_MODEL),
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
                 max_tokens=2048,

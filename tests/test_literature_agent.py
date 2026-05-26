@@ -140,6 +140,56 @@ def test_agent_search_keeps_lexical_backfill_disabled_by_default(monkeypatch) ->
     assert captured["lexical_backfill"] is False
 
 
+def test_agent_search_can_use_query_rewrite_multi_query(monkeypatch) -> None:
+    import src.agent.literature_agent as literature_agent
+
+    captured: dict[str, object] = {}
+
+    class CapturingStore:
+        def search(self, **_kwargs):
+            return []
+
+        def expand_neighbor_context(self, *_args, **_kwargs):
+            return []
+
+    def fake_multi_query_search(store, query, **kwargs):
+        captured["store"] = store
+        captured["query"] = query
+        captured.update(kwargs)
+        return SimpleNamespace(
+            results=[
+                {
+                    "score": 0.9,
+                    "matched_routes": ["raw", "normalized"],
+                    "payload": {
+                        "content": "RBS optimization improved lgtA expression.",
+                        "paper_title": "LNT II paper",
+                        "page": 3,
+                        "content_type": "text",
+                    },
+                }
+            ],
+            metadata=lambda: {"routes": [{"source": "raw"}, {"source": "normalized"}]},
+        )
+
+    monkeypatch.setattr(literature_agent, "QdrantStore", lambda: CapturingStore())
+    monkeypatch.setattr(literature_agent, "multi_query_search", fake_multi_query_search)
+
+    agent = literature_agent.LiteratureAgent(
+        lexical_backfill=True,
+        use_query_rewrite=True,
+        multi_query_recall=True,
+    )
+    result = agent._execute_tool("search_literature", {"query": "LNT II accumulation"})
+
+    assert captured["query"] == "LNT II accumulation"
+    assert captured["rerank"] is True
+    assert captured["lexical_backfill"] is True
+    assert captured["use_query_rewrite"] is True
+    assert captured["route_limit"] == 4
+    assert result[0]["matched_routes"] == ["raw", "normalized"]
+
+
 def test_agent_expands_neighbor_context_without_returning_as_search_hits(monkeypatch) -> None:
     import src.agent.literature_agent as literature_agent
 

@@ -10,8 +10,9 @@ import threading
 import time
 from pathlib import Path
 
-from dotenv import load_dotenv
-load_dotenv()
+from src.runtime_env import load_project_env
+
+load_project_env()
 
 from app_config import EMBEDDING_API_KEY_ENV
 from app_utils import build_paper_id, _chunk_to_dict, _generate_chunk_description

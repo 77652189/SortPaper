@@ -132,6 +132,37 @@ When search results look wrong, check in this order:
 
 For example, an LNT II question requires the actual LNT II primary paper, not only HMO reviews or LNT II citations inside 2'-FL papers.
 
+## Query Rewrite and Multi-Query Recall
+
+SortPaper now includes an experimental query rewrite and multi-query recall path for evidence search.
+
+- Query rewrite uses DeepSeek V4 Flash to normalize Chinese or informal questions into concise English scientific search queries.
+- Multi-query recall fans out across the original query, the normalized query, and short variants, then merges results with a protected original-query anchor.
+- The original-query top results are protected so rewritten variants can fill recall gaps without pushing already-good evidence out of the first page.
+- Manual search and Agent search expose these features as explicit UI switches. They are intentionally off by default.
+
+Current smoke evaluation shows protected multi-query recall no longer hurts the lexical baseline, but it has not yet proven a stable recall gain and adds latency:
+
+```text
+lexical baseline smoke20:
+chunk_hit@10 = 0.4545
+nearby_chunk_hit@10 = 0.5455
+elapsed_ms_p50 = 713ms
+
+multi-query protected smoke20:
+chunk_hit@10 = 0.4545
+nearby_chunk_hit@10 = 0.5455
+elapsed_ms_p50 = 3225ms
+```
+
+Run the evaluation with:
+
+```bash
+python evals/retrieval_eval.py --max-cases 60 --ks 1 3 5 10 --strategy standard --lexical-backfill --multi-query --out reports/retrieval_eval_multi_query_lexical60_top10.json
+```
+
+More details are in `evals/QUERY_REWRITE.md`.
+
 ## Project Structure
 
 ```text
@@ -149,6 +180,7 @@ SortPaper/
 |   +-- parsers/
 |   |   +-- table/                 # Table detection, extraction, cleanup, dedup, fallback
 |   |   +-- layout_chunk.py        # Shared chunk model
+|   +-- retrieval/                 # Query rewrite and multi-query recall helpers
 |   +-- store/
 |       +-- qdrant_store.py        # Qdrant collection, embedding, search, rerank
 |       +-- chunk_storage.py       # Parsed-result storage boundary

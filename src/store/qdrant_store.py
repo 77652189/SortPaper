@@ -16,6 +16,10 @@ import time
 from pathlib import Path
 from typing import Any
 
+from src.runtime_env import load_project_env
+
+load_project_env()
+
 def _stable_hash(s: str) -> int:
     """确定性哈希，替代 Python hash()（跨进程不稳定）。"""
     return int(hashlib.md5(s.encode()).hexdigest()[:16], 16)

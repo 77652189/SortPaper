@@ -25,6 +25,8 @@ except Exception:
     pass
 
 from src.store.qdrant_store import QdrantStore
+from src.retrieval.multi_query import multi_query_search
+from src.retrieval.query_rewrite import QueryRewrite, rewrite_query
 
 
 DEFAULT_KS = (1, 3, 5, 10, 20)
@@ -115,6 +117,8 @@ class CaseResult:
     top_titles: list[str]
     top_scores: list[float]
     elapsed_ms: float = 0.0
+    query_used: str = ""
+    query_rewrite: dict[str, Any] | None = None
 
 
 def normalize_list(value: Any) -> list[str]:
@@ -468,11 +472,27 @@ def evaluate_case(
     paper_limit: int = 8,
     per_paper_limit: int = 4,
     lead_paper_limit: int = 12,
+    rewritten_query: QueryRewrite | None = None,
+    multi_query: bool = False,
 ) -> CaseResult:
+    query = rewritten_query.normalized_query if rewritten_query and rewritten_query.normalized_query else case.query
     started = time.perf_counter()
-    if strategy == "two-stage":
-        results = store.search_evidence(
+    if multi_query:
+        multi_result = multi_query_search(
+            store,
             case.query,
+            limit=top_k,
+            rerank=rerank,
+            lexical_backfill=lexical_backfill,
+            neighbor_backfill=neighbor_backfill,
+            rewritten_query=rewritten_query,
+            route_limit=4,
+        )
+        results = multi_result.results
+        query = " | ".join(route.query for route in multi_result.routes)
+    elif strategy == "two-stage":
+        results = store.search_evidence(
+            query,
             limit=top_k,
             rerank=rerank,
             lexical_backfill=lexical_backfill,
@@ -480,7 +500,7 @@ def evaluate_case(
         )
     elif strategy == "paper-local":
         results = store.search_paper_local_evidence(
-            case.query,
+            query,
             limit=top_k,
             rerank=rerank,
             lexical_backfill=lexical_backfill,
@@ -491,7 +511,7 @@ def evaluate_case(
         )
     else:
         results = store.search(
-            case.query,
+            query,
             limit=top_k,
             rerank=rerank,
             lexical_backfill=lexical_backfill,
@@ -525,6 +545,8 @@ def evaluate_case(
         top_titles=top_titles,
         top_scores=top_scores,
         elapsed_ms=elapsed_ms,
+        query_used=query,
+        query_rewrite=rewritten_query.to_dict() if rewritten_query else None,
     )
 
 
@@ -615,6 +637,14 @@ def run_eval(args: argparse.Namespace) -> dict[str, Any]:
         raise SystemExit("No retrieval eval cases could be generated from Qdrant payloads.")
 
     top_k = max(args.ks)
+    rewrites: dict[str, QueryRewrite] = {}
+    if args.query_rewrite or args.multi_query:
+        for case in cases:
+            rewrites[case.id] = rewrite_query(
+                case.query,
+                model=args.query_rewrite_model,
+                use_llm=True,
+            )
     results = [
         evaluate_case(
             store,
@@ -627,6 +657,8 @@ def run_eval(args: argparse.Namespace) -> dict[str, Any]:
             paper_limit=args.paper_limit,
             per_paper_limit=args.per_paper_limit,
             lead_paper_limit=args.lead_paper_limit,
+            rewritten_query=rewrites.get(case.id),
+            multi_query=args.multi_query,
         )
         for case in cases
     ]
@@ -644,6 +676,9 @@ def run_eval(args: argparse.Namespace) -> dict[str, Any]:
             "paper_limit": args.paper_limit,
             "per_paper_limit": args.per_paper_limit,
             "lead_paper_limit": args.lead_paper_limit,
+            "query_rewrite": args.query_rewrite,
+            "query_rewrite_model": args.query_rewrite_model,
+            "multi_query": args.multi_query,
             "top_k": top_k,
         },
         "summary": round_floats(summarize(results, ks=args.ks)),
@@ -669,6 +704,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--paper-limit", type=int, default=8)
     parser.add_argument("--per-paper-limit", type=int, default=4)
     parser.add_argument("--lead-paper-limit", type=int, default=12)
+    parser.add_argument("--query-rewrite", action="store_true")
+    parser.add_argument("--query-rewrite-model", default=None)
+    parser.add_argument("--multi-query", action="store_true")
     parser.add_argument("--ks", type=int, nargs="+", default=list(DEFAULT_KS))
     parser.add_argument("--out", type=Path, default=None)
     return parser.parse_args(argv)

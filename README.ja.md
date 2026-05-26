@@ -142,3 +142,33 @@ SortPaper/
 pytest -q
 ```
 
+## クエリ書き換えとマルチクエリ再現
+
+SortPaper には、証拠 chunk の検索を改善するための実験的なクエリ書き換えとマルチクエリ再現パスがあります。
+
+- クエリ書き換えは DeepSeek V4 Flash を使い、中国語、日本語、英語、または口語的な質問を短い英語の科学検索クエリに正規化します。
+- マルチクエリ再現は、元の query、正規化 query、少数の variants を使って検索し、結果をマージします。
+- 現在の融合戦略では、元の query の上位結果を保護し、variants は主に後半の不足分を補うために使います。
+- 手動検索と Agent 検索の UI から明示的に有効化できますが、現時点ではデフォルト無効です。
+
+smoke20 評価では、保護付きマルチクエリ再現は lexical baseline を悪化させなくなりましたが、安定した改善はまだ確認できておらず、遅延も増えます。
+
+```text
+lexical baseline smoke20:
+chunk_hit@10 = 0.4545
+nearby_chunk_hit@10 = 0.5455
+elapsed_ms_p50 = 713ms
+
+multi-query protected smoke20:
+chunk_hit@10 = 0.4545
+nearby_chunk_hit@10 = 0.5455
+elapsed_ms_p50 = 3225ms
+```
+
+評価コマンド:
+
+```bash
+python evals/retrieval_eval.py --max-cases 60 --ks 1 3 5 10 --strategy standard --lexical-backfill --multi-query --out reports/retrieval_eval_multi_query_lexical60_top10.json
+```
+
+詳細は `evals/QUERY_REWRITE.md` を参照してください。

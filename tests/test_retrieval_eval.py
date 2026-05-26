@@ -20,19 +20,23 @@ class FakeStore:
         self.results = results
         self.used_strategy = ""
         self.last_kwargs = {}
+        self.last_args = ()
 
-    def search(self, *_args, **kwargs):
+    def search(self, *args, **kwargs):
         self.used_strategy = "standard"
+        self.last_args = args
         self.last_kwargs = kwargs
         return self.results
 
-    def search_evidence(self, *_args, **kwargs):
+    def search_evidence(self, *args, **kwargs):
         self.used_strategy = "two-stage"
+        self.last_args = args
         self.last_kwargs = kwargs
         return self.results
 
-    def search_paper_local_evidence(self, *_args, **kwargs):
+    def search_paper_local_evidence(self, *args, **kwargs):
         self.used_strategy = "paper-local"
+        self.last_args = args
         self.last_kwargs = kwargs
         return self.results
 
@@ -233,6 +237,71 @@ def test_evaluate_case_can_enable_lexical_backfill() -> None:
     assert store.last_kwargs["lexical_backfill"] is True
     assert result.chunk_rank == 1
     assert result.elapsed_ms >= 0
+
+
+def test_evaluate_case_uses_rewritten_query() -> None:
+    from src.retrieval.query_rewrite import QueryRewrite
+
+    case = RetrievalCase(
+        id="case-1",
+        case_type="chunk",
+        query="LNT II 为什么残留过高？",
+        expected_paper_ids=["paper-1"],
+        expected_chunk_ids=["chunk-1"],
+    )
+    store = FakeStore([
+        {"score": 0.9, "payload": {"paper_id": "paper-1", "chunk_id": "chunk-1", "paper_title": "Right"}},
+    ])
+    rewritten = QueryRewrite(
+        raw_query=case.query,
+        normalized_query="lacto-N-triose II accumulation",
+    )
+
+    result = evaluate_case(
+        store,
+        case,
+        top_k=1,
+        rerank=False,
+        rewritten_query=rewritten,
+    )
+
+    assert store.last_args[0] == "lacto-N-triose II accumulation"
+    assert result.query_used == "lacto-N-triose II accumulation"
+    assert result.query_rewrite["normalized_query"] == "lacto-N-triose II accumulation"
+
+
+def test_evaluate_case_can_use_multi_query() -> None:
+    from src.retrieval.query_rewrite import QueryRewrite
+
+    case = RetrievalCase(
+        id="case-1",
+        case_type="chunk",
+        query="raw question",
+        expected_paper_ids=["paper-2"],
+        expected_chunk_ids=["chunk-2"],
+    )
+    store = FakeStore([
+        {"score": 0.9, "payload": {"paper_id": "paper-2", "chunk_id": "chunk-2", "paper_title": "Right"}},
+    ])
+    rewritten = QueryRewrite(
+        raw_query=case.query,
+        normalized_query="normalized question",
+        variants=["variant one"],
+    )
+
+    result = evaluate_case(
+        store,
+        case,
+        top_k=1,
+        rerank=False,
+        rewritten_query=rewritten,
+        multi_query=True,
+    )
+
+    assert store.used_strategy == "standard"
+    assert store.last_args[0] in {"raw question", "normalized question", "variant one"}
+    assert "normalized question" in result.query_used
+    assert result.chunk_rank == 1
 
 
 def test_evaluate_case_can_enable_neighbor_backfill() -> None:

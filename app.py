@@ -10,9 +10,9 @@ import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, TimeoutError as FutureTimeoutError, wait
 
 import streamlit as st
-from dotenv import load_dotenv
+from src.runtime_env import load_project_env
 
-load_dotenv()
+load_project_env()
 
 from app_utils import (
     build_paper_id, build_snapshot, save_result, overwrite_result,

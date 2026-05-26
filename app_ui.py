@@ -1053,6 +1053,18 @@ def _render_manual_search(paper_id: str | None = None) -> None:
         help="额外补入词面匹配候选，可能提升证据 chunk 召回，但首次检索会更慢",
         key="manual_lexical_backfill",
     )
+    use_query_rewrite = st.checkbox(
+        "查询改写（DeepSeek V4 Flash）",
+        value=False,
+        help="先把中文/口语问题标准化为英文科学检索表达，再进入向量与词面检索",
+        key="manual_query_rewrite",
+    )
+    use_multi_query = st.checkbox(
+        "多路召回（实验）",
+        value=False,
+        help="使用原问题、标准化问题和少量变体并行召回，再合并去重排序",
+        key="manual_multi_query",
+    )
     if st.button("🔍 检索", key="manual_search_btn"):
         if not query.strip():
             st.warning("请输入查询内容")
@@ -1069,6 +1081,8 @@ def _render_manual_search(paper_id: str | None = None) -> None:
                 rerank=use_rerank,
                 filter_kwargs=filter_kwargs,
                 lexical_backfill=use_lexical_backfill,
+                query_rewrite=use_query_rewrite,
+                multi_query=use_multi_query,
             )
         if not results:
             st.warning("未找到相关结果")
@@ -1121,6 +1135,18 @@ def _render_agent_search(paper_id: str | None = None) -> None:
         help="Agent 检索时额外补入词面匹配候选，可能提升证据 chunk 召回，但首次检索会更慢",
         key="agent_lexical_backfill",
     )
+    use_query_rewrite = st.checkbox(
+        "Agent 查询改写（DeepSeek V4 Flash）",
+        value=False,
+        help="对 Agent 生成的检索词再做一次领域标准化，减少口语表达和别名导致的漏召回",
+        key="agent_query_rewrite",
+    )
+    use_multi_query = st.checkbox(
+        "Agent 多路召回（实验）",
+        value=False,
+        help="每轮工具检索使用原检索词、标准化检索词和少量变体并行召回",
+        key="agent_multi_query",
+    )
 
     if st.button("🤖 Agent 检索", key="agent_search_btn", type="primary"):
         if not question.strip():
@@ -1129,7 +1155,11 @@ def _render_agent_search(paper_id: str | None = None) -> None:
 
         from src.agent.literature_agent import LiteratureAgent
 
-        agent = LiteratureAgent(lexical_backfill=use_lexical_backfill)
+        agent = LiteratureAgent(
+            lexical_backfill=use_lexical_backfill,
+            use_query_rewrite=use_query_rewrite,
+            multi_query_recall=use_multi_query,
+        )
         with st.spinner("Agent 分析中（检索 + 综合建议）…"):
             result = agent.query(question, max_rounds=max_rounds)
 

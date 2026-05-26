@@ -142,3 +142,33 @@ SortPaper/
 pytest -q
 ```
 
+## 쿼리 재작성과 멀티 쿼리 리콜
+
+SortPaper에는 evidence chunk 검색을 개선하기 위한 실험적 쿼리 재작성 및 멀티 쿼리 리콜 경로가 포함되어 있습니다.
+
+- 쿼리 재작성은 DeepSeek V4 Flash를 사용해 중국어, 한국어, 영어 또는 구어체 질문을 짧은 영어 과학 검색 query로 정규화합니다.
+- 멀티 쿼리 리콜은 원본 query, 정규화 query, 소수의 variants를 함께 검색한 뒤 결과를 병합합니다.
+- 현재 병합 전략은 원본 query의 상위 결과를 보호하고, variants는 주로 하위 구간의 누락 후보를 보충하는 데 사용합니다.
+- 수동 검색과 Agent 검색 UI에서 명시적으로 켤 수 있지만, 현재 기본값은 꺼짐입니다.
+
+smoke20 평가 기준으로 보호식 멀티 쿼리 리콜은 lexical baseline을 더 이상 악화시키지 않지만, 안정적인 향상은 아직 입증되지 않았고 지연 시간은 증가합니다.
+
+```text
+lexical baseline smoke20:
+chunk_hit@10 = 0.4545
+nearby_chunk_hit@10 = 0.5455
+elapsed_ms_p50 = 713ms
+
+multi-query protected smoke20:
+chunk_hit@10 = 0.4545
+nearby_chunk_hit@10 = 0.5455
+elapsed_ms_p50 = 3225ms
+```
+
+평가 명령:
+
+```bash
+python evals/retrieval_eval.py --max-cases 60 --ks 1 3 5 10 --strategy standard --lexical-backfill --multi-query --out reports/retrieval_eval_multi_query_lexical60_top10.json
+```
+
+자세한 내용은 `evals/QUERY_REWRITE.md`를 참고하세요.

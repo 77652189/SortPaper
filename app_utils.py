@@ -187,34 +187,58 @@ def qdrant_search(
     rerank: bool = False,
     filter_kwargs: dict | None = None,
     lexical_backfill: bool = False,
+    query_rewrite: bool = False,
+    multi_query: bool = False,
 ) -> list[dict]:
     import sys
     sys.path.insert(0, ".")
     from src.store.qdrant_store import QdrantStore
+    from src.retrieval.multi_query import multi_query_search
 
     store = QdrantStore()
     filters = dict(filter_kwargs or {})
     if paper_id:
         filters["paper_id"] = paper_id
     started = time.monotonic()
-    results = store.search(
-        query=query, limit=top_k,
-        filter_kwargs=filters or None,
-        rerank=rerank,
-        lexical_backfill=lexical_backfill,
-    )
+    search_meta: dict = {}
+    if query_rewrite or multi_query:
+        multi_result = multi_query_search(
+            store,
+            query,
+            limit=top_k,
+            filter_kwargs=filters or None,
+            rerank=rerank,
+            lexical_backfill=lexical_backfill,
+            use_query_rewrite=query_rewrite or multi_query,
+            route_limit=4 if multi_query else 2,
+        )
+        results = multi_result.results
+        search_meta = multi_result.metadata()
+    else:
+        results = store.search(
+            query=query, limit=top_k,
+            filter_kwargs=filters or None,
+            rerank=rerank,
+            lexical_backfill=lexical_backfill,
+        )
     elapsed_ms = (time.monotonic() - started) * 1000
     logger.info(
-        "Qdrant search | top_k=%s rerank=%s lexical_backfill=%s filters=%s hits=%s elapsed_ms=%.1f",
+        "Qdrant search | top_k=%s rerank=%s lexical_backfill=%s query_rewrite=%s multi_query=%s filters=%s hits=%s elapsed_ms=%.1f",
         top_k,
         rerank,
         lexical_backfill,
+        query_rewrite,
+        multi_query,
         sorted(filters.keys()),
         len(results),
         elapsed_ms,
     )
     return [
         {"id": r["id"], "score": r["score"],
-         "reranked": r.get("reranked", False), "payload": r["payload"]}
+         "reranked": r.get("reranked", False),
+         "matched_routes": r.get("matched_routes", []),
+         "matched_queries": r.get("matched_queries", []),
+         "search_meta": search_meta,
+         "payload": r["payload"]}
         for r in results
     ]

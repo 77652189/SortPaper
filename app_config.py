@@ -5,6 +5,11 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from src.runtime_env import load_project_env
+
+
+load_project_env()
+
 
 def _env_int(name: str, default: int) -> int:
     try:

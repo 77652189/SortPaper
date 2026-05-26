@@ -189,3 +189,34 @@ pytest tests/table -q
 - 表格解析正在模块化，重点关注 `src/parsers/table/parser.py` 与 `dedup.py`、`region_chunks.py`、`judge_metadata.py` 等辅助模块的边界。
 - 入库边界已经下沉到 `src/store/chunk_storage.py`，避免 UI/编排层直接承担 Qdrant 细节。
 - 重构前建议先阅读工作区根目录下的 `../docs/ONBOARDING.md`、`../docs/UNDERSTAND_CHAT_FINDINGS.md` 和 `../docs/UNDERSTAND_DIFF_REVIEW.md`。
+
+## 查询改写与多路召回
+
+SortPaper 现在包含实验性的查询改写与多路召回路径，用于改善证据 chunk 检索。
+
+- 查询改写使用 DeepSeek V4 Flash，将中文或口语化问题标准化为简洁的英文科学检索表达。
+- 多路召回会同时使用原始 query、标准化 query 和少量 variants，再合并去重。
+- 当前融合策略会保护原始 query 的前排结果，让 variants 主要补尾部缺口，避免把已经命中的证据挤出第一页。
+- 手动检索和 Agent 检索都提供显式开关；目前默认关闭。
+
+当前 smoke20 评测显示：保护式多路召回已经不会伤害 lexical baseline，但还没有证明能稳定提升召回率，而且延迟更高。
+
+```text
+lexical baseline smoke20:
+chunk_hit@10 = 0.4545
+nearby_chunk_hit@10 = 0.5455
+elapsed_ms_p50 = 713ms
+
+multi-query protected smoke20:
+chunk_hit@10 = 0.4545
+nearby_chunk_hit@10 = 0.5455
+elapsed_ms_p50 = 3225ms
+```
+
+评测命令：
+
+```bash
+python evals/retrieval_eval.py --max-cases 60 --ks 1 3 5 10 --strategy standard --lexical-backfill --multi-query --out reports/retrieval_eval_multi_query_lexical60_top10.json
+```
+
+详细记录见 `evals/QUERY_REWRITE.md`。
