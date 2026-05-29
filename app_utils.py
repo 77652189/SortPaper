@@ -186,7 +186,7 @@ def qdrant_search(
     top_k: int = 5,
     rerank: bool = False,
     filter_kwargs: dict | None = None,
-    lexical_backfill: bool = False,
+    lexical_backfill: bool = True,
     query_rewrite: bool = False,
     multi_query: bool = False,
 ) -> list[dict]:

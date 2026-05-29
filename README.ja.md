@@ -112,6 +112,10 @@ streamlit run app.py
 
 検索結果が悪い場合は、まず対象論文がベクトルライブラリに存在するか確認してください。次に品質評価 metadata が付いているか、返ってきた chunk が原著論文・レビュー・引用箇所のどれかを確認し、その後で query、hybrid search、rerank、UI filter を調整します。
 
+手動検索と Agent 検索では、enhanced chunk recall がデフォルトで有効です。この indexed lexical backfill は `search_text` と低頻度 query term を使って evidence 候補を補い、毎回ライブラリ全体を走査せず、元の上位検索アンカーも保護します。現在の 60-case top10 評価では `chunk_hit@10` が `0.4000` から `0.6000` に、`nearby_chunk_hit@10` が `0.4000` から `0.6333` に改善し、p50 latency は約 `561ms` から `745ms` になりました。広すぎる query や遅延が気になる場合は UI で無効化できます。
+
+Agent synthesis では、すでにヒットした論文から paper-local deeper evidence を先に追加し、その後 nearby chunks を追加します。tool search のランキング自体は変更しません。5 chunks の context 予算、論文ごとの補足上限 3 件では、現在の context eval で `context_chunk_hit@10` が `0.5000` から `0.5667` に、`context_nearby_hit@10` が `0.5667` から `0.6000` に改善しました。
+
 ## プロジェクト構成
 
 ```text

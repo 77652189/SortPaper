@@ -475,6 +475,48 @@ def test_prioritize_evidence_groups_keeps_representatives_then_lead_depth() -> N
     ]
 
 
+def test_restore_anchor_candidates_keeps_raw_hits_in_final_page() -> None:
+    anchors = [
+        {"id": "raw-1", "score": 0.9, "payload": {"paper_id": "p1", "chunk_id": "raw-1"}},
+        {"id": "raw-2", "score": 0.8, "payload": {"paper_id": "p1", "chunk_id": "raw-2"}},
+        {"id": "raw-3", "score": 0.7, "payload": {"paper_id": "p1", "chunk_id": "raw-3"}},
+        {"id": "raw-4", "score": 0.6, "payload": {"paper_id": "p1", "chunk_id": "raw-4"}},
+        {"id": "raw-5", "score": 0.5, "payload": {"paper_id": "p1", "chunk_id": "raw-5"}},
+    ]
+    boosted = anchors[:3] + [
+        {"id": f"lex-{i}", "score": 1.0 - i * 0.01, "payload": {"paper_id": "p1", "chunk_id": f"lex-{i}"}}
+        for i in range(7)
+    ]
+
+    restored = QdrantStore._restore_anchor_candidates(boosted, anchors, limit=10)
+
+    chunk_ids = [item["payload"]["chunk_id"] for item in restored]
+    assert "raw-4" in chunk_ids
+    assert "raw-5" in chunk_ids
+    assert len(restored) == 10
+    assert restored[-2]["anchor_restored"] is True
+    assert restored[-1]["anchor_restored"] is True
+
+
+def test_restore_anchor_candidates_does_not_duplicate_existing_hits() -> None:
+    anchors = [
+        {"id": "raw-1", "payload": {"paper_id": "p1", "chunk_id": "raw-1"}},
+        {"id": "raw-2", "payload": {"paper_id": "p1", "chunk_id": "raw-2"}},
+    ]
+    ranked = [anchors[1], anchors[0], anchors[0]]
+
+    restored = QdrantStore._restore_anchor_candidates(ranked, anchors, limit=3)
+
+    assert [item["payload"]["chunk_id"] for item in restored] == ["raw-2", "raw-1"]
+
+
+def test_backfill_anchor_count_keeps_top10_guard_narrow() -> None:
+    assert QdrantStore._backfill_anchor_count(3) == 3
+    assert QdrantStore._backfill_anchor_count(5) == 3
+    assert QdrantStore._backfill_anchor_count(10) == 5
+    assert QdrantStore._backfill_anchor_count(20) == 10
+
+
 def test_search_paper_local_evidence_rescores_chunks_inside_ranked_papers() -> None:
     class FakeClient:
         def scroll(self, **_kwargs):
@@ -529,6 +571,56 @@ def test_search_paper_local_evidence_rescores_chunks_inside_ranked_papers() -> N
     assert results[0]["id"] == "point-target"
     assert results[0]["evidence_stage"] == "paper_local"
     assert "point-other-paper" not in [item["id"] for item in results]
+
+
+def test_expand_paper_local_context_adds_deeper_evidence_from_hit_papers() -> None:
+    class FakeClient:
+        def scroll(self, **_kwargs):
+            return [
+                SimpleNamespace(
+                    id="point-existing",
+                    payload={
+                        "paper_id": "paper-1",
+                        "chunk_id": "chunk-existing",
+                        "content": "Representative lacto-N-triose II paper hit.",
+                    },
+                ),
+                SimpleNamespace(
+                    id="point-target",
+                    payload={
+                        "paper_id": "paper-1",
+                        "chunk_id": "chunk-target",
+                        "content": "RBS optimization improved lgtA expression for lacto-N-triose II.",
+                    },
+                ),
+                SimpleNamespace(
+                    id="point-other",
+                    payload={
+                        "paper_id": "paper-2",
+                        "chunk_id": "chunk-other",
+                        "content": "RBS optimization improved lgtA expression for lacto-N-triose II.",
+                    },
+                ),
+            ], None
+
+    store = QdrantStore.__new__(QdrantStore)
+    store.client = FakeClient()
+    store.collection = "papers"
+    results = [{
+        "id": "point-existing",
+        "score": 0.9,
+        "payload": {"paper_id": "paper-1", "chunk_id": "chunk-existing"},
+    }]
+
+    context = store.expand_paper_local_context(
+        "lacto-N-triose II lgtA RBS",
+        results,
+        total_limit=2,
+    )
+
+    assert [item["id"] for item in context] == ["point-target"]
+    assert context[0]["paper_local_context"] is True
+    assert context[0]["context_expansion"] is True
 
 
 def test_lexical_idf_score_prefers_rare_matching_terms() -> None:

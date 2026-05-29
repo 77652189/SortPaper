@@ -113,14 +113,16 @@ class LiteratureAgent:
     def __init__(
         self,
         model: str = "qwen-plus",
-        lexical_backfill: bool = False,
+        lexical_backfill: bool = True,
         expand_neighbor_context: bool = True,
+        expand_paper_local_context: bool = True,
         use_query_rewrite: bool = False,
         multi_query_recall: bool = False,
     ):
         self.model = model
         self.lexical_backfill = lexical_backfill
         self.expand_neighbor_context = expand_neighbor_context
+        self.expand_paper_local_context = expand_paper_local_context
         self.use_query_rewrite = use_query_rewrite
         self.multi_query_recall = multi_query_recall
         self.store = QdrantStore()
@@ -259,19 +261,47 @@ class LiteratureAgent:
             )
         elapsed_ms = (time.monotonic() - started) * 1000
         context_results: list[dict[str, Any]] = []
+        if self.expand_paper_local_context and hasattr(self.store, "expand_paper_local_context"):
+            context_results.extend(
+                self.store.expand_paper_local_context(
+                    query,
+                    results,
+                    filter_kwargs=filter_kwargs if filter_kwargs else None,
+                    paper_limit=3,
+                    per_paper_limit=3,
+                    total_limit=5,
+                )
+            )
         if self.expand_neighbor_context:
-            context_results = self.store.expand_neighbor_context(
-                results,
+            existing_context_keys = {
+                (
+                    str((item.get("payload") or {}).get("paper_id") or ""),
+                    str((item.get("payload") or {}).get("chunk_id") or item.get("id") or ""),
+                )
+                for item in context_results
+            }
+            neighbor_limit = max(0, 5 - len(context_results))
+            neighbor_results = self.store.expand_neighbor_context(
+                results + context_results,
                 filter_kwargs=filter_kwargs if filter_kwargs else None,
                 per_result_limit=2,
-                total_limit=5,
+                total_limit=neighbor_limit,
             )
+            for item in neighbor_results:
+                payload = item.get("payload") or {}
+                key = (
+                    str(payload.get("paper_id") or ""),
+                    str(payload.get("chunk_id") or item.get("id") or ""),
+                )
+                if key not in existing_context_keys:
+                    context_results.append(item)
         logger.info(
-            "Agent literature search | lexical_backfill=%s query_rewrite=%s multi_query=%s expand_neighbor_context=%s filters=%s hits=%s context_hits=%s elapsed_ms=%.1f",
+            "Agent literature search | lexical_backfill=%s query_rewrite=%s multi_query=%s expand_neighbor_context=%s expand_paper_local_context=%s filters=%s hits=%s context_hits=%s elapsed_ms=%.1f",
             self.lexical_backfill,
             self.use_query_rewrite,
             self.multi_query_recall,
             self.expand_neighbor_context,
+            self.expand_paper_local_context,
             sorted(filter_kwargs.keys()),
             len(results),
             len(context_results),
@@ -294,6 +324,7 @@ class LiteratureAgent:
         for r in context_results:
             p = dict(r.get("payload", {}) or {})
             p["_context_expansion"] = True
+            p["_paper_local_context"] = bool(r.get("paper_local_context"))
             p["_neighbor_source_chunk_id"] = r.get("neighbor_source_chunk_id")
             p["_neighbor_distance"] = r.get("neighbor_distance")
             self._all_chunks.append(p)

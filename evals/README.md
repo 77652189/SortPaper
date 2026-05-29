@@ -74,18 +74,18 @@ python evals/retrieval_eval.py --max-cases 60 --ks 1 3 5 10 --strategy paper-loc
 
 如果 `nearby_chunk_hit@10` 和 `chunk_hit@10` 都低，说明证据级候选召回不足，应优先优化检索文本、术语归一化或候选池构造。
 
-`--lexical-backfill` 用于验证词面候选补召回。它已接入主路径为显式开关，但默认关闭；当前实现使用内存倒排索引和低频关键词候选池，避免每次全库扫描。top10 评测中 `chunk_hit@10` 从 0.4000 提升到 0.5667，`nearby_chunk_hit@10` 从 0.4000 提升到 0.6333，p50 耗时从约 572ms 增加到约 716ms。默认开启前仍应继续验证真实 UI 查询、泛查询误召回和更大库规模表现。
+`--lexical-backfill` 用于验证词面候选补召回。它已接入手动检索和 Agent 检索默认路径，并在 UI 中保留关闭开关；当前实现使用内存倒排索引和低频关键词候选池，避免每次全库扫描，同时会保护原始召回前排锚点。当前 60 条 top10 评测中 `chunk_hit@10` 从 0.4000 提升到 0.6000，`nearby_chunk_hit@10` 从 0.4000 提升到 0.6333，p50 耗时从约 561ms 增加到约 745ms。后续仍应继续验证真实 UI 查询、泛查询误召回和更大库规模表现。
 
 `--neighbor-backfill` 用于验证邻近 chunk 回填。它能显著提高 top20/top100 的 exact chunk 召回，但直接进入主排序会污染 top10，因此更适合作为 Agent 答案上下文扩展策略。
 
-Agent 当前已使用这个思路：tool search 返回的命中排序不变，最终综合回答上下文会额外加入同论文、同页或相邻顺序的 chunk。
+Agent 当前已使用这个思路：tool search 返回的命中排序不变，最终综合回答上下文会先额外加入已命中论文内的 deeper evidence，再加入同论文、同页或相邻顺序的 chunk。
 
-`--strategy paper-local` 用于验证“已命中论文后，回到论文内部找 evidence chunk”。当前实验显示它能提升深层候选覆盖，例如 `chunk_hit@100 = 0.7333`，但 top10 排序低于 indexed lexical，且耗时更高。因此它暂时适合作为离线诊断或 Agent 深挖候选来源，不建议作为手动检索默认策略。
+`--strategy paper-local` 用于验证“已命中论文后，回到论文内部找 evidence chunk”。当前实验显示它能提升深层候选覆盖，例如 `chunk_hit@100 = 0.7333`，但 top10 排序低于 indexed lexical，且耗时更高。因此它不建议作为手动检索默认策略；更合适的用法是作为 Agent 回答上下文的 deeper evidence 来源。
 
 回答上下文级评测：
 
 ```bash
-python evals/agent_context_eval.py --max-cases 60 --ks 1 3 5 10 --lexical-backfill --expand-neighbor-context --neighbor-total-limit 5 --out reports/agent_context_eval_lexical_neighbor60_ctx5.json
+python evals/agent_context_eval.py --max-cases 60 --ks 1 3 5 10 --lexical-backfill --expand-neighbor-context --expand-paper-local-context --neighbor-total-limit 5 --paper-local-total-limit 5 --paper-local-per-paper-limit 3 --out reports/agent_context_eval_lexical_paper_local_p3_neighbor60_ctx5.json
 ```
 
 这个评测不调用 LLM，只判断最终回答上下文中是否包含 exact/nearby evidence chunk。

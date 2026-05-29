@@ -39,16 +39,16 @@ nearby_chunk_hit@100 = 0.6000
 
 ## 主路径接入状态
 
-`lexical_backfill` 已接入手动检索和 Agent 检索主路径，但使用显式开关，默认关闭。
+`lexical_backfill` 已接入手动检索和 Agent 检索主路径，并默认开启；UI 仍保留显式开关，便于在泛查询或延迟敏感场景下关闭。
 
-- 手动检索：UI 中的“增强 chunk 召回（实验）”。
-- Agent 检索：UI 中的“增强 chunk 召回（实验）”。
+- 手动检索：UI 中的“增强 chunk 召回（推荐）”。
+- Agent 检索：UI 中的“增强 chunk 召回（推荐）”。
 - `app_utils.qdrant_search()` 会将 `lexical_backfill` 传给 `QdrantStore.search()`，并记录耗时日志。
 - `LiteratureAgent` 初始化时接受 `lexical_backfill`，tool search 会传给 `QdrantStore.search()`，并记录耗时日志。
 
 `neighbor_backfill` 目前只作为离线评测和 store 层实验开关，不接入 UI。它更适合用于“已命中证据的上下文扩展”，不适合作为默认 top10 排序策略。
 
-Agent 已落地 evidence context expansion：`LiteratureAgent` 会在 tool search 返回 top evidence 后，调用 `QdrantStore.expand_neighbor_context()` 追加同论文、同页或相邻顺序的 chunk 到最终综合回答上下文。邻近 chunk 不会进入 tool 返回结果，也不会改变主检索排序。当前默认最多追加 5 个邻近 chunk；评测显示它与追加约 9 个邻近 chunk 的 `context_nearby_hit@10` 一致，但上下文噪音和 token 成本更低。
+Agent 已落地 evidence context expansion：`LiteratureAgent` 会在 tool search 返回 top evidence 后，先调用 `QdrantStore.expand_paper_local_context()` 在已命中论文内补 deeper evidence，再调用 `QdrantStore.expand_neighbor_context()` 追加同论文、同页或相邻顺序的 chunk。补充上下文不会进入 tool 返回结果，也不会改变主检索排序；默认总共最多追加 5 个上下文 chunk。
 
 ## Agent 上下文级评测
 
@@ -61,8 +61,9 @@ Agent 已落地 evidence context expansion：`LiteratureAgent` 会在 tool searc
 | lexical, no context expansion | 0.5333 | 0.5667 | 0.0000 |
 | lexical + context expansion | 0.5333 | 0.6000 | 9.1333 |
 | lexical + context expansion, total_limit=5 | 0.5333 | 0.6000 | 5.0000 |
+| lexical + paper-local + neighbor context, total_limit=5, per_paper=3 | 0.5667 | 0.6000 | 5.0000 |
 
-结论：context expansion 的收益主要体现在 nearby evidence，而不是 exact chunk；它应作为回答上下文补充，而不是替代初始召回。`lexical_backfill` 仍是提升回答证据覆盖的主要杠杆。
+结论：context expansion 应作为回答上下文补充，而不是替代初始召回。新增 paper-local context 在当前评测中把 exact `context_chunk_hit@10` 从当前锚点保护版本的 0.5000 提升到 0.5667，nearby `context_nearby_hit@10` 从 0.5667 提升到 0.6000；`lexical_backfill` 仍是提升初始证据覆盖的主要杠杆。
 
 ## Search Text 回填
 
@@ -80,20 +81,20 @@ skipped_empty = 0
 
 | 指标 | lexical 旧文本 | lexical + search_text |
 | --- | ---: | ---: |
-| paper_mrr | 0.7595 | 0.7645 |
-| chunk_mrr | 0.3284 | 0.3593 |
-| nearby_chunk_mrr | 0.3669 | 0.3979 |
+| paper_mrr | 0.7595 | 0.7858 |
+| chunk_mrr | 0.3284 | 0.3826 |
+| nearby_chunk_mrr | 0.3669 | 0.4131 |
 | chunk_hit@1 | 0.2667 | 0.3000 |
-| chunk_hit@10 | 0.4333 | 0.4667 |
-| nearby_chunk_hit@10 | 0.5667 | 0.6000 |
+| chunk_hit@10 | 0.4333 | 0.6000 |
+| nearby_chunk_hit@10 | 0.5667 | 0.6333 |
 
-Agent 上下文评测中，`search_text` 主要提升排序质量：
+Agent 上下文评测中，`search_text` 和锚点保护主要提升排序质量：
 
-| 指标 | lexical + context | lexical + search_text + context |
+| 指标 | lexical + context | lexical + search_text + anchor context |
 | --- | ---: | ---: |
-| context_chunk_mrr | 0.3678 | 0.3844 |
-| context_nearby_mrr | 0.4039 | 0.4206 |
-| context_chunk_hit@10 | 0.5333 | 0.5333 |
+| context_chunk_mrr | 0.3678 | 0.3867 |
+| context_nearby_mrr | 0.4039 | 0.4172 |
+| context_chunk_hit@10 | 0.5333 | 0.5667 |
 | context_nearby_hit@10 | 0.6000 | 0.6000 |
 
 ## Indexed Lexical Backfill
@@ -109,13 +110,13 @@ top10 主路径规模评测：
 
 | 指标 | standard top10 | lexical indexed top10 |
 | --- | ---: | ---: |
-| elapsed_ms_p50 | 571.6373 | 716.4640 |
-| elapsed_ms_p95 | 713.5978 | 851.7927 |
+| elapsed_ms_p50 | 560.7182 | 744.9653 |
+| elapsed_ms_p95 | 647.8909 | 900.1438 |
 | paper_hit@10 | 0.7833 | 0.9833 |
-| chunk_hit@10 | 0.4000 | 0.5667 |
+| chunk_hit@10 | 0.4000 | 0.6000 |
 | nearby_chunk_hit@10 | 0.4000 | 0.6333 |
 
-top100 深层评测中，索引化 lexical 仍保持 `chunk_hit@10 = 0.4667`、`nearby_chunk_hit@10 = 0.6000`、`chunk_hit@100 = 0.5667`、`nearby_chunk_hit@100 = 0.8333`。因此当前判断是：索引化 lexical 适合保留为显式实验开关，并可以推荐在需要更高 evidence 召回时开启；但默认开启前，还应继续观察真实 UI 查询的耗时和误召回。
+top100 深层评测中，索引化 lexical 仍保持 `chunk_hit@10 = 0.4667`、`nearby_chunk_hit@10 = 0.6000`、`chunk_hit@100 = 0.5667`、`nearby_chunk_hit@100 = 0.8333`。因此当前判断是：索引化 lexical 适合作为手动检索和 Agent 检索默认路径；同时保留关闭开关，继续观察真实 UI 查询的耗时和误召回。
 
 ## Paper-local Evidence 实验
 
@@ -132,7 +133,7 @@ top100 深层评测中，索引化 lexical 仍保持 `chunk_hit@10 = 0.4667`、`
 | chunk_hit@100 | - | - | 0.7333 |
 | nearby_chunk_hit@100 | - | - | 0.8000 |
 
-判断：paper-local 可以作为“深层证据挖掘”或后续 Agent 上下文扩展候选来源，但不应替代 indexed lexical 的 top10 主排序。它的问题是耗时更高，而且论文内 lexical scoring 会把同论文里的泛相关 chunk 排到目标证据前面。IDF 加权后耗时略降，但 top10 命中没有实质改善。
+判断：paper-local 不应替代 indexed lexical 的 top10 主排序；它的问题是耗时更高，而且论文内 lexical scoring 会把同论文里的泛相关 chunk 排到目标证据前面。当前更合适的落点是 Agent 回答上下文层：在不改变 tool search 排名的前提下，把已命中论文内的 deeper evidence 补给综合回答。
 
 ## Two-stage 实验
 

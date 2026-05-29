@@ -415,6 +415,7 @@ class QdrantStore:
             }
             for hit in candidates.points
         ]
+        anchor_results = results[:self._backfill_anchor_count(limit)] if lexical_backfill else []
 
         # Rerank: 用 qwen3-rerank 对候选集重新打分排序
         if rerank and results:
@@ -432,6 +433,8 @@ class QdrantStore:
                 )
             results = self._rerank(query, results, top_n=limit)
             results = self._apply_query_relevance_boost(query, results)
+            if lexical_backfill:
+                results = self._restore_anchor_candidates(results, anchor_results, limit=limit)
         elif lexical_backfill or neighbor_backfill:
             if lexical_backfill:
                 results = self._merge_lexical_candidates(
@@ -447,6 +450,8 @@ class QdrantStore:
                     limit=max(limit * 4, 40),
                 )
             results = self._apply_query_relevance_boost(query, results)
+            if lexical_backfill:
+                results = self._restore_anchor_candidates(results, anchor_results, limit=limit)
 
         return results[:limit]
 
@@ -653,16 +658,73 @@ class QdrantStore:
         deduped: list[dict[str, Any]] = []
         seen = set()
         for result in results:
-            payload = result.get("payload") or {}
-            key = (
-                str(payload.get("paper_id") or ""),
-                str(payload.get("chunk_id") or result.get("id") or ""),
-            )
+            key = QdrantStore._result_key(result)
             if key in seen:
                 continue
             seen.add(key)
             deduped.append(result)
         return deduped
+
+    @staticmethod
+    def _result_key(result: dict[str, Any]) -> tuple[str, str]:
+        payload = result.get("payload") or {}
+        return (
+            str(payload.get("paper_id") or ""),
+            str(payload.get("chunk_id") or result.get("id") or ""),
+        )
+
+    @staticmethod
+    def _backfill_anchor_count(limit: int) -> int:
+        if limit <= 0:
+            return 0
+        if limit <= 5:
+            return min(limit, 3)
+        return min(limit, max(5, limit // 2))
+
+    @classmethod
+    def _restore_anchor_candidates(
+        cls,
+        results: list[dict[str, Any]],
+        anchor_results: list[dict[str, Any]],
+        *,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        """Keep lexical backfill from evicting strong original-retrieval anchors."""
+        if limit <= 0 or not anchor_results:
+            return results[:limit]
+
+        final = cls._deduplicate_results(results)[:limit]
+        final_keys = {cls._result_key(item) for item in final}
+        anchor_keys = {cls._result_key(item) for item in anchor_results}
+        missing_anchors = [
+            item for item in anchor_results
+            if cls._result_key(item) not in final_keys
+        ]
+        if not missing_anchors:
+            return final
+
+        for anchor in missing_anchors:
+            anchor_key = cls._result_key(anchor)
+            restored = dict(anchor)
+            restored["anchor_restored"] = True
+            if len(final) < limit:
+                final.append(restored)
+                final_keys.add(anchor_key)
+                continue
+
+            replace_index = next(
+                (
+                    index for index in range(len(final) - 1, -1, -1)
+                    if cls._result_key(final[index]) not in anchor_keys
+                ),
+                None,
+            )
+            if replace_index is None:
+                break
+            final[replace_index] = restored
+            final_keys.add(anchor_key)
+
+        return final[:limit]
 
     def expand_neighbor_context(
         self,
@@ -708,6 +770,72 @@ class QdrantStore:
             if len(context) >= total_limit:
                 break
         return context
+
+    def expand_paper_local_context(
+        self,
+        query: str,
+        results: list[dict[str, Any]],
+        *,
+        filter_kwargs: dict[str, Any] | None = None,
+        paper_limit: int = 3,
+        per_paper_limit: int = 2,
+        total_limit: int = 5,
+    ) -> list[dict[str, Any]]:
+        """Return deeper evidence chunks from already-hit papers for answer synthesis."""
+        if not query.strip() or not results or paper_limit <= 0 or per_paper_limit <= 0 or total_limit <= 0:
+            return []
+
+        ranked_papers = self._rank_papers_from_results(results, limit=paper_limit)
+        if not ranked_papers:
+            return []
+
+        query_terms = self._query_relevance_terms(query)
+        if not query_terms:
+            return []
+
+        qdrant_filter = self._build_filter(filter_kwargs)
+        lexical_index = self._lexical_document_index()
+        requires_strict_anchor = self._query_requires_strict_anchor(query)
+        paper_rank = {paper_id: index + 1 for index, paper_id in enumerate(ranked_papers)}
+        existing_keys = {self._result_key(item) for item in results}
+        evidence_by_paper: dict[str, list[dict[str, Any]]] = {paper_id: [] for paper_id in ranked_papers}
+
+        for entry in self._lexical_document_entries(qdrant_filter=qdrant_filter):
+            payload = entry.get("payload") or {}
+            paper_id = str(payload.get("paper_id") or "")
+            rank = paper_rank.get(paper_id)
+            if rank is None or self._result_key(entry) in existing_keys:
+                continue
+            lexical_score = self._lexical_idf_match_score_from_terms(
+                entry["normalized_text"],
+                query_terms=query_terms,
+                requires_strict_anchor=requires_strict_anchor,
+                lexical_index=lexical_index,
+            )
+            if lexical_score <= 0:
+                continue
+            score = lexical_score + (0.03 / rank)
+            evidence_by_paper[paper_id].append({
+                "id": entry["id"],
+                "score": score,
+                "payload": payload,
+                "lexical_score": lexical_score,
+                "paper_rank": rank,
+                "context_expansion": True,
+                "paper_local_context": True,
+            })
+
+        groups: list[list[dict[str, Any]]] = []
+        for paper_id in ranked_papers:
+            group = sorted(
+                evidence_by_paper.get(paper_id, []),
+                key=lambda item: item.get("score", 0.0),
+                reverse=True,
+            )
+            groups.append(group[:per_paper_limit])
+
+        context = self._deduplicate_results(self._prioritize_evidence_groups(groups))
+        return context[:total_limit]
 
     def _merge_lexical_candidates(
         self,

@@ -1048,8 +1048,8 @@ def _render_manual_search(paper_id: str | None = None) -> None:
     use_rerank = st.checkbox("启用 Rerank（qwen3-rerank 二次排序）", value=True,
                               help="先 Hybrid 召回，再用 Rerank 模型精排", key="manual_rerank")
     use_lexical_backfill = st.checkbox(
-        "增强 chunk 召回（实验）",
-        value=False,
+        "增强 chunk 召回（推荐）",
+        value=True,
         help="额外补入词面匹配候选，可能提升证据 chunk 召回，但首次检索会更慢",
         key="manual_lexical_backfill",
     )
@@ -1130,8 +1130,8 @@ def _render_agent_search(paper_id: str | None = None) -> None:
     max_rounds = st.slider("最大检索轮次", 1, 3, 2, key="agent_rounds",
                             help="每轮可调用一次 search_literature，多轮可换角度再查")
     use_lexical_backfill = st.checkbox(
-        "增强 chunk 召回（实验）",
-        value=False,
+        "增强 chunk 召回（推荐）",
+        value=True,
         help="Agent 检索时额外补入词面匹配候选，可能提升证据 chunk 召回，但首次检索会更慢",
         key="agent_lexical_backfill",
     )

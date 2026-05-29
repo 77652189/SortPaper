@@ -51,7 +51,10 @@ def evaluate_context_case(
     synthesis_limit: int,
     lexical_backfill: bool = False,
     expand_neighbor_context: bool = True,
+    expand_paper_local_context: bool = True,
     neighbor_total_limit: int = 10,
+    paper_local_per_paper_limit: int = 2,
+    paper_local_total_limit: int = 5,
 ) -> AgentContextResult:
     results = store.search(
         case.query,
@@ -59,15 +62,26 @@ def evaluate_context_case(
         rerank=False,
         lexical_backfill=lexical_backfill,
     )
-    context_results = (
-        store.expand_neighbor_context(
-            results,
-            per_result_limit=2,
-            total_limit=neighbor_total_limit,
+    context_results: list[dict[str, Any]] = []
+    if expand_paper_local_context and hasattr(store, "expand_paper_local_context"):
+        context_results.extend(
+            store.expand_paper_local_context(
+                case.query,
+                results,
+                paper_limit=3,
+                per_paper_limit=paper_local_per_paper_limit,
+                total_limit=paper_local_total_limit,
+            )
         )
-        if expand_neighbor_context
-        else []
-    )
+    if expand_neighbor_context:
+        neighbor_limit = max(0, neighbor_total_limit - len(context_results))
+        context_results.extend(
+            store.expand_neighbor_context(
+                results + context_results,
+                per_result_limit=2,
+                total_limit=neighbor_limit,
+            )
+        )
     search_payloads = [item.get("payload") or {} for item in results]
     context_payloads = [
         item.get("payload") or {}
@@ -172,7 +186,10 @@ def run_eval(args: argparse.Namespace) -> dict[str, Any]:
             synthesis_limit=args.synthesis_limit,
             lexical_backfill=args.lexical_backfill,
             expand_neighbor_context=args.expand_neighbor_context,
+            expand_paper_local_context=args.expand_paper_local_context,
             neighbor_total_limit=args.neighbor_total_limit,
+            paper_local_per_paper_limit=args.paper_local_per_paper_limit,
+            paper_local_total_limit=args.paper_local_total_limit,
         )
         for case in cases
     ]
@@ -180,11 +197,14 @@ def run_eval(args: argparse.Namespace) -> dict[str, Any]:
         "config": {
             "content_types": args.content_types,
             "expand_neighbor_context": args.expand_neighbor_context,
+            "expand_paper_local_context": args.expand_paper_local_context,
             "lexical_backfill": args.lexical_backfill,
             "max_cases": args.max_cases,
             "max_points": args.max_points,
             "min_content_chars": args.min_content_chars,
             "neighbor_total_limit": args.neighbor_total_limit,
+            "paper_local_per_paper_limit": args.paper_local_per_paper_limit,
+            "paper_local_total_limit": args.paper_local_total_limit,
             "search_top_k": args.search_top_k,
             "seed": args.seed,
             "synthesis_limit": args.synthesis_limit,
@@ -205,7 +225,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--content-types", nargs="+", default=["text", "table"])
     parser.add_argument("--lexical-backfill", action="store_true")
     parser.add_argument("--expand-neighbor-context", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--expand-paper-local-context", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--neighbor-total-limit", type=int, default=10)
+    parser.add_argument("--paper-local-per-paper-limit", type=int, default=3)
+    parser.add_argument("--paper-local-total-limit", type=int, default=5)
     parser.add_argument("--search-top-k", type=int, default=5)
     parser.add_argument("--seed", type=int, default=13)
     parser.add_argument("--synthesis-limit", type=int, default=10)

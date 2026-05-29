@@ -132,6 +132,10 @@ When search results look wrong, check in this order:
 
 For example, an LNT II question requires the actual LNT II primary paper, not only HMO reviews or LNT II citations inside 2'-FL papers.
 
+Manual search and Agent search now enable enhanced chunk recall by default. This indexed lexical backfill uses `search_text` and low-frequency query terms to add evidence candidates without rescanning the full library, while preserving original top retrieval anchors. In the current 60-case top10 evaluation, it improved `chunk_hit@10` from `0.4000` to `0.6000` and `nearby_chunk_hit@10` from `0.4000` to `0.6333`, with p50 latency moving from about `561ms` to `745ms`; the UI still keeps a switch to disable it for broad or latency-sensitive queries.
+
+Agent synthesis also expands answer context from already-hit papers: it adds paper-local deeper evidence first, then nearby chunks, without changing the tool-search ranking shown to the model. With a five-chunk context budget and per-paper limit of three, the current context eval improves `context_chunk_hit@10` from `0.5000` to `0.5667` and `context_nearby_hit@10` from `0.5667` to `0.6000`.
+
 ## Query Rewrite and Multi-Query Recall
 
 SortPaper now includes an experimental query rewrite and multi-query recall path for evidence search.
