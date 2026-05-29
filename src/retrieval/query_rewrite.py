@@ -68,6 +68,76 @@ def rewrite_query(
     return normalize_rewrite_payload(payload, raw_query=raw_query)
 
 
+def build_context_query(
+    rewrite: QueryRewrite | None,
+    *,
+    fallback_query: str,
+    max_terms: int = 20,
+    max_chars: int = 360,
+) -> str:
+    """Build a compact evidence-localization query from a rewrite object."""
+    if rewrite is None:
+        return _clip_context_query(str(fallback_query or "").strip(), max_chars=max_chars)
+    terms = _dedupe_context_terms(
+        [rewrite.normalized_query]
+        + rewrite.products[:4]
+        + rewrite.organisms[:2]
+        + rewrite.genes[:4]
+        + rewrite.enzymes[:3]
+        + rewrite.metrics[:4]
+        + rewrite.aliases[:4]
+        + rewrite.variants[:2]
+    )
+    return _join_context_terms(terms, fallback_query=fallback_query, max_terms=max_terms, max_chars=max_chars)
+
+
+def _dedupe_context_terms(values: list[str]) -> list[str]:
+    terms = _dedupe_strings(values)
+    result: list[str] = []
+    normalized_result: list[str] = []
+    for term in terms:
+        normalized = re.sub(r"[^a-z0-9\u4e00-\u9fff]+", " ", term.lower()).strip()
+        if normalized and any(_context_term_contains(existing, normalized) for existing in normalized_result):
+            continue
+        result.append(term)
+        normalized_result.append(normalized)
+    return result
+
+
+def _context_term_contains(existing: str, candidate: str) -> bool:
+    if not existing or not candidate or existing == candidate:
+        return existing == candidate
+    return f" {candidate} " in f" {existing} "
+
+
+def _join_context_terms(
+    terms: list[str],
+    *,
+    fallback_query: str,
+    max_terms: int,
+    max_chars: int,
+) -> str:
+    selected: list[str] = []
+    for term in terms[:max(1, max_terms)]:
+        candidate = " ".join(selected + [term]).strip()
+        if len(candidate) <= max_chars:
+            selected.append(term)
+            continue
+        if not selected:
+            return _clip_context_query(term, max_chars=max_chars)
+        break
+    query = " ".join(selected).strip() or str(fallback_query or "").strip()
+    return _clip_context_query(query, max_chars=max_chars)
+
+
+def _clip_context_query(value: str, *, max_chars: int) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if len(text) <= max_chars:
+        return text
+    clipped = text[:max_chars].rsplit(" ", 1)[0].strip()
+    return clipped or text[:max_chars].strip()
+
+
 def _rewrite_with_deepseek(query: str, *, model: str) -> dict[str, Any]:
     from openai import OpenAI
 

@@ -116,6 +116,8 @@ streamlit run app.py
 
 Agent synthesis では、上位 5 件のヒット論文から paper-local deeper evidence を score-rank して先に追加し、その後 nearby chunks を追加します。tool search のランキング自体は変更しません。5 chunks の context 予算、論文ごとの補足上限 3 件では、現在の context eval で `context_chunk_hit@10` が `0.5000` から `0.6333` に、`context_nearby_hit@10` が `0.5667` から `0.6667` に改善しました。
 
+手動検索と Agent 検索の UI には、検索ルート、正規化 query、抽出エンティティ、context-localization query、ヒット数、遅延、各結果が一致した route/query などの診断情報を表示します。これは recall debugging 用であり、保存済み payload は変更しません。
+
 ## プロジェクト構成
 
 ```text
@@ -153,6 +155,7 @@ SortPaper には、証拠 chunk の検索を改善するための実験的なク
 - クエリ書き換えは DeepSeek V4 Flash を使い、中国語、日本語、英語、または口語的な質問を短い英語の科学検索クエリに正規化します。
 - マルチクエリ再現は、元の query、正規化 query、少数の variants を使って検索し、結果をマージします。
 - 現在の融合戦略では、元の query の上位結果と raw tail 候補を優先し、variants は主に複数 route の一致、または同じアンカー論文に属する場合に後半を補います。
+- Agent の paper-local context は、正規化 query に products、organisms、genes、enzymes、metrics、aliases、先頭 2 件の variants を加えた短い evidence-localization query を使います。`table` / `text` の evidence preference は、すでにヒットした論文内で小さなランキング bonus を与えるだけで、もう一方の content type を除外しません。
 - 手動検索と Agent 検索の UI から明示的に有効化できますが、現時点ではデフォルト無効です。
 
 smoke20 評価では、保護付きマルチクエリ再現は lexical baseline を悪化させなくなりましたが、安定した改善はまだ確認できておらず、遅延も増えます。
@@ -173,6 +176,13 @@ elapsed_ms_p50 = 3357ms
 
 ```bash
 python evals/retrieval_eval.py --max-cases 60 --ks 1 3 5 10 --strategy standard --lexical-backfill --multi-query --out reports/retrieval_eval_multi_query_lexical60_top10.json
+```
+
+Agent context evaluation でも、本番経路に近い形で rerank、query rewrite、multi-query recall を有効化できます:
+
+```bash
+python evals/agent_context_eval.py --max-cases 60 --ks 1 3 5 10 --lexical-backfill --rerank --query-rewrite --expand-neighbor-context --expand-paper-local-context --neighbor-total-limit 5 --paper-local-paper-limit 5 --paper-local-total-limit 5 --paper-local-per-paper-limit 3 --out reports/agent_context_eval_query_rewrite60_ctx5.json
+python evals/agent_context_eval.py --max-cases 60 --ks 1 3 5 10 --lexical-backfill --rerank --multi-query --expand-neighbor-context --expand-paper-local-context --neighbor-total-limit 5 --paper-local-paper-limit 5 --paper-local-total-limit 5 --paper-local-per-paper-limit 3 --out reports/agent_context_eval_multi_query60_ctx5.json
 ```
 
 詳細は `evals/QUERY_REWRITE.md` を参照してください。

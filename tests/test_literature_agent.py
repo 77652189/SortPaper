@@ -211,6 +211,70 @@ def test_agent_search_can_use_query_rewrite_multi_query(monkeypatch) -> None:
     assert result[0]["matched_routes"] == ["raw", "normalized"]
 
 
+def test_agent_uses_normalized_query_for_paper_local_context(monkeypatch) -> None:
+    import src.agent.literature_agent as literature_agent
+    from src.retrieval.query_rewrite import QueryRewrite
+
+    captured: dict[str, object] = {}
+    rewrite = QueryRewrite(
+        raw_query="LNT II 为什么残留过高？",
+        normalized_query="lacto-N-triose II accumulation engineering strategy",
+        products=["LNT II"],
+        genes=["lgtA"],
+        metrics=["accumulation"],
+        evidence_preference="table",
+        aliases=["LNTII"],
+        variants=["LNT II lgtA RBS"],
+    )
+
+    class CapturingStore:
+        def expand_paper_local_context(self, query, results, **_kwargs):
+            captured["context_query"] = query
+            captured["context_results"] = results
+            captured["content_type_preference"] = _kwargs.get("content_type_preference")
+            return []
+
+        def expand_neighbor_context(self, *_args, **_kwargs):
+            return []
+
+    def fake_multi_query_search(_store, query, **_kwargs):
+        captured["search_query"] = query
+        return SimpleNamespace(
+            results=[
+                {
+                    "score": 0.9,
+                    "payload": {
+                        "paper_id": "paper-1",
+                        "chunk_id": "chunk-1",
+                        "content": "Primary evidence chunk.",
+                        "paper_title": "LNT II paper",
+                        "page": 3,
+                        "content_type": "text",
+                    },
+                }
+            ],
+            rewrite=rewrite,
+            metadata=lambda: {"rewrite": rewrite.to_dict()},
+        )
+
+    monkeypatch.setattr(literature_agent, "QdrantStore", lambda: CapturingStore())
+    monkeypatch.setattr(literature_agent, "multi_query_search", fake_multi_query_search)
+
+    agent = literature_agent.LiteratureAgent(use_query_rewrite=True)
+    agent._execute_tool("search_literature", {"query": "LNT II 为什么残留过高？"})
+
+    assert captured["search_query"] == "LNT II 为什么残留过高？"
+    assert captured["context_query"] == (
+        "lacto-N-triose II accumulation engineering strategy "
+        "LNT II lgtA LNTII LNT II lgtA RBS"
+    )
+    assert len(captured["context_results"]) == 1
+    assert captured["content_type_preference"] == "table"
+    assert agent._last_search_meta["context_query"] == captured["context_query"]
+    assert agent._last_search_meta["search_hits"] == 1
+    assert agent._last_search_meta["context_hits"] == 0
+
+
 def test_agent_expands_neighbor_context_without_returning_as_search_hits(monkeypatch) -> None:
     import src.agent.literature_agent as literature_agent
 
@@ -260,6 +324,9 @@ def test_agent_expands_neighbor_context_without_returning_as_search_hits(monkeyp
     assert len(agent._all_chunks) == 2
     assert agent._all_chunks[1]["_context_expansion"] is True
     assert agent._all_chunks[1]["_neighbor_source_chunk_id"] == "chunk-1"
+    assert agent._last_search_meta["search_hits"] == 1
+    assert agent._last_search_meta["context_hits"] == 1
+    assert agent._last_search_meta["context_query"] == "lacto-N-triose II"
     assert captured_context["per_result_limit"] == 2
     assert captured_context["total_limit"] == 5
 

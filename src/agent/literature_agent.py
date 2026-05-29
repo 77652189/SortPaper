@@ -20,6 +20,7 @@ from typing import Any
 
 from src.runtime_env import load_project_env
 from src.retrieval.multi_query import multi_query_search
+from src.retrieval.query_rewrite import build_context_query
 from src.store.qdrant_store import QdrantStore
 
 load_project_env()
@@ -238,6 +239,7 @@ class LiteratureAgent:
 
         started = time.monotonic()
         search_meta: dict[str, Any] = {}
+        content_type_preference: str | None = None
         if self.use_query_rewrite or self.multi_query_recall:
             multi_result = multi_query_search(
                 self.store,
@@ -251,6 +253,11 @@ class LiteratureAgent:
             )
             results = multi_result.results
             search_meta = multi_result.metadata()
+            rewrite = getattr(multi_result, "rewrite", None)
+            context_query = build_context_query(rewrite, fallback_query=query)
+            rewrite_preference = str(getattr(rewrite, "evidence_preference", "") or "").strip().lower()
+            if rewrite_preference in {"text", "table"}:
+                content_type_preference = rewrite_preference
         else:
             results = self.store.search(
                 query=query,
@@ -259,17 +266,19 @@ class LiteratureAgent:
                 rerank=True,
                 lexical_backfill=self.lexical_backfill,
             )
+            context_query = query
         elapsed_ms = (time.monotonic() - started) * 1000
         context_results: list[dict[str, Any]] = []
         if self.expand_paper_local_context and hasattr(self.store, "expand_paper_local_context"):
             context_results.extend(
                 self.store.expand_paper_local_context(
-                    query,
+                    context_query,
                     results,
                     filter_kwargs=filter_kwargs if filter_kwargs else None,
                     paper_limit=5,
                     per_paper_limit=3,
                     total_limit=5,
+                    content_type_preference=content_type_preference,
                 )
             )
         if self.expand_neighbor_context:
@@ -295,6 +304,11 @@ class LiteratureAgent:
                 )
                 if key not in existing_context_keys:
                     context_results.append(item)
+        search_meta.update({
+            "search_hits": len(results),
+            "context_hits": len(context_results),
+            "context_query": context_query,
+        })
         logger.info(
             "Agent literature search | lexical_backfill=%s query_rewrite=%s multi_query=%s expand_neighbor_context=%s expand_paper_local_context=%s filters=%s hits=%s context_hits=%s elapsed_ms=%.1f",
             self.lexical_backfill,

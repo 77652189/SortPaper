@@ -16,6 +16,80 @@ def verdict_badge(passed: bool) -> str:
     return "✅" if passed else "❌"
 
 
+def _clip_debug_text(value: object, *, limit: int = 120) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= limit:
+        return text
+    return text[:limit].rsplit(" ", 1)[0].rstrip() + "..."
+
+
+def _debug_list_values(value: object, *, limit: int = 4) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [_clip_debug_text(item, limit=40) for item in value[:limit] if str(item).strip()]
+
+
+def search_meta_debug_lines(search_meta: dict | None) -> list[str]:
+    if not search_meta:
+        return []
+    lines: list[str] = []
+    routes = search_meta.get("routes") or []
+    route_bits = []
+    for route in routes:
+        source = str(route.get("source") or "").strip()
+        query = _clip_debug_text(route.get("query"), limit=80)
+        if source and query:
+            route_bits.append(f"{source}: {query}")
+    if route_bits:
+        lines.append("检索路由: " + " | ".join(route_bits))
+    rewrite = search_meta.get("rewrite") or {}
+    normalized = _clip_debug_text(rewrite.get("normalized_query"), limit=120)
+    if normalized:
+        lines.append("标准化 query: " + normalized)
+    evidence_preference = str(rewrite.get("evidence_preference") or "").strip()
+    if evidence_preference and evidence_preference != "any":
+        lines.append("证据偏好: " + evidence_preference)
+    entity_bits = []
+    for field, label in (
+        ("products", "产物"),
+        ("organisms", "菌株"),
+        ("genes", "基因"),
+        ("enzymes", "酶"),
+        ("metrics", "指标"),
+    ):
+        values = _debug_list_values(rewrite.get(field))
+        if values:
+            entity_bits.append(f"{label}: {', '.join(values)}")
+    if entity_bits:
+        lines.append("改写实体: " + " | ".join(entity_bits))
+    context_query = _clip_debug_text(search_meta.get("context_query"), limit=120)
+    if context_query:
+        lines.append("上下文定位 query: " + context_query)
+    search_hits = search_meta.get("search_hits")
+    context_hits = search_meta.get("context_hits")
+    if search_hits is not None or context_hits is not None:
+        lines.append(f"命中: {int(search_hits or 0)} 条 | 上下文补充: {int(context_hits or 0)} 条")
+    elapsed_ms = search_meta.get("elapsed_ms")
+    if elapsed_ms is not None:
+        lines.append(f"多路召回耗时: {float(elapsed_ms):.1f} ms")
+    return lines
+
+
+def result_route_debug_bits(result: dict) -> list[str]:
+    bits: list[str] = []
+    routes = [str(item) for item in (result.get("matched_routes") or []) if str(item).strip()]
+    if routes:
+        bits.append("命中路由: " + ", ".join(routes))
+    queries = [
+        _clip_debug_text(item, limit=80)
+        for item in (result.get("matched_queries") or [])
+        if str(item).strip()
+    ]
+    if queries:
+        bits.append("命中 query: " + " | ".join(queries[:3]))
+    return bits
+
+
 
 def render_reconstruction_tab(result: dict) -> None:
     """Chunk 重建可视化：空白画布上按 bbox 排列 chunk，每个框显示 global_order + 内容摘要。"""
@@ -1088,6 +1162,9 @@ def _render_manual_search(paper_id: str | None = None) -> None:
             st.warning("未找到相关结果")
             return
         st.caption(f"找到 {len(results)} 条结果")
+        search_meta = results[0].get("search_meta") if results else {}
+        for line in search_meta_debug_lines(search_meta):
+            st.caption(line)
         for r in results:
             score = r.get("score", 0)
             payload = r.get("payload", {})
@@ -1116,6 +1193,9 @@ def _render_manual_search(paper_id: str | None = None) -> None:
                     quality_bits.append("菌株/宿主: " + ", ".join(map(str, organisms[:4])))
                 if quality_bits:
                     st.caption(" | ".join(quality_bits))
+                route_bits = result_route_debug_bits(r)
+                if route_bits:
+                    st.caption(" | ".join(route_bits))
                 if wtype == "table":
                     st.markdown(content)
                 else:
@@ -1171,6 +1251,8 @@ def _render_agent_search(paper_id: str | None = None) -> None:
                     if h["args"].get("category"):
                         st.caption(f"  过滤: category={h['args']['category']}")
                     st.caption(f"  命中: {h['hits']} 条")
+                    for line in search_meta_debug_lines(h.get("search_meta")):
+                        st.caption("  " + line)
 
         # 综合建议
         st.markdown("### 🧠 综合建议")

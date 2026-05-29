@@ -45,6 +45,19 @@ def _env_value(name: str, default: str = "") -> str:
     return (os.getenv(name) or os.getenv(f"\ufeff{name}") or default).strip()
 
 
+def _response_debug_summary(response: Any) -> str:
+    parts: list[str] = []
+    for field in ("status_code", "code", "message", "request_id"):
+        value = (
+            response.get(field)
+            if isinstance(response, dict)
+            else getattr(response, field, None)
+        )
+        if value not in (None, ""):
+            parts.append(f"{field}={value}")
+    return ", ".join(parts) if parts else "no status details"
+
+
 def _payload_has_quality_enrichment(payload: dict[str, Any]) -> bool:
     """Infer whether legacy payload already contains Map-Reduce quality metadata."""
     quality_keys = (
@@ -231,7 +244,10 @@ class QdrantStore:
         else:
             embeddings = getattr(output, "embeddings", None) or []
         if not embeddings:
-            raise ValueError("No embedding returned from DashScope")
+            raise ValueError(
+                "No embedding returned from DashScope "
+                f"({_response_debug_summary(response)})"
+            )
 
         first = embeddings[0]
 
@@ -793,6 +809,7 @@ class QdrantStore:
         paper_limit: int = 3,
         per_paper_limit: int = 2,
         total_limit: int = 5,
+        content_type_preference: str | None = None,
     ) -> list[dict[str, Any]]:
         """Return deeper evidence chunks from already-hit papers for answer synthesis."""
         if not query.strip() or not results or paper_limit <= 0 or per_paper_limit <= 0 or total_limit <= 0:
@@ -827,12 +844,17 @@ class QdrantStore:
             )
             if lexical_score <= 0:
                 continue
-            score = lexical_score + (0.03 / rank)
+            preference_bonus = self._content_type_preference_bonus(
+                payload,
+                content_type_preference=content_type_preference,
+            )
+            score = lexical_score + preference_bonus + (0.03 / rank)
             evidence_by_paper[paper_id].append({
                 "id": entry["id"],
                 "score": score,
                 "payload": payload,
                 "lexical_score": lexical_score,
+                "content_type_preference_bonus": preference_bonus,
                 "paper_rank": rank,
                 "context_expansion": True,
                 "paper_local_context": True,
@@ -849,6 +871,20 @@ class QdrantStore:
 
         context = self._deduplicate_results(self._score_rank_evidence_groups(groups))
         return context[:total_limit]
+
+    @staticmethod
+    def _content_type_preference_bonus(
+        payload: dict[str, Any],
+        *,
+        content_type_preference: str | None,
+    ) -> float:
+        preference = str(content_type_preference or "").strip().lower()
+        if preference not in {"text", "table"}:
+            return 0.0
+        content_type = str(
+            payload.get("content_type") or payload.get("worker_type") or ""
+        ).strip().lower()
+        return 0.08 if content_type == preference else 0.0
 
     def _merge_lexical_candidates(
         self,

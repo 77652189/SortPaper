@@ -136,6 +136,8 @@ Manual search and Agent search now enable enhanced chunk recall by default, and 
 
 Agent synthesis also expands answer context from already-hit papers: it score-ranks paper-local deeper evidence from the top five hit papers first, then adds nearby chunks, without changing the tool-search ranking shown to the model. With a five-chunk context budget and per-paper limit of three, the current context eval improves `context_chunk_hit@10` from `0.5000` to `0.6333` and `context_nearby_hit@10` from `0.5667` to `0.6667`.
 
+Manual search and Agent search expose search diagnostics in the UI, including retrieval routes, normalized query, entity fields, context-localization query, hit counts, latency, and per-result matched routes/queries. These diagnostics are intended for recall debugging, not for changing the persisted payload.
+
 ## Query Rewrite and Multi-Query Recall
 
 SortPaper now includes an experimental query rewrite and multi-query recall path for evidence search.
@@ -143,6 +145,7 @@ SortPaper now includes an experimental query rewrite and multi-query recall path
 - Query rewrite uses DeepSeek V4 Flash to normalize Chinese or informal questions into concise English scientific search queries.
 - Multi-query recall fans out across the original query, the normalized query, and short variants, then merges results with a protected original-query anchor.
 - The original-query top results and raw tail candidates are prioritized, while rewritten variants are admitted mainly when they agree across routes or belong to the same anchored paper.
+- Agent paper-local context now uses a compact context query built from the normalized query plus products, organisms, genes, enzymes, metrics, aliases, and the first two variants. A `table` or `text` evidence preference only adds a small ranking bonus inside already-hit papers; it does not filter out the other content type.
 - Manual search and Agent search expose these features as explicit UI switches. They are intentionally off by default.
 
 Current smoke evaluation shows protected multi-query recall no longer hurts the lexical baseline, but it has not yet proven a stable recall gain and adds latency:
@@ -163,6 +166,13 @@ Run the evaluation with:
 
 ```bash
 python evals/retrieval_eval.py --max-cases 60 --ks 1 3 5 10 --strategy standard --lexical-backfill --multi-query --out reports/retrieval_eval_multi_query_lexical60_top10.json
+```
+
+Agent context evaluation can also follow the production path with rerank, query rewrite, and multi-query recall:
+
+```bash
+python evals/agent_context_eval.py --max-cases 60 --ks 1 3 5 10 --lexical-backfill --rerank --query-rewrite --expand-neighbor-context --expand-paper-local-context --neighbor-total-limit 5 --paper-local-paper-limit 5 --paper-local-total-limit 5 --paper-local-per-paper-limit 3 --out reports/agent_context_eval_query_rewrite60_ctx5.json
+python evals/agent_context_eval.py --max-cases 60 --ks 1 3 5 10 --lexical-backfill --rerank --multi-query --expand-neighbor-context --expand-paper-local-context --neighbor-total-limit 5 --paper-local-paper-limit 5 --paper-local-total-limit 5 --paper-local-per-paper-limit 3 --out reports/agent_context_eval_multi_query60_ctx5.json
 ```
 
 More details are in `evals/QUERY_REWRITE.md`.

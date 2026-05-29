@@ -33,6 +33,37 @@ def test_dashscope_rerank_api_key_accepts_bom_env(monkeypatch) -> None:
     assert dashscope_rerank_api_key() == "rerank-key"
 
 
+def test_dashscope_embedding_empty_response_reports_api_status(monkeypatch) -> None:
+    class FakeTextEmbedding:
+        @staticmethod
+        def call(**_kwargs):
+            return SimpleNamespace(
+                status_code=401,
+                code="InvalidApiKey",
+                message="invalid api key",
+                request_id="req-1",
+                output={"embeddings": []},
+            )
+
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "embedding-key")
+    monkeypatch.setitem(sys.modules, "dashscope", SimpleNamespace(TextEmbedding=FakeTextEmbedding))
+
+    store = QdrantStore.__new__(QdrantStore)
+
+    try:
+        store._embed_dashscope("lacto-N-triose II")
+    except ValueError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("Expected empty DashScope embedding response to fail")
+
+    assert "No embedding returned from DashScope" in message
+    assert "status_code=401" in message
+    assert "code=InvalidApiKey" in message
+    assert "message=invalid api key" in message
+    assert "request_id=req-1" in message
+
+
 def test_rerank_passes_explicit_dashscope_api_key(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
@@ -488,6 +519,25 @@ def test_score_rank_evidence_groups_prefers_best_evidence_across_papers() -> Non
     ranked = QdrantStore._score_rank_evidence_groups(groups)
 
     assert [item["id"] for item in ranked] == ["a2", "b1", "a1", "c1"]
+
+
+def test_content_type_preference_bonus_only_boosts_matching_type() -> None:
+    assert QdrantStore._content_type_preference_bonus(
+        {"content_type": "table"},
+        content_type_preference="table",
+    ) == 0.08
+    assert QdrantStore._content_type_preference_bonus(
+        {"worker_type": "text"},
+        content_type_preference="text",
+    ) == 0.08
+    assert QdrantStore._content_type_preference_bonus(
+        {"content_type": "text"},
+        content_type_preference="table",
+    ) == 0.0
+    assert QdrantStore._content_type_preference_bonus(
+        {"content_type": "table"},
+        content_type_preference="any",
+    ) == 0.0
 
 
 def test_restore_anchor_candidates_keeps_raw_hits_in_final_page() -> None:

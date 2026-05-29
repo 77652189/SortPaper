@@ -28,6 +28,8 @@ from evals.retrieval_eval import (
     round_floats,
     scroll_payloads,
 )
+from src.retrieval.multi_query import multi_query_search
+from src.retrieval.query_rewrite import QueryRewrite, build_context_query, rewrite_query
 from src.store.qdrant_store import QdrantStore
 
 
@@ -41,6 +43,9 @@ class AgentContextResult:
     search_chunks: list[str]
     context_chunks: list[str]
     added_context_chunks: int
+    search_query: str
+    context_query: str
+    query_rewrite: dict[str, Any] | None = None
 
 
 def evaluate_context_case(
@@ -49,6 +54,7 @@ def evaluate_context_case(
     *,
     search_top_k: int,
     synthesis_limit: int,
+    rerank: bool = False,
     lexical_backfill: bool = False,
     expand_neighbor_context: bool = True,
     expand_paper_local_context: bool = True,
@@ -56,22 +62,52 @@ def evaluate_context_case(
     paper_local_per_paper_limit: int = 2,
     paper_local_paper_limit: int = 5,
     paper_local_total_limit: int = 5,
+    rewritten_query: QueryRewrite | None = None,
+    multi_query: bool = False,
 ) -> AgentContextResult:
-    results = store.search(
-        case.query,
-        limit=search_top_k,
-        rerank=False,
-        lexical_backfill=lexical_backfill,
+    search_query = (
+        rewritten_query.normalized_query
+        if rewritten_query and rewritten_query.normalized_query
+        else case.query
     )
+    context_query = build_context_query(rewritten_query, fallback_query=case.query)
+    content_type_preference: str | None = None
+    if rewritten_query and rewritten_query.evidence_preference in {"text", "table"}:
+        content_type_preference = rewritten_query.evidence_preference
+    if multi_query:
+        multi_result = multi_query_search(
+            store,
+            case.query,
+            limit=search_top_k,
+            rerank=rerank,
+            lexical_backfill=lexical_backfill,
+            rewritten_query=rewritten_query,
+            route_limit=4,
+        )
+        results = multi_result.results
+        if multi_result.routes:
+            search_query = " | ".join(route.query for route in multi_result.routes)
+        rewrite = getattr(multi_result, "rewrite", None)
+        context_query = build_context_query(rewrite, fallback_query=case.query)
+        rewrite_preference = str(getattr(rewrite, "evidence_preference", "") or "").strip().lower()
+        content_type_preference = rewrite_preference if rewrite_preference in {"text", "table"} else None
+    else:
+        results = store.search(
+            search_query,
+            limit=search_top_k,
+            rerank=rerank,
+            lexical_backfill=lexical_backfill,
+        )
     context_results: list[dict[str, Any]] = []
     if expand_paper_local_context and hasattr(store, "expand_paper_local_context"):
         context_results.extend(
             store.expand_paper_local_context(
-                case.query,
+                context_query,
                 results,
                 paper_limit=paper_local_paper_limit,
                 per_paper_limit=paper_local_per_paper_limit,
                 total_limit=paper_local_total_limit,
+                content_type_preference=content_type_preference,
             )
         )
     if expand_neighbor_context:
@@ -121,6 +157,9 @@ def evaluate_context_case(
         search_chunks=search_chunks,
         context_chunks=context_chunks,
         added_context_chunks=len(context_results),
+        search_query=search_query,
+        context_query=context_query,
+        query_rewrite=rewritten_query.to_dict() if rewritten_query else None,
     )
 
 
@@ -179,12 +218,21 @@ def run_eval(args: argparse.Namespace) -> dict[str, Any]:
     if not cases:
         raise SystemExit("No agent context eval cases could be generated from Qdrant payloads.")
 
+    rewrites: dict[str, QueryRewrite] = {}
+    if args.query_rewrite or args.multi_query:
+        for case in cases:
+            rewrites[case.id] = rewrite_query(
+                case.query,
+                model=args.query_rewrite_model,
+                use_llm=True,
+            )
     results = [
         evaluate_context_case(
             store,
             case,
             search_top_k=args.search_top_k,
             synthesis_limit=args.synthesis_limit,
+            rerank=args.rerank,
             lexical_backfill=args.lexical_backfill,
             expand_neighbor_context=args.expand_neighbor_context,
             expand_paper_local_context=args.expand_paper_local_context,
@@ -192,6 +240,8 @@ def run_eval(args: argparse.Namespace) -> dict[str, Any]:
             paper_local_paper_limit=args.paper_local_paper_limit,
             paper_local_per_paper_limit=args.paper_local_per_paper_limit,
             paper_local_total_limit=args.paper_local_total_limit,
+            rewritten_query=rewrites.get(case.id),
+            multi_query=args.multi_query,
         )
         for case in cases
     ]
@@ -201,6 +251,7 @@ def run_eval(args: argparse.Namespace) -> dict[str, Any]:
             "expand_neighbor_context": args.expand_neighbor_context,
             "expand_paper_local_context": args.expand_paper_local_context,
             "lexical_backfill": args.lexical_backfill,
+            "rerank": args.rerank,
             "max_cases": args.max_cases,
             "max_points": args.max_points,
             "min_content_chars": args.min_content_chars,
@@ -208,6 +259,9 @@ def run_eval(args: argparse.Namespace) -> dict[str, Any]:
             "paper_local_paper_limit": args.paper_local_paper_limit,
             "paper_local_per_paper_limit": args.paper_local_per_paper_limit,
             "paper_local_total_limit": args.paper_local_total_limit,
+            "query_rewrite": args.query_rewrite,
+            "query_rewrite_model": args.query_rewrite_model,
+            "multi_query": args.multi_query,
             "search_top_k": args.search_top_k,
             "seed": args.seed,
             "synthesis_limit": args.synthesis_limit,
@@ -226,6 +280,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--max-points", type=int, default=None)
     parser.add_argument("--min-content-chars", type=int, default=180)
     parser.add_argument("--content-types", nargs="+", default=["text", "table"])
+    parser.add_argument("--rerank", action="store_true")
     parser.add_argument("--lexical-backfill", action="store_true")
     parser.add_argument("--expand-neighbor-context", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--expand-paper-local-context", action=argparse.BooleanOptionalAction, default=True)
@@ -233,6 +288,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--paper-local-paper-limit", type=int, default=5)
     parser.add_argument("--paper-local-per-paper-limit", type=int, default=3)
     parser.add_argument("--paper-local-total-limit", type=int, default=5)
+    parser.add_argument("--query-rewrite", action="store_true")
+    parser.add_argument("--query-rewrite-model", default=None)
+    parser.add_argument("--multi-query", action="store_true")
     parser.add_argument("--search-top-k", type=int, default=5)
     parser.add_argument("--seed", type=int, default=13)
     parser.add_argument("--synthesis-limit", type=int, default=10)

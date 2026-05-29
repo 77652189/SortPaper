@@ -85,8 +85,20 @@ Agent 当前已使用这个思路：tool search 返回的命中排序不变，�
 回答上下文级评测：
 
 ```bash
-python evals/agent_context_eval.py --max-cases 60 --ks 1 3 5 10 --lexical-backfill --expand-neighbor-context --expand-paper-local-context --neighbor-total-limit 5 --paper-local-paper-limit 5 --paper-local-total-limit 5 --paper-local-per-paper-limit 3 --out reports/agent_context_eval_score_rank_p5_p3_neighbor60_ctx5.json
+python evals/agent_context_eval.py --max-cases 60 --ks 1 3 5 10 --lexical-backfill --rerank --expand-neighbor-context --expand-paper-local-context --neighbor-total-limit 5 --paper-local-paper-limit 5 --paper-local-total-limit 5 --paper-local-per-paper-limit 3 --out reports/agent_context_eval_score_rank_p5_p3_neighbor60_ctx5.json
 ```
+
+带查询改写的 Agent 上下文级评测：
+```bash
+python evals/agent_context_eval.py --max-cases 60 --ks 1 3 5 10 --lexical-backfill --rerank --query-rewrite --expand-neighbor-context --expand-paper-local-context --neighbor-total-limit 5 --paper-local-paper-limit 5 --paper-local-total-limit 5 --paper-local-per-paper-limit 3 --out reports/agent_context_eval_query_rewrite60_ctx5.json
+```
+
+带查询改写 + 多路召回的 Agent 上下文级评测：
+```bash
+python evals/agent_context_eval.py --max-cases 60 --ks 1 3 5 10 --lexical-backfill --rerank --multi-query --expand-neighbor-context --expand-paper-local-context --neighbor-total-limit 5 --paper-local-paper-limit 5 --paper-local-total-limit 5 --paper-local-per-paper-limit 3 --out reports/agent_context_eval_multi_query60_ctx5.json
+```
+
+启用查询改写或多路召回时，Agent 上下文评测会用 `normalized_query` 作为主检索表达，并把改写得到的产品、菌株、基因、酶、指标、别名和前 2 条 variants 合并成论文内 evidence 定位 query。
 
 这个评测不调用 LLM，只判断最终回答上下文中是否包含 exact/nearby evidence chunk。
 
