@@ -654,6 +654,19 @@ class QdrantStore:
         return representatives + lead_rest + cls._interleave_ranked_groups(other_rest)
 
     @staticmethod
+    def _score_rank_evidence_groups(groups: list[list[dict[str, Any]]]) -> list[dict[str, Any]]:
+        ranked = [item for group in groups for item in group]
+        ranked.sort(
+            key=lambda item: (
+                float(item.get("score") or 0.0),
+                float(item.get("lexical_score") or 0.0),
+                -int(item.get("paper_rank") or 9999),
+            ),
+            reverse=True,
+        )
+        return ranked
+
+    @staticmethod
     def _deduplicate_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
         deduped: list[dict[str, Any]] = []
         seen = set()
@@ -834,7 +847,7 @@ class QdrantStore:
             )
             groups.append(group[:per_paper_limit])
 
-        context = self._deduplicate_results(self._prioritize_evidence_groups(groups))
+        context = self._deduplicate_results(self._score_rank_evidence_groups(groups))
         return context[:total_limit]
 
     def _merge_lexical_candidates(

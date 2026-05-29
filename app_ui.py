@@ -1038,7 +1038,7 @@ def render_standalone_search_tab() -> None:
 def _render_manual_search(paper_id: str | None = None) -> None:
     query = st.text_input("输入检索关键词或问题", placeholder="e.g. lacto-N-tetraose biosynthesis yield",
                           key="manual_query")
-    top_k = st.slider("返回条数", 1, 10, 5, key="manual_top_k")
+    top_k = st.slider("返回条数", 1, 10, 10, key="manual_top_k")
     use_quality_filter = st.checkbox(
         "仅检索质量解析后的可执行实验论文",
         value=False,

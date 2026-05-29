@@ -59,6 +59,24 @@ def test_qdrant_search_enables_lexical_backfill_by_default(monkeypatch) -> None:
     assert captured["filter_kwargs"] is None
 
 
+def test_qdrant_search_returns_top10_by_default(monkeypatch) -> None:
+    import src.store.qdrant_store as qdrant_store
+    from app_utils import qdrant_search
+
+    captured: dict[str, object] = {}
+
+    class FakeStore:
+        def search(self, **kwargs):
+            captured.update(kwargs)
+            return []
+
+    monkeypatch.setattr(qdrant_store, "QdrantStore", lambda: FakeStore())
+
+    qdrant_search("lacto-N-triose II")
+
+    assert captured["limit"] == 10
+
+
 def test_qdrant_search_can_disable_lexical_backfill(monkeypatch) -> None:
     import src.store.qdrant_store as qdrant_store
     from app_utils import qdrant_search

@@ -112,9 +112,9 @@ streamlit run app.py
 
 검색 결과가 좋지 않으면 먼저 대상 논문이 벡터 라이브러리에 있는지 확인하세요. 그다음 품질 평가 metadata가 있는지, 반환된 chunk가 원 실험 논문인지 리뷰인지 인용 문단인지 확인하고, 이후 query, hybrid search, rerank, UI filter를 조정합니다.
 
-수동 검색과 Agent 검색은 이제 enhanced chunk recall을 기본으로 사용합니다. 이 indexed lexical backfill은 `search_text`와 저빈도 query term으로 evidence 후보를 보강하며, 매번 전체 라이브러리를 스캔하지 않고 원본 상위 retrieval anchor도 보호합니다. 현재 60-case top10 평가에서 `chunk_hit@10`은 `0.4000`에서 `0.6000`으로, `nearby_chunk_hit@10`은 `0.4000`에서 `0.6333`으로 개선되었고 p50 latency는 약 `561ms`에서 `745ms`로 증가했습니다. 너무 넓은 query나 지연 시간이 민감한 경우 UI에서 끌 수 있습니다.
+수동 검색과 Agent 검색은 이제 enhanced chunk recall을 기본으로 사용합니다. 수동 검색은 기본적으로 10개 결과를 보여 주므로 평가된 top10 evidence를 바로 확인할 수 있습니다. 이 indexed lexical backfill은 `search_text`와 저빈도 query term으로 evidence 후보를 보강하며, 매번 전체 라이브러리를 스캔하지 않고 원본 상위 retrieval anchor도 보호합니다. rerank를 쓰지 않는 60-case top10 평가에서 `chunk_hit@10`은 `0.4000`에서 `0.6000`으로, `nearby_chunk_hit@10`은 `0.4000`에서 `0.6333`으로 개선되었고 p50 latency는 약 `561ms`에서 `745ms`로 증가했습니다. UI 기본 qwen3-rerank 경로에서는 `chunk_hit@10`이 `0.6667`, `nearby_chunk_hit@10`이 `0.7000`, p50 latency가 약 `1621ms`입니다. 너무 넓은 query나 지연 시간이 민감한 경우 UI에서 끌 수 있습니다.
 
-Agent synthesis는 이미 hit된 논문에서 paper-local deeper evidence를 먼저 추가하고, 그다음 nearby chunk를 추가합니다. 이 보강은 tool search ranking 자체를 바꾸지 않습니다. 5개 context 예산과 논문별 보강 한도 3개 설정에서 현재 context eval은 `context_chunk_hit@10`을 `0.5000`에서 `0.5667`로, `context_nearby_hit@10`을 `0.5667`에서 `0.6000`으로 개선했습니다.
+Agent synthesis는 상위 5개 hit 논문에서 paper-local deeper evidence를 score-rank로 먼저 추가하고, 그다음 nearby chunk를 추가합니다. 이 보강은 tool search ranking 자체를 바꾸지 않습니다. 5개 context 예산과 논문별 보강 한도 3개 설정에서 현재 context eval은 `context_chunk_hit@10`을 `0.5000`에서 `0.6333`으로, `context_nearby_hit@10`을 `0.5667`에서 `0.6667`로 개선했습니다.
 
 ## 프로젝트 구조
 

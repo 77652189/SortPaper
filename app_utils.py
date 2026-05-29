@@ -183,7 +183,7 @@ def delete_saved(file_stem: str) -> bool:
 def qdrant_search(
     query: str,
     paper_id: str = None,
-    top_k: int = 5,
+    top_k: int = 10,
     rerank: bool = False,
     filter_kwargs: dict | None = None,
     lexical_backfill: bool = True,

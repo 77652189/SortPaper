@@ -143,9 +143,9 @@ streamlit run app.py
 
 例如 LNT II 问题需要优先确认是否导入了真正的 LNT II 主论文，而不是只导入 HMO 综述或 2'-FL 论文里的引用段落。
 
-手动检索和 Agent 检索现在默认启用增强 chunk 召回。该索引化 lexical backfill 使用 `search_text` 和低频查询词补入证据候选，不再每次全库扫描，同时保护原始召回前排锚点。当前 60 条 top10 评测中，`chunk_hit@10` 从 `0.4000` 提升到 `0.6000`，`nearby_chunk_hit@10` 从 `0.4000` 提升到 `0.6333`，p50 延迟从约 `561ms` 增加到 `745ms`；UI 仍保留开关，可在泛查询或延迟敏感场景下关闭。
+手动检索和 Agent 检索现在默认启用增强 chunk 召回，且手动检索默认展示 10 条结果，让已评测的 top10 证据默认可见。该索引化 lexical backfill 使用 `search_text` 和低频查询词补入证据候选，不再每次全库扫描，同时保护原始召回前排锚点。不启用 rerank 时，当前 60 条 top10 评测中 `chunk_hit@10` 从 `0.4000` 提升到 `0.6000`，`nearby_chunk_hit@10` 从 `0.4000` 提升到 `0.6333`，p50 延迟从约 `561ms` 增加到 `745ms`。在 UI 默认的 qwen3-rerank 路径下，`chunk_hit@10` 达到 `0.6667`，`nearby_chunk_hit@10` 达到 `0.7000`，p50 延迟约 `1621ms`；UI 仍保留 rerank 和增强召回开关，可在泛查询或延迟敏感场景下关闭。
 
-Agent 综合回答还会从已命中的论文中扩展上下文：先补论文内 deeper evidence，再补邻近 chunk，但不改变 tool search 展示给模型的命中排序。在 5 条上下文预算、每篇论文最多 3 条补充证据的设置下，当前上下文评测中 `context_chunk_hit@10` 从 `0.5000` 提升到 `0.5667`，`context_nearby_hit@10` 从 `0.5667` 提升到 `0.6000`。
+Agent 综合回答还会从已命中的论文中扩展上下文：先从前 5 篇命中论文中按证据分数补论文内 deeper evidence，再补邻近 chunk，但不改变 tool search 展示给模型的命中排序。在 5 条上下文预算、每篇论文最多 3 条补充证据的设置下，当前上下文评测中 `context_chunk_hit@10` 从 `0.5000` 提升到 `0.6333`，`context_nearby_hit@10` 从 `0.5667` 提升到 `0.6667`。
 
 ## 项目结构
 

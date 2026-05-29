@@ -54,6 +54,7 @@ def evaluate_context_case(
     expand_paper_local_context: bool = True,
     neighbor_total_limit: int = 10,
     paper_local_per_paper_limit: int = 2,
+    paper_local_paper_limit: int = 5,
     paper_local_total_limit: int = 5,
 ) -> AgentContextResult:
     results = store.search(
@@ -68,7 +69,7 @@ def evaluate_context_case(
             store.expand_paper_local_context(
                 case.query,
                 results,
-                paper_limit=3,
+                paper_limit=paper_local_paper_limit,
                 per_paper_limit=paper_local_per_paper_limit,
                 total_limit=paper_local_total_limit,
             )
@@ -188,6 +189,7 @@ def run_eval(args: argparse.Namespace) -> dict[str, Any]:
             expand_neighbor_context=args.expand_neighbor_context,
             expand_paper_local_context=args.expand_paper_local_context,
             neighbor_total_limit=args.neighbor_total_limit,
+            paper_local_paper_limit=args.paper_local_paper_limit,
             paper_local_per_paper_limit=args.paper_local_per_paper_limit,
             paper_local_total_limit=args.paper_local_total_limit,
         )
@@ -203,6 +205,7 @@ def run_eval(args: argparse.Namespace) -> dict[str, Any]:
             "max_points": args.max_points,
             "min_content_chars": args.min_content_chars,
             "neighbor_total_limit": args.neighbor_total_limit,
+            "paper_local_paper_limit": args.paper_local_paper_limit,
             "paper_local_per_paper_limit": args.paper_local_per_paper_limit,
             "paper_local_total_limit": args.paper_local_total_limit,
             "search_top_k": args.search_top_k,
@@ -227,6 +230,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--expand-neighbor-context", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--expand-paper-local-context", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--neighbor-total-limit", type=int, default=10)
+    parser.add_argument("--paper-local-paper-limit", type=int, default=5)
     parser.add_argument("--paper-local-per-paper-limit", type=int, default=3)
     parser.add_argument("--paper-local-total-limit", type=int, default=5)
     parser.add_argument("--search-top-k", type=int, default=5)

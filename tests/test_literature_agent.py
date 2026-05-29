@@ -286,6 +286,7 @@ def test_agent_adds_paper_local_context_before_neighbor_context(monkeypatch) -> 
         def expand_paper_local_context(self, query, results, **kwargs):
             assert query == "lacto-N-triose II"
             assert len(results) == 1
+            assert kwargs["paper_limit"] == 5
             assert kwargs["total_limit"] == 5
             assert kwargs["per_paper_limit"] == 3
             return [

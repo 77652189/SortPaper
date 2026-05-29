@@ -475,6 +475,21 @@ def test_prioritize_evidence_groups_keeps_representatives_then_lead_depth() -> N
     ]
 
 
+def test_score_rank_evidence_groups_prefers_best_evidence_across_papers() -> None:
+    groups = [
+        [
+            {"id": "a1", "score": 0.7, "lexical_score": 0.7, "paper_rank": 1},
+            {"id": "a2", "score": 1.2, "lexical_score": 1.2, "paper_rank": 1},
+        ],
+        [{"id": "b1", "score": 0.8, "lexical_score": 0.8, "paper_rank": 2}],
+        [{"id": "c1", "score": 0.6, "lexical_score": 0.6, "paper_rank": 3}],
+    ]
+
+    ranked = QdrantStore._score_rank_evidence_groups(groups)
+
+    assert [item["id"] for item in ranked] == ["a2", "b1", "a1", "c1"]
+
+
 def test_restore_anchor_candidates_keeps_raw_hits_in_final_page() -> None:
     anchors = [
         {"id": "raw-1", "score": 0.9, "payload": {"paper_id": "p1", "chunk_id": "raw-1"}},

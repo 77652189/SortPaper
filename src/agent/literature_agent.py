@@ -267,7 +267,7 @@ class LiteratureAgent:
                     query,
                     results,
                     filter_kwargs=filter_kwargs if filter_kwargs else None,
-                    paper_limit=3,
+                    paper_limit=5,
                     per_paper_limit=3,
                     total_limit=5,
                 )
