@@ -116,8 +116,6 @@ def multi_query_search(
             fused = route.weight / (60.0 + rank)
             if route_index == 0:
                 fused *= 1.05
-                if rank <= limit:
-                    fused += 0.04
             existing = merged.get(key)
             if existing is None:
                 copied = dict(item)
@@ -140,13 +138,24 @@ def multi_query_search(
     protected_count = _anchor_protected_count(limit)
     protected_keys = set(raw_order[:protected_count])
     protected_results = [merged[key] for key in raw_order[:protected_count] if key in merged]
+    anchor_paper_ids = _paper_ids(protected_results)
+    raw_candidates_are_sparse = len(raw_order) < protected_count
     remaining_results = [
         item for key, item in merged.items()
         if key not in protected_keys
+        and _admit_tail_candidate(
+            item,
+            anchor_paper_ids=anchor_paper_ids,
+            raw_candidates_are_sparse=raw_candidates_are_sparse,
+        )
     ]
     ranked_remaining = sorted(
         remaining_results,
-        key=lambda item: (float(item.get("score") or 0.0), float(item.get("raw_score") or 0.0)),
+        key=lambda item: (
+            _tail_priority(item),
+            float(item.get("score") or 0.0),
+            float(item.get("raw_score") or 0.0),
+        ),
         reverse=True,
     )
     results = (protected_results + ranked_remaining)[:limit]
@@ -179,3 +188,43 @@ def _anchor_protected_count(limit: int) -> int:
     if limit <= 5:
         return min(limit, 3)
     return min(limit, max(5, limit // 2))
+
+
+def _admit_tail_candidate(
+    item: dict[str, Any],
+    *,
+    anchor_paper_ids: set[str],
+    raw_candidates_are_sparse: bool,
+) -> bool:
+    if item.get("raw_rank") is not None:
+        return True
+    if raw_candidates_are_sparse:
+        return True
+    if _route_consensus_count(item) >= 2:
+        return True
+    payload = item.get("payload") or {}
+    paper_id = str(payload.get("paper_id") or "")
+    return bool(paper_id and paper_id in anchor_paper_ids)
+
+
+def _route_consensus_count(item: dict[str, Any]) -> int:
+    queries = item.get("matched_queries") or []
+    return len({" ".join(str(query).split()).lower() for query in queries if str(query).strip()})
+
+
+def _tail_priority(item: dict[str, Any]) -> int:
+    if item.get("raw_rank") is not None:
+        return 3
+    if _route_consensus_count(item) >= 2:
+        return 2
+    return 1
+
+
+def _paper_ids(items: list[dict[str, Any]]) -> set[str]:
+    ids: set[str] = set()
+    for item in items:
+        payload = item.get("payload") or {}
+        paper_id = str(payload.get("paper_id") or "")
+        if paper_id:
+            ids.add(paper_id)
+    return ids

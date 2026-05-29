@@ -138,7 +138,7 @@ SortPaper now includes an experimental query rewrite and multi-query recall path
 
 - Query rewrite uses DeepSeek V4 Flash to normalize Chinese or informal questions into concise English scientific search queries.
 - Multi-query recall fans out across the original query, the normalized query, and short variants, then merges results with a protected original-query anchor.
-- The original-query top results are protected so rewritten variants can fill recall gaps without pushing already-good evidence out of the first page.
+- The original-query top results and raw tail candidates are prioritized, while rewritten variants are admitted mainly when they agree across routes or belong to the same anchored paper.
 - Manual search and Agent search expose these features as explicit UI switches. They are intentionally off by default.
 
 Current smoke evaluation shows protected multi-query recall no longer hurts the lexical baseline, but it has not yet proven a stable recall gain and adds latency:
@@ -152,7 +152,7 @@ elapsed_ms_p50 = 713ms
 multi-query protected smoke20:
 chunk_hit@10 = 0.4545
 nearby_chunk_hit@10 = 0.5455
-elapsed_ms_p50 = 3225ms
+elapsed_ms_p50 = 3357ms
 ```
 
 Run the evaluation with:

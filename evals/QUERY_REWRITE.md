@@ -54,10 +54,11 @@ python evals/retrieval_eval.py --query-rewrite --query-rewrite-model deepseek-v4
 - `normalized_query`
 - 最多 2 条有效 `variants`
 
-多路结果会用加权 RRF 合并，但不会让改写 query 完全重排原始结果。当前有两层护栏：
+多路结果会用加权 RRF 合并，但不会让改写 query 完全重排原始结果。当前有三层护栏：
 
 - 原始 query route 只取原始 `top_k`，保持与 baseline 检索一致。
 - 结果前段保护原始 query 的前排命中：`top_k<=5` 时保护前 3 个，`top_k=10` 时保护前 5 个；variants 主要竞争后半段补位。
+- 尾部候选优先级为：原始 query 候选 > 跨 route 共识候选 > 同一锚定论文候选；单 route、跨论文的 variants 噪音会被过滤。
 
 ## 当前结论
 
@@ -73,8 +74,8 @@ python evals/retrieval_eval.py --query-rewrite --query-rewrite-model deepseek-v4
 | paper_hit@10 | 1.0000 | 1.0000 |
 | chunk_hit@10 | 0.4545 | 0.4545 |
 | nearby_chunk_hit@10 | 0.5455 | 0.5455 |
-| elapsed_ms_p50 | 713ms | 3225ms |
+| elapsed_ms_p50 | 713ms | 3357ms |
 
-判断：当前多路召回已经从“会伤害 baseline”修到“基本不伤害 baseline”，但还没有证明能稳定提升召回率，而且延迟明显更高。因此它已接入 UI 和 Agent，但默认关闭，继续作为实验开关。
+判断：当前多路召回已经从“会伤害 baseline”修到“基本不伤害 baseline”，并且 raw tail priority 微调后 chunk MRR 回到 baseline 水平；但它还没有证明能稳定提升召回率，而且延迟明显更高。因此它已接入 UI 和 Agent，但默认关闭，继续作为实验开关。
 
-下一步应优先优化“variants 何时允许进入尾部结果”，例如只允许同论文补充、跨 route 共识命中、或低置信 raw 查询时才放宽补位。
+下一步应优先优化选择性触发和 paper-local evidence 定位：只有当原始 query 置信度不足、或已命中正确论文但证据 chunk 排名靠后时，再启用改写/多路召回或论文内重排。
