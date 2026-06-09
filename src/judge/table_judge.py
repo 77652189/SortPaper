@@ -6,6 +6,14 @@ from dataclasses import asdict, dataclass
 from typing import Any, Literal
 
 from src.judge.llm_judge import LLMJudge
+from src.domain.table_candidate_policy import (
+    TableCandidateScore,
+    compare_table_candidate_scores as compare_candidate_scores,
+    score_bbox_candidate as score_candidate_bbox,
+    score_table_candidate as score_candidate_table,
+)
+from src.domain.table_embedding_text import build_table_embedding_text as build_table_embedding_text_from_domain
+from src.domain.table_storage_policy import IMPROVABLE_ACTIONS
 from src.parsers.table import cleanup
 from src.parsers.table.models import BBox, TableRegion
 
@@ -43,14 +51,6 @@ SAFE_AUTO_ACTIONS = {
     "shrink_bbox",
 }
 BBOX_ACTIONS = {"expand_bbox", "shrink_bbox"}
-IMPROVABLE_ACTIONS = {
-    "expand_bbox",
-    "shrink_bbox",
-    "retry_text_strategy",
-    "retry_line_strategy",
-    "needs_llm_judge",
-}
-
 
 @dataclass(frozen=True)
 class RegionTextContext:
@@ -97,17 +97,6 @@ class BBoxCandidate:
 
     def to_dict(self) -> dict[str, Any]:
         return {"name": self.name, "bbox": [float(value) for value in self.bbox]}
-
-
-@dataclass(frozen=True)
-class TableCandidateScore:
-    score: float
-    tier: str
-    reasons: list[str]
-    metrics: dict[str, Any]
-
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
 
 
 def classify_table_result(
@@ -344,48 +333,12 @@ def score_bbox_candidate(
     original_bbox: BBox,
     candidate_bbox: BBox,
 ) -> dict[str, Any]:
-    original = score_table_candidate(
-        metadata=original_metadata,
-        bbox=original_bbox,
-        region_bbox=original_bbox,
+    return score_candidate_bbox(
+        original_metadata=original_metadata,
+        candidate_metadata=candidate_metadata,
+        original_bbox=original_bbox,
+        candidate_bbox=candidate_bbox,
     )
-    candidate = score_table_candidate(
-        metadata=candidate_metadata,
-        bbox=candidate_bbox,
-        region_bbox=original_bbox,
-    )
-    if candidate.metrics["rows"] < 2 or candidate.metrics["cols"] < 2:
-        return {"score": 0.0, "adoptable": False, "reason": "candidate_table_too_small"}
-
-    area_ratio = _area(candidate_bbox) / max(1.0, _area(original_bbox))
-    if area_ratio < 0.35 or area_ratio > 1.80:
-        return {
-            "score": round(candidate.score - original.score, 3),
-            "adoptable": False,
-            "reason": "bbox_area_change_too_large",
-        }
-
-    score_delta = candidate.score - original.score
-    original_prose = float(original.metrics["prose_cell_ratio"] or 0.0)
-    candidate_prose = float(candidate.metrics["prose_cell_ratio"] or 0.0)
-    original_consistency = float(original.metrics["consistency_score"] or 0.0)
-    candidate_consistency = float(candidate.metrics["consistency_score"] or 0.0)
-    original_fill = float(original.metrics["fill_rate"] or 0.0)
-    candidate_fill = float(candidate.metrics["fill_rate"] or 0.0)
-    adoptable = (
-        score_delta >= 0.08
-        and candidate_consistency + 0.05 >= original_consistency
-        and candidate_fill + 0.10 >= original_fill
-        and (candidate_prose < original_prose or candidate_consistency > original_consistency or original_metadata.get("table_region_unparsed"))
-    )
-    return {
-        "score": round(candidate.score, 3),
-        "score_delta": round(score_delta, 3),
-        "candidate_tier": candidate.tier,
-        "original_tier": original.tier,
-        "adoptable": bool(adoptable),
-        "reason": "strictly_better" if adoptable else "not_strictly_better",
-    }
 
 
 def score_table_candidate(
@@ -396,97 +349,12 @@ def score_table_candidate(
     text_context: RegionTextContext | dict[str, Any] | None = None,
     parser_succeeded: bool | None = None,
 ) -> TableCandidateScore:
-    """Score a table candidate using portable structural signals, not labels."""
-    metadata = metadata or {}
-    quality = metadata.get("structural_quality") or {}
-    rows = int(metadata.get("rows") or 0)
-    cols = int(metadata.get("cols") or 0)
-    consistency = _clamp01(float(quality.get("consistency_score") or 0.0))
-    fill = _clamp01(float(quality.get("fill_rate") or 0.0))
-    prose = _clamp01(float(quality.get("prose_cell_ratio") or 0.0))
-    fallback_reasons = list(quality.get("fallback_reasons") or [])
-    succeeded = bool(parser_succeeded if parser_succeeded is not None else rows > 0 and cols > 0)
-
-    reasons: list[str] = []
-    score = 0.0
-    if succeeded:
-        score += 0.15
-    else:
-        reasons.append("no_parser_output")
-    if rows >= 3:
-        score += 0.15
-    else:
-        reasons.append("too_few_rows")
-    if cols >= 2:
-        score += 0.15
-    else:
-        reasons.append("too_few_cols")
-    score += 0.25 * consistency
-    score += 0.20 * fill
-    score += 0.10 * (1.0 - prose)
-
-    if prose >= 0.25:
-        reasons.append("prose_contamination")
-        score -= 0.15
-    if consistency < 0.55 and rows >= 3 and cols >= 2:
-        reasons.append("low_consistency")
-        score -= 0.08
-    if fill < 0.40 and rows >= 3 and cols >= 2:
-        reasons.append("low_fill")
-        score -= 0.05
-    for reason in fallback_reasons:
-        if reason not in reasons:
-            reasons.append(str(reason))
-
-    area_ratio = None
-    if bbox and region_bbox:
-        area_ratio = _area(tuple(float(value) for value in bbox)) / max(
-            1.0,
-            _area(tuple(float(value) for value in region_bbox)),
-        )
-        if area_ratio < 0.35:
-            reasons.append("bbox_much_smaller_than_region")
-            score -= 0.08
-        elif area_ratio > 1.80:
-            reasons.append("bbox_much_larger_than_region")
-            score -= 0.08
-
-    context = _context_dict(text_context)
-    word_count = int(context.get("word_count") or 0)
-    numeric_tokens = int(context.get("numeric_tokens") or 0)
-    long_line_count = int(context.get("long_line_count") or 0)
-    body_word_hits = int(context.get("body_word_hits") or 0)
-    if word_count:
-        numeric_ratio = numeric_tokens / max(1, word_count)
-        if numeric_ratio >= 0.18:
-            score += 0.05
-        if long_line_count >= 2 or body_word_hits >= 8:
-            reasons.append("text_context_body_heavy")
-            score -= 0.08
-
-    score = round(max(0.0, min(1.0, score)), 3)
-    if score >= 0.78:
-        tier = "strong"
-    elif score >= 0.58:
-        tier = "usable"
-    elif score >= 0.35:
-        tier = "suspicious"
-    else:
-        tier = "failed"
-    return TableCandidateScore(
-        score=score,
-        tier=tier,
-        reasons=reasons or ["passed_self_check"],
-        metrics={
-            "rows": rows,
-            "cols": cols,
-            "consistency_score": round(consistency, 3),
-            "fill_rate": round(fill, 3),
-            "prose_cell_ratio": round(prose, 3),
-            "area_ratio_to_region": round(area_ratio, 3) if area_ratio is not None else None,
-            "word_count": word_count,
-            "numeric_tokens": numeric_tokens,
-        },
+    return score_candidate_table(
+        metadata=metadata,
+        bbox=bbox,
+        region_bbox=region_bbox,
+        text_context=text_context,
+        parser_succeeded=parser_succeeded,
     )
 
 
@@ -496,21 +364,7 @@ def compare_table_candidate_scores(
     *,
     min_delta: float = 0.08,
 ) -> dict[str, Any]:
-    original_data = original.to_dict() if hasattr(original, "to_dict") else dict(original)
-    candidate_data = candidate.to_dict() if hasattr(candidate, "to_dict") else dict(candidate)
-    delta = round(float(candidate_data.get("score") or 0.0) - float(original_data.get("score") or 0.0), 3)
-    if delta >= min_delta:
-        verdict = "improved"
-    elif delta <= -min_delta:
-        verdict = "regressed"
-    else:
-        verdict = "unchanged"
-    return {
-        "verdict": verdict,
-        "score_delta": delta,
-        "original_score": original_data,
-        "candidate_score": candidate_data,
-    }
+    return compare_candidate_scores(original, candidate, min_delta=min_delta)
 
 
 def build_storage_decision(
@@ -518,143 +372,9 @@ def build_storage_decision(
     content_type: str,
     metadata: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    """Decide whether a parsed chunk may enter vector storage.
+    from src.domain.table_storage_policy import build_storage_decision as decide_storage
 
-    This is intentionally conservative: table candidates remain visible in
-    parsing/UI output, but clearly unusable or false-positive candidates are
-    marked as not storable so batch ingestion does not pollute retrieval.
-    """
-    if content_type != "table":
-        return {
-            "excluded_from_storage": False,
-            "storage_exclusion_reason": "",
-            "storage_decision_source": "not_table",
-        }
-
-    metadata = metadata or {}
-    existing_unparseable = str(metadata.get("unparseable_reason") or "").strip()
-    llm_action = str(metadata.get("llm_recommended_action") or "")
-    rule_action = str(metadata.get("rule_recommended_action") or "")
-    llm_category = str(metadata.get("llm_failure_category") or "")
-    rule_category = str(metadata.get("rule_failure_category") or "")
-    auto_action = str(metadata.get("auto_action") or "")
-    has_caption_label = bool(
-        str(metadata.get("table_label") or "").strip()
-        or str(metadata.get("table_caption") or metadata.get("caption") or "").strip()
-    )
-    tier = str(metadata.get("table_candidate_tier") or "")
-    try:
-        score = float(metadata.get("table_candidate_score") or 0.0)
-    except (TypeError, ValueError):
-        score = 0.0
-    rows = int(metadata.get("rows") or 0)
-    cols = int(metadata.get("cols") or 0)
-    unparsed = bool(metadata.get("table_region_unparsed"))
-    quality = metadata.get("structural_quality") or {}
-    prose = float(quality.get("prose_cell_ratio") or 0.0)
-    candidate_reasons = {
-        str(reason)
-        for reason in (metadata.get("table_candidate_reasons") or [])
-    }
-
-    if bool(metadata.get("excluded_from_storage")):
-        if (
-            metadata.get("storage_decision_source") == "body_heavy_low_column_candidate"
-            and has_caption_label
-        ):
-            return {
-                "excluded_from_storage": False,
-                "storage_exclusion_reason": "",
-                "storage_decision_source": "captioned_table_overrides_body_heavy_low_column",
-            }
-        reason = str(metadata.get("storage_exclusion_reason") or "").strip()
-        return {
-            "excluded_from_storage": True,
-            "storage_exclusion_reason": reason or "already marked excluded by table judge",
-            "storage_decision_source": "existing_marker",
-            "unparseable_reason": existing_unparseable,
-        }
-
-    if existing_unparseable:
-        return {
-            "excluded_from_storage": True,
-            "storage_exclusion_reason": existing_unparseable,
-            "storage_decision_source": "unparseable_marker",
-            "unparseable_reason": existing_unparseable,
-        }
-
-    if "drop_candidate" in {llm_action, rule_action, auto_action}:
-        return {
-            "excluded_from_storage": True,
-            "storage_exclusion_reason": "candidate marked as false positive by judge",
-            "storage_decision_source": "judge_drop_candidate",
-        }
-
-    if "mark_unparseable" in {llm_action, rule_action, auto_action}:
-        reason = str(metadata.get("llm_reason") or "table candidate marked unparseable by judge")
-        return {
-            "excluded_from_storage": True,
-            "storage_exclusion_reason": reason,
-            "storage_decision_source": "judge_mark_unparseable",
-            "unparseable_reason": reason,
-        }
-
-    if "candidate_false_positive" in {llm_category, rule_category}:
-        return {
-            "excluded_from_storage": True,
-            "storage_exclusion_reason": "candidate classified as false positive",
-            "storage_decision_source": "judge_false_positive",
-        }
-
-    if "fragmented_text_layer" in {llm_category, rule_category} and tier == "failed":
-        reason = "text layer is too fragmented for reliable table storage"
-        return {
-            "excluded_from_storage": True,
-            "storage_exclusion_reason": reason,
-            "storage_decision_source": "failed_fragmented_text_layer",
-            "unparseable_reason": reason,
-        }
-
-    no_usable_structure = unparsed or rows < 2 or cols < 2
-    action = llm_action or rule_action
-    if tier == "failed" and score < 0.35 and no_usable_structure:
-        return {
-            "excluded_from_storage": True,
-            "storage_exclusion_reason": "failed table self-check with no usable parser output",
-            "storage_decision_source": "failed_self_check_no_structure",
-        }
-
-    if tier == "failed" and score < 0.35 and action not in IMPROVABLE_ACTIONS:
-        return {
-            "excluded_from_storage": True,
-            "storage_exclusion_reason": "failed table self-check and no safe repair action remains",
-            "storage_decision_source": "failed_self_check_no_repair",
-        }
-
-    if tier == "failed" and prose >= 0.35:
-        return {
-            "excluded_from_storage": True,
-            "storage_exclusion_reason": "failed table self-check due to body-text contamination",
-            "storage_decision_source": "failed_body_text_contamination",
-        }
-
-    if (
-        "text_context_body_heavy" in candidate_reasons
-        and cols <= 2
-        and score < 0.78
-        and not has_caption_label
-    ):
-        return {
-            "excluded_from_storage": True,
-            "storage_exclusion_reason": "body-text-heavy low-column table candidate",
-            "storage_decision_source": "body_heavy_low_column_candidate",
-        }
-
-    return {
-        "excluded_from_storage": False,
-        "storage_exclusion_reason": "",
-        "storage_decision_source": "table_self_check_passed_or_repairable",
-    }
+    return decide_storage(content_type=content_type, metadata=metadata)
 
 
 def build_table_embedding_text(
@@ -663,42 +383,11 @@ def build_table_embedding_text(
     metadata: dict[str, Any] | None = None,
     max_chars: int = 5000,
 ) -> str:
-    """Build cleaner embedding text for tables while preserving raw display text.
-
-    Markdown table syntax is useful for humans but noisy for retrieval. This
-    keeps captions, headers, and cell text, while dropping separator rows and
-    empty cells. The original markdown remains stored as payload content.
-    """
-    metadata = metadata or {}
-    parts: list[str] = []
-    caption = str(metadata.get("table_caption") or metadata.get("caption") or "").strip()
-    label = str(metadata.get("table_label") or "").strip()
-    if label and caption and label.lower() not in caption.lower():
-        parts.append(label)
-    if caption:
-        parts.append(caption)
-
-    for line in str(raw_content or "").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        if _is_markdown_separator_row(line):
-            continue
-        if "|" in line:
-            cells = [
-                _clean_embedding_cell(cell)
-                for cell in line.strip("|").split("|")
-            ]
-            cells = [cell for cell in cells if cell]
-            if cells:
-                parts.append("; ".join(cells))
-        else:
-            cleaned = _clean_embedding_cell(line)
-            if cleaned:
-                parts.append(cleaned)
-
-    text = "\n".join(_dedupe_preserve_order(parts))
-    return text[:max_chars].strip()
+    return build_table_embedding_text_from_domain(
+        raw_content=raw_content,
+        metadata=metadata,
+        max_chars=max_chars,
+    )
 
 
 def _is_markdown_separator_row(line: str) -> bool:
@@ -878,20 +567,3 @@ def _dedupe_bbox_candidates(candidates: list[BBoxCandidate]) -> list[BBoxCandida
         seen.add(key)
         unique.append(candidate)
     return unique
-
-
-def _area(bbox: BBox) -> float:
-    x0, y0, x1, y1 = bbox
-    return max(0.0, x1 - x0) * max(0.0, y1 - y0)
-
-
-def _clamp01(value: float) -> float:
-    return max(0.0, min(1.0, value))
-
-
-def _context_dict(text_context: RegionTextContext | dict[str, Any] | None) -> dict[str, Any]:
-    if text_context is None:
-        return {}
-    if hasattr(text_context, "to_dict"):
-        return text_context.to_dict()
-    return dict(text_context)

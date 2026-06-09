@@ -13,3 +13,7 @@ openai
 pandas
 Pillow
 pytest
+requests
+fastapi
+sentence-transformers
+modelscope

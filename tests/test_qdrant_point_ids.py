@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from inspect import signature
 from types import SimpleNamespace
 
 from src.store.qdrant_store import (
@@ -33,7 +34,16 @@ def test_dashscope_rerank_api_key_accepts_bom_env(monkeypatch) -> None:
     assert dashscope_rerank_api_key() == "rerank-key"
 
 
+def test_search_accepts_application_rerank_options() -> None:
+    params = signature(QdrantStore.search).parameters
+
+    assert "selective_rerank" in params
+    assert "rerank_top_n" in params
+
+
 def test_dashscope_embedding_empty_response_reports_api_status(monkeypatch) -> None:
+    import src.store.qdrant_store as qdrant_store
+
     class FakeTextEmbedding:
         @staticmethod
         def call(**_kwargs):
@@ -46,6 +56,7 @@ def test_dashscope_embedding_empty_response_reports_api_status(monkeypatch) -> N
             )
 
     monkeypatch.setenv("DASHSCOPE_API_KEY", "embedding-key")
+    monkeypatch.setattr(qdrant_store, "EMBEDDING_API_KEY_ENV", "DASHSCOPE_API_KEY")
     monkeypatch.setitem(sys.modules, "dashscope", SimpleNamespace(TextEmbedding=FakeTextEmbedding))
 
     store = QdrantStore.__new__(QdrantStore)
@@ -62,6 +73,96 @@ def test_dashscope_embedding_empty_response_reports_api_status(monkeypatch) -> N
     assert "code=InvalidApiKey" in message
     assert "message=invalid api key" in message
     assert "request_id=req-1" in message
+
+
+def test_embed_can_use_local_qwen3_provider(monkeypatch) -> None:
+    import src.store.qdrant_store as qdrant_store
+
+    captured: dict[str, object] = {}
+
+    def fake_embed(self, text: str, *, is_query: bool = False):
+        captured["text"] = text
+        captured["is_query"] = is_query
+        return [0.1, 0.2]
+
+    monkeypatch.setattr(qdrant_store, "EMBEDDING_PROVIDER", "qwen3_local")
+    monkeypatch.setattr(QdrantStore, "_embed_qwen3_local", fake_embed)
+
+    store = QdrantStore.__new__(QdrantStore)
+    dense, sparse = store.embed("lacto-N-tetraose", is_query=True)
+
+    assert dense == [0.1, 0.2]
+    assert sparse == {}
+    assert captured == {"text": "lacto-N-tetraose", "is_query": True}
+
+
+def test_search_uses_sparse_vector_property(monkeypatch) -> None:
+    import src.store.qdrant_store as qdrant_store
+
+    captured: dict[str, object] = {}
+
+    def fake_run_vector_query(**kwargs):
+        captured.update(kwargs)
+        return [{"id": "point-1", "score": 0.9, "payload": {"paper_id": "p1"}}]
+
+    def fake_postprocess_results(**kwargs):
+        return kwargs["results"]
+
+    store = QdrantStore.__new__(QdrantStore)
+    store.client = object()
+    store.collection = "papers"
+    store._lexical_document_cache = None
+    store._lexical_index_cache = None
+
+    monkeypatch.setattr(QdrantStore, "embed", lambda _self, _query: ([0.1, 0.2], {}))
+    monkeypatch.setattr(QdrantStore, "_uses_sparse_vectors", property(lambda _self: False))
+    monkeypatch.setattr(qdrant_store.qdrant_search, "run_vector_query", fake_run_vector_query)
+    monkeypatch.setattr(qdrant_store.qdrant_search_pipeline, "postprocess_results", fake_postprocess_results)
+
+    results = store.search("lacto-N-tetraose", limit=1)
+
+    assert captured["uses_sparse_vectors"] is False
+    assert results[0]["id"] == "point-1"
+
+
+def test_local_qwen3_provider_reuses_existing_sparse_collection(monkeypatch) -> None:
+    import src.store.qdrant_store as qdrant_store
+
+    class FakeClient:
+        def __init__(self) -> None:
+            self.deleted = False
+            self.created = False
+
+        def get_collections(self):
+            return SimpleNamespace(collections=[SimpleNamespace(name="papers")])
+
+        def get_collection(self, _collection):
+            return SimpleNamespace(
+                config=SimpleNamespace(
+                    params=SimpleNamespace(
+                        sparse_vectors={"sparse": object()},
+                        vectors={DENSE_VECTOR_NAME: SimpleNamespace(size=1024)},
+                    )
+                )
+            )
+
+        def delete_collection(self, **_kwargs):
+            self.deleted = True
+
+        def create_collection(self, **_kwargs):
+            self.created = True
+
+    monkeypatch.setattr(qdrant_store, "EMBEDDING_PROVIDER", "qwen3_local")
+    monkeypatch.setattr(qdrant_store, "EMBEDDING_DIM", 1024)
+
+    store = QdrantStore.__new__(QdrantStore)
+    store.client = FakeClient()
+    store.collection = "papers"
+
+    store._ensure_collection()
+
+    assert store.client.deleted is False
+    assert store.client.created is False
 
 
 def test_rerank_passes_explicit_dashscope_api_key(monkeypatch) -> None:
@@ -122,6 +223,65 @@ def test_rerank_preserves_original_index_scores(monkeypatch) -> None:
     ]
 
 
+def test_rerank_preserves_unranked_tail_candidates(monkeypatch) -> None:
+    class FakeTextReRank:
+        @staticmethod
+        def call(**kwargs):
+            return SimpleNamespace(
+                status_code=200,
+                output={"results": [
+                    {"index": 1, "relevance_score": 0.88},
+                    {"index": 0, "relevance_score": 0.55},
+                ]},
+                usage={},
+            )
+
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "rerank-key")
+    monkeypatch.setitem(sys.modules, "dashscope", SimpleNamespace(TextReRank=FakeTextReRank))
+
+    store = QdrantStore.__new__(QdrantStore)
+    candidates = [
+        {"id": "a", "score": 0.1, "payload": {"content": "first"}},
+        {"id": "b", "score": 0.2, "payload": {"content": "second"}},
+        {"id": "c", "score": 0.3, "payload": {"content": "third"}},
+        {"id": "d", "score": 0.4, "payload": {"content": "fourth"}},
+    ]
+
+    reranked = store._rerank("query", candidates, top_n=2)
+
+    assert [item["id"] for item in reranked] == ["b", "a", "c", "d"]
+    assert [item.get("reranked", False) for item in reranked] == [True, True, False, False]
+
+
+def test_rerank_caps_dashscope_document_batch_and_keeps_overflow_tail(monkeypatch) -> None:
+    captured: dict[str, int] = {}
+
+    class FakeTextReRank:
+        @staticmethod
+        def call(**kwargs):
+            captured["documents"] = len(kwargs["documents"])
+            return SimpleNamespace(
+                status_code=200,
+                output={"results": [{"index": 0, "relevance_score": 0.9}]},
+                usage={},
+            )
+
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "rerank-key")
+    monkeypatch.setitem(sys.modules, "dashscope", SimpleNamespace(TextReRank=FakeTextReRank))
+
+    store = QdrantStore.__new__(QdrantStore)
+    candidates = [
+        {"id": index, "score": float(index), "payload": {"content": f"candidate {index}"}}
+        for index in range(505)
+    ]
+
+    reranked = store._rerank("query", candidates, top_n=5)
+
+    assert captured["documents"] == 500
+    assert len(reranked) == 505
+    assert [item["id"] for item in reranked[-5:]] == [500, 501, 502, 503, 504]
+
+
 def test_lnt_query_requires_exact_anchor_for_lexical_boost() -> None:
     query = "如何解决 LNT II 中间产物残留过高?"
 
@@ -161,6 +321,62 @@ def test_lnt_query_boost_promotes_specific_mechanism_chunk() -> None:
     assert boosted[0]["lexical_score"] > boosted[1]["lexical_score"]
 
 
+def test_fielded_lexical_boost_prefers_entity_match_over_body_match(monkeypatch) -> None:
+    query = "lacto-N-tetraose Escherichia coli"
+    body_only = {
+        "id": "body",
+        "score": 0.8,
+        "payload": {
+            "content": "lacto-N-tetraose was mentioned in an Escherichia coli related paragraph.",
+        },
+    }
+    entity_match = {
+        "id": "entity",
+        "score": 0.6,
+        "payload": {
+            "target_products": ["lacto-N-tetraose"],
+            "organisms": ["Escherichia coli"],
+            "content": "Fermentation results are described here.",
+        },
+    }
+
+    store = QdrantStore.__new__(QdrantStore)
+    monkeypatch.setattr(
+        store,
+        "_lexical_document_index",
+        lambda: {"entries": [body_only, entity_match], "inverted": {}},
+    )
+
+    boosted = store._apply_fielded_lexical_boost(
+        query,
+        [body_only, entity_match],
+        weight=0.5,
+    )
+
+    assert boosted[0]["id"] == "entity"
+    assert boosted[0]["fielded_lexical_score"] > boosted[1]["fielded_lexical_score"]
+
+
+def test_selective_rerank_reason_detects_evidence_query() -> None:
+    reason = QdrantStore._selective_rerank_reason(
+        "Which evidence passage reports 3.42 g/L for LNT titer?",
+        [{"score": 0.8}, {"score": 0.4}],
+        limit=10,
+    )
+
+    assert reason == "evidence_query"
+
+
+def test_selective_rerank_reason_ignores_title_like_close_scores() -> None:
+    reason = QdrantStore._selective_rerank_reason(
+        "lacto-N-tetraose biosynthesis",
+        [{"score": 1.0}, {"score": 0.95}],
+        limit=10,
+    )
+
+    assert reason == ""
+
+
 def test_rerank_document_text_cleans_payload_noise_and_keeps_domain_terms() -> None:
     payload = {
         "paper_title": "2021-Example_2′-FL_paper(科研通-ablesci.com).pdf",
@@ -179,6 +395,15 @@ def test_rerank_document_text_cleans_payload_noise_and_keeps_domain_terms() -> N
     assert "fermentation_experiment" not in text
     assert "2-fucosyllactose" in text
     assert "escherichia coli" in text
+
+
+def test_rerank_document_text_prefers_search_text_payload() -> None:
+    payload = {
+        "content": "unrelated raw content",
+        "search_text": "clean SEO text lacto-N-tetraose UDP-Gal",
+    }
+
+    assert QdrantStore._rerank_document_text(payload) == "clean SEO text lacto-N-tetraose UDP-Gal"
 
 
 def test_add_writes_search_text_payload(monkeypatch) -> None:
@@ -404,6 +629,38 @@ def test_neighbor_candidates_add_adjacent_chunks_from_same_paper() -> None:
 
     assert [item["id"] for item in merged] == ["point-seed", "point-near"]
     assert merged[1]["neighbor_source_chunk_id"] == "chunk-seed"
+
+
+def test_neighbor_distance_falls_back_to_chunk_id_coordinates() -> None:
+    source = {
+        "chunk_id": "text_p4_col1_y603.6_x306.9",
+    }
+    nearby = {
+        "chunk_id": "text_p4_col1_y700.0_x306.9",
+    }
+    far_same_column = {
+        "chunk_id": "text_p4_col1_y900.0_x306.9",
+    }
+    other_column = {
+        "chunk_id": "text_p4_col2_y620.0_x45.6",
+    }
+
+    assert QdrantStore._neighbor_distance(source, nearby, window=2) == 1
+    assert QdrantStore._neighbor_distance(source, far_same_column, window=2) is None
+    assert QdrantStore._neighbor_distance(source, other_column, window=2) is None
+
+
+def test_neighbor_distance_uses_chunk_id_coordinates_when_page_exists_without_order() -> None:
+    source = {
+        "page": 4,
+        "chunk_id": "text_p4_col1_y603.6_x306.9",
+    }
+    nearby = {
+        "page": 4,
+        "chunk_id": "text_p4_col1_y720.0_x306.9",
+    }
+
+    assert QdrantStore._neighbor_distance(source, nearby, window=2) == 1
 
 
 def test_expand_neighbor_context_returns_only_context_chunks() -> None:

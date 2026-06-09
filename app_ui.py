@@ -5,7 +5,11 @@ SortPaper UI — Streamlit 渲染组件。
 from __future__ import annotations
 
 import streamlit as st
-from app_utils import qdrant_search, load_saved_list, load_saved_detail, delete_saved
+from app_config import RERANK_DEFAULT_ENABLED, SELECTIVE_RERANK_DEFAULT_ENABLED
+from app_utils import qdrant_search
+from src.application.agent_search import run_literature_agent_query
+from src.application.retrieval_profiles import PROFILE_LABELS, get_retrieval_profile, profile_caption
+from src.application.table_debug import table_storage_view_state
 
 def type_badge(ctype: str) -> str:
     colors = {"text": "🔵", "table": "🟠", "image": "🟢"}
@@ -42,6 +46,13 @@ def search_meta_debug_lines(search_meta: dict | None) -> list[str]:
             route_bits.append(f"{source}: {query}")
     if route_bits:
         lines.append("检索路由: " + " | ".join(route_bits))
+    route_policy = search_meta.get("route_policy") or {}
+    if route_policy:
+        reason = str(route_policy.get("reason") or "").strip()
+        requested = route_policy.get("requested_limit")
+        effective = route_policy.get("effective_limit")
+        if reason:
+            lines.append(f"route policy: {reason} ({effective}/{requested})")
     rewrite = search_meta.get("rewrite") or {}
     normalized = _clip_debug_text(rewrite.get("normalized_query"), limit=120)
     if normalized:
@@ -601,34 +612,15 @@ def collect_table_debug_rows(chunks: list[dict], verdicts: dict | None = None) -
         if issue_type == "false_positive":
             llm_action = "judge_false_positive"
             llm_label = "Judge 已判定不是表格：标记不入库，候选仍保留"
-        storage_decision = {}
-        try:
-            from src.judge.table_judge import build_storage_decision
-            storage_decision = build_storage_decision(
-                content_type=chunk.get("content_type", ""),
-                metadata=metadata,
-            )
-        except Exception:
-            storage_decision = {}
-        excluded = bool(
-            issue_type == "false_positive"
-            or storage_decision.get("excluded_from_storage", metadata.get("excluded_from_storage"))
+        storage_view = table_storage_view_state(
+            content_type=chunk.get("content_type", ""),
+            metadata=metadata,
+            issue_type=issue_type,
         )
-        storage_reason = (
-            storage_decision.get("storage_exclusion_reason")
-            if storage_decision
-            else metadata.get("storage_exclusion_reason", "")
-        )
-        parsed = not bool(metadata.get("table_region_unparsed"))
-        usable = bool(parsed and not excluded)
-        if excluded:
-            table_status = "不入库候选"
-        elif not parsed:
-            table_status = "未解析候选"
-        elif metadata.get("vision_fallback_needed") or metadata.get("structure_reparse_needed"):
-            table_status = "结构需处理"
-        else:
-            table_status = "可用表格"
+        excluded = storage_view["excluded_from_storage"]
+        storage_reason = storage_view["storage_exclusion_reason"]
+        usable = storage_view["usable_table"]
+        table_status = storage_view["table_status"]
         rows.append({
             "chunk_id": chunk.get("chunk_id", ""),
             "table_label": metadata.get("table_label") or metadata.get("caption") or "",
@@ -798,6 +790,32 @@ def render_table_debug_tab(result: dict) -> None:
                 st.markdown(content[:2000])
 
 
+def _format_duration(value: object, *, skipped: bool = False) -> str:
+    if skipped:
+        return "未执行"
+    seconds = float(value or 0)
+    if 0 < seconds < 0.1:
+        return "<0.1s"
+    return f"{seconds:.1f}s"
+
+
+def _render_mineru_timing(result: dict) -> None:
+    timing = result.get("worker_timing", {}) or {}
+    if not timing:
+        return
+    mineru = result.get("mineru", {}) or {}
+    mode = result.get("mode", "")
+    figure_skipped = not mineru.get("figure_groups_described") and mode != "mineru_full"
+    store_skipped = "store" not in timing and mode != "mineru_auto_store"
+    with st.expander("MinerU 耗时统计", expanded=False):
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("MinerU API", _format_duration(timing.get("mineru_api", 0)))
+        c2.metric("Zip 转 chunk", _format_duration(timing.get("adapter", 0)))
+        c3.metric("图片转文字", _format_duration(timing.get("figure_vision", 0), skipped=figure_skipped))
+        c4.metric("入库", _format_duration(timing.get("store", 0), skipped=store_skipped))
+        c5.metric("总耗时", _format_duration(timing.get("total", result.get("_elapsed", 0))))
+
+
 def render_overview(result: dict) -> None:
     """纯展示，不包含任何会触发 st.rerun() 的按钮。"""
     text_n = len(result.get("text_chunks", []))
@@ -809,6 +827,31 @@ def render_overview(result: dict) -> None:
     c1.metric("🔵 文本块", text_n)
     c2.metric("🟠 表格块", table_n)
     c3.metric("🟢 图片", img_n)
+
+    if mode in {"mineru_preview", "mineru_full", "mineru_auto_store"}:
+        mode_labels = {
+            "mineru_preview": "快速预览",
+            "mineru_full": "完整解析",
+            "mineru_auto_store": "一键入库",
+        }
+        c4.metric("模式", mode_labels.get(mode, "MinerU"))
+        mineru = result.get("mineru", {}) or {}
+        if mode == "mineru_preview":
+            st.info("MinerU 快速预览：解析文本、表格、图片占位、页码、bbox 和 Figure group metadata，不调用图片转文字。")
+        elif mode == "mineru_full":
+            st.info("MinerU 完整解析：在快速预览基础上按 Figure group 调用图片转文字，适合检查最终 chunk 质量。")
+        else:
+            store_result = result.get("store_result", {}) or {}
+            stored = store_result.get("stored", 0)
+            attempted = store_result.get("attempted", 0)
+            if store_result.get("error"):
+                st.warning(f"MinerU 一键入库未完全成功：{store_result.get('error')}")
+            else:
+                st.success(f"MinerU 一键入库完成：{stored}/{attempted} 个 chunk 已写入 Qdrant。")
+        if mineru.get("used_cache"):
+            st.caption("MinerU API 阶段使用本地缓存，因此 API 耗时可能为 0。")
+        _render_mineru_timing(result)
+        return
 
     if mode == "pipeline":
         verdicts = result.get("verdicts", {})
@@ -1062,9 +1105,9 @@ def render_image_tab(result: dict) -> None:
 def render_search_tab(paper_id: str) -> None:
     """语义检索标签页：当前论文内检索。"""
     try:
-        from src.store.qdrant_store import QdrantStore
-        store = QdrantStore()
-        total = store.count
+        from src.application.vector_library import total_count
+
+        total = total_count()
     except Exception:
         st.warning("Qdrant 服务未连接（localhost:6333），请先启动 Qdrant")
         return
@@ -1078,18 +1121,18 @@ def render_search_tab(paper_id: str) -> None:
     sub_tabs = st.tabs(["🔍 手动检索", "🤖 Agent 检索"])
 
     with sub_tabs[0]:
-        _render_manual_search(paper_id)
+        _render_manual_search_profiled(paper_id)
 
     with sub_tabs[1]:
-        _render_agent_search(paper_id)
+        _render_agent_search_profiled(paper_id)
 
 
 def render_standalone_search_tab() -> None:
     """独立检索标签页：不需要先解析论文，直接搜索 Qdrant 全库。"""
     try:
-        from src.store.qdrant_store import QdrantStore
-        store = QdrantStore()
-        total = store.count
+        from src.application.vector_library import total_count
+
+        total = total_count()
     except Exception:
         st.warning("Qdrant 服务未连接（localhost:6333），请先启动 Qdrant")
         return
@@ -1103,29 +1146,323 @@ def render_standalone_search_tab() -> None:
     st_tabs = st.tabs(["🔍 手动检索", "🤖 Agent 检索"])
 
     with st_tabs[0]:
-        _render_manual_search(paper_id=None)
+        _render_manual_search_profiled(paper_id=None)
 
     with st_tabs[1]:
-        _render_agent_search(paper_id=None)
+        _render_agent_search_profiled(paper_id=None)
+
+
+def render_manual_search_view(paper_id: str | None = None) -> None:
+    _render_manual_search_profiled(paper_id)
+
+
+def render_agent_search_view(paper_id: str | None = None) -> None:
+    _render_agent_search_profiled(paper_id)
+
+
+def _render_manual_search_profiled(paper_id: str | None = None) -> None:
+    query = st.text_input(
+        "输入检索关键词或问题",
+        placeholder="e.g. lacto-N-tetraose biosynthesis yield",
+        key="manual_query",
+    )
+    profile_options = ["quick", "evidence"]
+    profile_name = st.radio(
+        "检索模式",
+        profile_options,
+        format_func=lambda value: PROFILE_LABELS[value],
+        horizontal=True,
+        key="manual_retrieval_profile",
+    )
+    profile = get_retrieval_profile(profile_name)
+    st.caption(profile_caption(profile_name))
+
+    top_k = st.slider("返回条数", 1, 100, profile.default_top_k, key=f"manual_top_k_{profile_name}")
+    use_quality_filter = st.checkbox(
+        "仅检索质量分析后标记为可执行的实验论文",
+        value=False,
+        help="需要全库探索时可以取消。",
+        key="manual_quality_filter",
+    )
+
+    override_profile = False
+    rerank = profile.rerank
+    selective_rerank = profile.selective_rerank
+    rerank_top_n = profile.rerank_top_n
+    lexical_backfill = profile.lexical_backfill
+    neighbor_backfill = profile.neighbor_backfill
+    query_rewrite = profile.query_rewrite
+    multi_query = profile.multi_query
+    with st.expander("高级召回参数", expanded=False):
+        override_profile = st.checkbox("手动覆盖当前检索模式", value=False, key=f"manual_override_{profile_name}")
+        if override_profile:
+            rerank = st.checkbox("始终 Rerank", value=profile.rerank, key=f"manual_rerank_{profile_name}")
+            selective_rerank = st.checkbox(
+                "证据型问题自动 Rerank",
+                value=(not rerank and profile.selective_rerank),
+                key=f"manual_selective_rerank_{profile_name}",
+                disabled=rerank,
+            )
+            rerank_top_n = st.slider(
+                "Rerank 窗口",
+                1,
+                20,
+                min(profile.rerank_top_n or 10, top_k),
+                key=f"manual_rerank_top_n_{profile_name}",
+                disabled=not (rerank or selective_rerank),
+            )
+            lexical_backfill = st.checkbox("词面补召回", value=profile.lexical_backfill, key=f"manual_lexical_{profile_name}")
+            neighbor_backfill = st.checkbox("相邻 chunk 补召回", value=profile.neighbor_backfill, key=f"manual_neighbor_{profile_name}")
+            query_rewrite = st.checkbox("查询改写", value=profile.query_rewrite, key=f"manual_rewrite_{profile_name}")
+            multi_query = st.checkbox("多路召回", value=profile.multi_query, key=f"manual_multi_{profile_name}")
+
+    if st.button("检索", key="manual_search_btn", type="primary"):
+        if not query.strip():
+            st.warning("请输入查询内容")
+            return
+        filter_kwargs = {"is_actionable": True} if use_quality_filter else None
+        with st.spinner("正在检索..."):
+            if override_profile:
+                results = qdrant_search(
+                    query,
+                    paper_id,
+                    top_k,
+                    rerank=rerank,
+                    selective_rerank=selective_rerank and not rerank,
+                    rerank_top_n=rerank_top_n if (rerank or selective_rerank) else None,
+                    filter_kwargs=filter_kwargs,
+                    lexical_backfill=lexical_backfill,
+                    neighbor_backfill=neighbor_backfill,
+                    query_rewrite=query_rewrite,
+                    multi_query=multi_query,
+                )
+            else:
+                results = qdrant_search(
+                    query,
+                    paper_id,
+                    top_k,
+                    retrieval_profile=profile_name,
+                    filter_kwargs=filter_kwargs,
+                )
+
+        if not results:
+            st.warning("未找到相关结果")
+            return
+        st.caption(f"找到 {len(results)} 条结果")
+        search_meta = results[0].get("search_meta") if results else {}
+        for line in search_meta_debug_lines(search_meta):
+            st.caption(line)
+        for result in results:
+            _render_search_result_card(result, paper_id=paper_id)
+
+
+def _render_agent_search_profiled(paper_id: str | None = None) -> None:
+    st.caption("Agent 会自动生成检索词，并在回答前补充论文内证据和相邻上下文。")
+    profile_name = st.radio(
+        "召回模式",
+        ["agent", "evidence"],
+        format_func=lambda value: PROFILE_LABELS[value],
+        horizontal=True,
+        key="agent_retrieval_profile",
+    )
+    profile = get_retrieval_profile(profile_name, default="agent")
+    st.caption(profile_caption(profile_name))
+
+    question = st.text_area(
+        "输入你的问题",
+        placeholder="e.g. HMO 发酵中乳糖补料导致乙酸积累，文献中有什么解决方案？",
+        key="agent_question",
+        height=100,
+    )
+    max_rounds = st.slider("最大检索轮次", 1, 3, 2, key="agent_rounds")
+
+    override_profile = False
+    with st.expander("高级 Agent 参数", expanded=False):
+        override_profile = st.checkbox("手动覆盖当前召回模式", value=False, key=f"agent_override_{profile_name}")
+        if override_profile:
+            lexical_backfill = st.checkbox("词面补召回", value=profile.lexical_backfill, key=f"agent_lexical_{profile_name}")
+            neighbor_backfill = st.checkbox("相邻 chunk 补召回", value=profile.neighbor_backfill, key=f"agent_neighbor_{profile_name}")
+            rerank = st.checkbox("始终 Rerank", value=profile.rerank, key=f"agent_rerank_{profile_name}")
+            selective_rerank = st.checkbox(
+                "证据型问题自动 Rerank",
+                value=(not rerank and profile.selective_rerank),
+                key=f"agent_selective_{profile_name}",
+                disabled=rerank,
+            )
+            rerank_top_n = st.slider(
+                "Rerank 窗口",
+                1,
+                20,
+                profile.rerank_top_n or 5,
+                key=f"agent_rerank_top_n_{profile_name}",
+                disabled=not (rerank or selective_rerank),
+            )
+            query_rewrite = st.checkbox("查询改写", value=profile.query_rewrite, key=f"agent_rewrite_{profile_name}")
+            multi_query = st.checkbox("多路召回", value=profile.multi_query, key=f"agent_multi_{profile_name}")
+        else:
+            lexical_backfill = profile.lexical_backfill
+            neighbor_backfill = profile.neighbor_backfill
+            rerank = profile.rerank
+            selective_rerank = profile.selective_rerank
+            rerank_top_n = profile.rerank_top_n
+            query_rewrite = profile.query_rewrite
+            multi_query = profile.multi_query
+
+    if st.button("Agent 检索", key="agent_search_btn", type="primary"):
+        if not question.strip():
+            st.warning("请输入问题")
+            return
+
+        with st.spinner("Agent 正在检索并综合证据..."):
+            if override_profile:
+                result = run_literature_agent_query(
+                    question,
+                    max_rounds=max_rounds,
+                    lexical_backfill=lexical_backfill,
+                    neighbor_backfill=neighbor_backfill,
+                    rerank=rerank,
+                    selective_rerank=selective_rerank and not rerank,
+                    rerank_top_n=rerank_top_n if (rerank or selective_rerank) else None,
+                    use_query_rewrite=query_rewrite,
+                    multi_query_recall=multi_query,
+                )
+            else:
+                result = run_literature_agent_query(
+                    question,
+                    max_rounds=max_rounds,
+                    retrieval_profile=profile_name,
+                )
+
+        if result["search_history"]:
+            with st.expander(f"检索过程（{len(result['search_history'])} 轮，共 {result['total_chunks']} 个 chunk）", expanded=False):
+                for history in result["search_history"]:
+                    st.caption(f"第 {history['round'] + 1} 轮: `{history['args'].get('query', '?')}`")
+                    if history["args"].get("category"):
+                        st.caption(f"过滤: category={history['args']['category']}")
+                    st.caption(f"命中: {history['hits']} 条")
+                    for line in search_meta_debug_lines(history.get("search_meta")):
+                        st.caption(line)
+
+        st.markdown("### 综合建议")
+        st.markdown(_strip_markdown_source_summary(result["answer"]))
+        _render_agent_source_cards(result.get("sources") or [])
+
+
+def _strip_markdown_source_summary(answer: str) -> str:
+    text = str(answer or "").strip()
+    marker = "\n### Sources"
+    index = text.find(marker)
+    if index < 0 and text.startswith("### Sources"):
+        return ""
+    if index < 0:
+        return text
+    return text[:index].rstrip()
+
+
+def _render_agent_source_cards(sources: list[dict]) -> None:
+    if not sources:
+        return
+    st.markdown("### 证据来源")
+    for source in sources:
+        source_id = source.get("source_id", "?")
+        title = source.get("paper_title", "Untitled paper")
+        page = source.get("page", "?")
+        content_type = source.get("content_type", "chunk")
+        chunk_id = source.get("chunk_id", "")
+        flags = [str(item) for item in source.get("flags", []) if str(item).strip()]
+        label = f"[{source_id}] {title} | p{page} | {content_type}"
+        with st.expander(label, expanded=False):
+            details = []
+            if chunk_id:
+                details.append(f"chunk: `{chunk_id}`")
+            if flags:
+                details.append("context: " + ", ".join(flags))
+            if details:
+                st.caption(" | ".join(details))
+            snippet = str(source.get("snippet") or "").strip()
+            if snippet:
+                st.text(snippet)
+
+
+def _render_search_result_card(result: dict, *, paper_id: str | None = None) -> None:
+    score = result.get("score", 0)
+    payload = result.get("payload", {})
+    content_type = payload.get("content_type", payload.get("worker_type", ""))
+    content = payload.get("content", "")
+    page = payload.get("page", "?")
+    paper_title = payload.get("paper_title", "?")
+    paper_info = f" | {paper_title[:40]}" if paper_id is None else ""
+    reranked = "Rerank | " if result.get("reranked") else ""
+    with st.expander(f"{reranked}相似度={score:.4f} | {content_type} | p{page}{paper_info}", expanded=True):
+        quality_bits = []
+        category = payload.get("category", "")
+        credibility = payload.get("credibility")
+        fermentation_relevance = payload.get("fermentation_relevance")
+        products = payload.get("target_products") or []
+        organisms = payload.get("organisms") or []
+        if category:
+            quality_bits.append(f"分类: {category_label(category)}")
+        if credibility is not None:
+            quality_bits.append(f"可信度: {float(credibility):.2f}")
+        if fermentation_relevance is not None:
+            quality_bits.append(f"发酵相关性: {float(fermentation_relevance):.2f}")
+        if products:
+            quality_bits.append("产品: " + ", ".join(map(str, products[:4])))
+        if organisms:
+            quality_bits.append("菌株/宿主: " + ", ".join(map(str, organisms[:4])))
+        if quality_bits:
+            st.caption(" | ".join(quality_bits))
+        route_bits = result_route_debug_bits(result)
+        selective_reason = result.get("selective_rerank_reason")
+        if selective_reason:
+            route_bits.append(f"selective rerank: {selective_reason}")
+        if route_bits:
+            st.caption(" | ".join(route_bits))
+        if content_type == "table":
+            st.markdown(content)
+        else:
+            st.text(content)
 
 
 def _render_manual_search(paper_id: str | None = None) -> None:
     query = st.text_input("输入检索关键词或问题", placeholder="e.g. lacto-N-tetraose biosynthesis yield",
                           key="manual_query")
-    top_k = st.slider("返回条数", 1, 10, 10, key="manual_top_k")
+    top_k = st.slider("返回条数", 1, 100, 10, key="manual_top_k")
     use_quality_filter = st.checkbox(
         "仅检索质量解析后的可执行实验论文",
         value=False,
         help="过滤掉综述、专利和低行动价值 chunk；需要全库探索时可取消勾选",
         key="manual_quality_filter",
     )
-    use_rerank = st.checkbox("启用 Rerank（qwen3-rerank 二次排序）", value=True,
+    use_rerank = st.checkbox("启用 Rerank（qwen3-rerank 二次排序）", value=RERANK_DEFAULT_ENABLED,
                               help="先 Hybrid 召回，再用 Rerank 模型精排", key="manual_rerank")
+    use_selective_rerank = st.checkbox(
+        "证据型问题自动 Rerank",
+        value=(not use_rerank and SELECTIVE_RERANK_DEFAULT_ENABLED),
+        help="仅在问题像是在找具体证据、表格、数值或 passage 时调用 qwen3-rerank；普通标题/泛检索不触发。",
+        key="manual_selective_rerank",
+        disabled=use_rerank,
+    )
+    rerank_top_n = st.slider(
+        "Rerank 返回窗口",
+        1,
+        20,
+        min(10, top_k),
+        help="候选池可以返回 30-100 条，但 Rerank 可以只精排前 5-10 条，用于控制延迟和噪音",
+        key="manual_rerank_top_n",
+        disabled=not (use_rerank or use_selective_rerank),
+    )
     use_lexical_backfill = st.checkbox(
         "增强 chunk 召回（推荐）",
         value=True,
         help="额外补入词面匹配候选，可能提升证据 chunk 召回，但首次检索会更慢",
         key="manual_lexical_backfill",
+    )
+    use_neighbor_backfill = st.checkbox(
+        "邻近 chunk 补召回（实验）",
+        value=False,
+        help="当检索到正确论文但证据 chunk 偏离时，补入同论文、同页或相邻顺序的 chunk",
+        key="manual_neighbor_backfill",
     )
     use_query_rewrite = st.checkbox(
         "查询改写（DeepSeek V4 Flash）",
@@ -1143,7 +1480,7 @@ def _render_manual_search(paper_id: str | None = None) -> None:
         if not query.strip():
             st.warning("请输入查询内容")
             return
-        spinner_text = "Hybrid 检索 + Rerank 中…" if use_rerank else "Hybrid 检索中…"
+        spinner_text = "Hybrid 检索 + Rerank 中…" if (use_rerank or use_selective_rerank) else "Hybrid 检索中…"
         if use_lexical_backfill:
             spinner_text = spinner_text.replace("中…", " + 增强召回中…")
         filter_kwargs = {"is_actionable": True} if use_quality_filter else None
@@ -1153,8 +1490,11 @@ def _render_manual_search(paper_id: str | None = None) -> None:
                 paper_id,
                 top_k,
                 rerank=use_rerank,
+                selective_rerank=use_selective_rerank and not use_rerank,
+                rerank_top_n=rerank_top_n if (use_rerank or use_selective_rerank) else None,
                 filter_kwargs=filter_kwargs,
                 lexical_backfill=use_lexical_backfill,
+                neighbor_backfill=use_neighbor_backfill,
                 query_rewrite=use_query_rewrite,
                 multi_query=use_multi_query,
             )
@@ -1178,6 +1518,7 @@ def _render_manual_search(paper_id: str | None = None) -> None:
             products = payload.get("target_products") or []
             organisms = payload.get("organisms") or []
             reranked = "🔁 " if r.get("reranked") else ""
+            selective_reason = r.get("selective_rerank_reason")
             paper_info = f" | {paper_title[:40]}" if paper_id is None else ""
             with st.expander(f"{reranked}📌 相似度={score:.4f} | {wtype} | p{pg}{paper_info}", expanded=True):
                 quality_bits = []
@@ -1194,6 +1535,8 @@ def _render_manual_search(paper_id: str | None = None) -> None:
                 if quality_bits:
                     st.caption(" | ".join(quality_bits))
                 route_bits = result_route_debug_bits(r)
+                if selective_reason:
+                    route_bits.append(f"selective rerank: {selective_reason}")
                 if route_bits:
                     st.caption(" | ".join(route_bits))
                 if wtype == "table":
@@ -1215,6 +1558,25 @@ def _render_agent_search(paper_id: str | None = None) -> None:
         help="Agent 检索时额外补入词面匹配候选，可能提升证据 chunk 召回，但首次检索会更慢",
         key="agent_lexical_backfill",
     )
+    use_neighbor_backfill = st.checkbox(
+        "Agent 邻近 chunk 补召回（实验）",
+        value=False,
+        help="Agent 工具检索时，将初始命中 chunk 的相邻块也作为候选参与排序",
+        key="agent_neighbor_backfill",
+    )
+    use_agent_rerank = st.checkbox(
+        "Agent 始终 Rerank",
+        value=RERANK_DEFAULT_ENABLED,
+        help="每轮工具检索都调用 qwen3-rerank 精排。",
+        key="agent_rerank",
+    )
+    use_agent_selective_rerank = st.checkbox(
+        "Agent 证据型问题自动 Rerank",
+        value=(not use_agent_rerank and SELECTIVE_RERANK_DEFAULT_ENABLED),
+        help="仅在 Agent 工具问题命中证据型模式时精排，降低泛问题延迟。",
+        key="agent_selective_rerank",
+        disabled=use_agent_rerank,
+    )
     use_query_rewrite = st.checkbox(
         "Agent 查询改写（DeepSeek V4 Flash）",
         value=False,
@@ -1233,15 +1595,17 @@ def _render_agent_search(paper_id: str | None = None) -> None:
             st.warning("请输入问题")
             return
 
-        from src.agent.literature_agent import LiteratureAgent
-
-        agent = LiteratureAgent(
-            lexical_backfill=use_lexical_backfill,
-            use_query_rewrite=use_query_rewrite,
-            multi_query_recall=use_multi_query,
-        )
         with st.spinner("Agent 分析中（检索 + 综合建议）…"):
-            result = agent.query(question, max_rounds=max_rounds)
+            result = run_literature_agent_query(
+                question,
+                max_rounds=max_rounds,
+                lexical_backfill=use_lexical_backfill,
+                neighbor_backfill=use_neighbor_backfill,
+                rerank=use_agent_rerank,
+                selective_rerank=use_agent_selective_rerank and not use_agent_rerank,
+                use_query_rewrite=use_query_rewrite,
+                multi_query_recall=use_multi_query,
+            )
 
         # 检索历史
         if result["search_history"]:
@@ -1259,9 +1623,6 @@ def _render_agent_search(paper_id: str | None = None) -> None:
         st.markdown(result["answer"])
 
 
-# ─── 已保存结果 ────────────────────────────────────────────────────────────────
-
-
 def category_label(cat: str) -> str:
     labels = {
         "fermentation_experiment": "🧪 发酵实验",
@@ -1269,257 +1630,3 @@ def category_label(cat: str) -> str:
         "other": "📎 其他",
     }
     return labels.get(cat, cat)
-
-
-def render_saved_tab() -> None:
-    """已保存结果标签页：列表 + 详情。"""
-    saved_list = load_saved_list()
-
-    if not saved_list:
-        st.info("暂无已保存的解析结果。运行完整流水线后点击\"💾 保存解析结果\"即可保存。")
-        return
-
-    # 如果当前选中项不在列表中（被删除），清除选中
-    if st.session_state.selected_saved and st.session_state.selected_saved not in {
-        s["file_stem"] for s in saved_list
-    }:
-        st.session_state.selected_saved = None
-
-    # 列表 + 详情布局
-    col_list, col_detail = st.columns([1, 2])
-
-    with col_list:
-        st.caption(f"共 {len(saved_list)} 条已保存结果")
-
-        # 清空所有已保存
-        if "confirm_clear_saved" not in st.session_state:
-            st.session_state.confirm_clear_saved = False
-        if not st.session_state.confirm_clear_saved:
-            st.button("🗑️ 清空所有已保存", key="clear_all_saved", width="stretch",
-                      on_click=lambda: setattr(st.session_state, "confirm_clear_saved", True))
-        else:
-            st.warning("⚠️ 将删除所有已保存结果（不含向量库数据）")
-            c1, c2 = st.columns(2)
-            if c1.button("✅ 确认", width="stretch"):
-                for item in saved_list:
-                    delete_saved(item["file_stem"])
-                st.session_state.confirm_clear_saved = False
-                st.session_state.selected_saved = None
-                st.rerun()
-            if c2.button("❌ 取消", width="stretch"):
-                st.session_state.confirm_clear_saved = False
-                st.rerun()
-
-        for item in saved_list:
-            title = item.get("paper_title", "?")
-            cat = item.get("category", "?")
-            cred = item.get("credibility", 0)
-            passed = item.get("passed", 0)
-            failed = item.get("failed", 0)
-            saved_at = item.get("saved_at", "")[:16].replace("T", " ")
-
-            # 卡片
-            selected = st.session_state.selected_saved == item["file_stem"]
-            card_style = "border: 2px solid #2196F3; border-radius: 8px; padding: 10px;" if selected else ""
-            with st.container():
-                if st.button(
-                    f"{category_label(cat)}\n**{title[:60]}**\n可信度: {cred:.2f} | ✅{passed} ❌{failed}\n{saved_at}",
-                    key=f"saved_{item['file_stem']}",
-                    width="stretch",
-                ):
-                    st.session_state.selected_saved = item["file_stem"]
-                    st.rerun()
-
-    with col_detail:
-        if st.session_state.selected_saved:
-            detail = load_saved_detail(st.session_state.selected_saved)
-            if detail:
-                render_saved_detail(detail, st.session_state.selected_saved)
-        else:
-            st.info("← 选择一条已保存结果查看详情")
-
-
-def render_saved_detail(detail: dict, file_stem: str) -> None:
-    """已保存结果的详细视图。"""
-    quality = detail.get("quality", {})
-    stats = detail.get("stats", {})
-    verdicts = detail.get("verdicts", {})
-    chunks = detail.get("chunks", [])
-    chunk_map = quality.get("chunk_map", {})
-
-    st.subheader(quality.get("paper_title", file_stem))
-    st.caption(f"保存时间: {detail.get('saved_at', '')[:19].replace('T', ' ')} | "
-               f"文件: {detail.get('filename', file_stem)} | ID: `{detail.get('paper_id', '?')[:16]}`")
-
-    if st.button("🗑️ 删除此结果", key=f"del_{file_stem}", type="secondary"):
-        delete_saved(file_stem)
-        st.session_state.selected_saved = None
-        st.rerun()
-
-    # 子标签页
-    sub_tabs = st.tabs(["📊 概览", "📝 文本块", "📋 表格", "🖼️ 图片", "🔍 质量详情"])
-
-    # ── 概览 ──
-    with sub_tabs[0]:
-        cat = quality.get("category", "?")
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("分类", category_label(cat))
-        c2.metric("可信度", f"{quality.get('credibility', 0):.2f}")
-        c3.metric("发酵相关性", f"{quality.get('fermentation_relevance', 0):.2f}")
-        c4.metric("自洽性", quality.get("classify_status", "?"))
-
-        c5, c6, c7, c8 = st.columns(4)
-        c5.metric("总 Chunks", stats.get("total", 0))
-        c6.metric("✅ 通过", stats.get("passed", 0))
-        c7.metric("❌ 失败", stats.get("failed", 0))
-        c8.metric("状态", stats.get("status", "?"))
-
-        # 计时
-        timing = quality.get("timing", {})
-        if timing:
-            st.divider()
-            st.caption("⏱️ 质量评估耗时")
-            t_cls = timing.get("classify", 0)
-            t_map = timing.get("map", 0)
-            t_red = timing.get("reduce", 0)
-            tc1, tc2, tc3, tc4 = st.columns(4)
-            tc1.metric("分类", f"{t_cls:.1f}s")
-            tc2.metric("Map", f"{t_map:.1f}s")
-            tc3.metric("Reduce", f"{t_red:.1f}s")
-            tc4.metric("合计", f"{t_cls + t_map + t_red:.1f}s")
-
-        st.divider()
-
-        if quality.get("paper_summary"):
-            st.markdown("**论文摘要**")
-            st.info(quality["paper_summary"])
-
-        c9, c10 = st.columns(2)
-        with c9:
-            if quality.get("target_products"):
-                st.markdown("**目标产物**")
-                for p in quality["target_products"]:
-                    st.markdown(f"- {p}")
-        with c10:
-            if quality.get("organisms"):
-                st.markdown("**相关菌株**")
-                for o in quality["organisms"]:
-                    st.markdown(f"- {o}")
-
-        if quality.get("classify_reason"):
-            st.markdown("**分类依据**")
-            st.caption(quality["classify_reason"])
-
-        if quality.get("is_actionable"):
-            st.success("✅ 包含可指导发酵实验的信息")
-
-        if quality.get("key_evidence"):
-            st.markdown("**关键原文证据**")
-            for i, ev in enumerate(quality["key_evidence"], 1):
-                with st.expander(f"证据 {i}"):
-                    st.text(ev)
-
-    # ── 文本块 ──
-    with sub_tabs[1]:
-        text_chunks = [c for c in chunks if c.get("content_type") == "text"]
-        if not text_chunks:
-            st.info("无文本块")
-        else:
-            st.caption(f"共 {len(text_chunks)} 个文本块")
-            for c in text_chunks:
-                cid = c.get("chunk_id", "")
-                verdict = verdicts.get(cid, {})
-                passed = verdict.get("passed", True)
-                score = verdict.get("score", 0)
-                v_badge = "✅" if passed else "❌"
-                preview = c.get("raw_content", "")[:80].replace("\n", " ")
-
-                with st.expander(
-                    f"{v_badge} p{c.get('page', '?')} · {preview}… | score={score:.2f}",
-                    expanded=False,
-                ):
-                    st.text(c.get("raw_content", "")[:1200])
-                    # Map 结果
-                    cm = chunk_map.get(cid)
-                    if cm:
-                        kps = cm.get("key_points", [])
-                        ents = cm.get("entities", [])
-                        claim = cm.get("contains_claim", False)
-                        claim_detail = cm.get("claim_detail", "")
-                        if kps:
-                            st.caption("**关键要点**")
-                            for kp in kps:
-                                st.markdown(f"- {kp}")
-                        if ents:
-                            st.caption(f"**实体**: {', '.join(ents)}")
-                        if claim:
-                            st.info(f"📌 **声明**: {claim_detail}" if claim_detail else "📌 包含实验/方法声明")
-                    # Verdict
-                    fb = verdict.get("feedback", "")
-                    if fb:
-                        st.caption(f"**Judge 意见**: {fb}")
-
-    # ── 表格 ──
-    with sub_tabs[2]:
-        table_chunks = [c for c in chunks if c.get("content_type") == "table"]
-        if not table_chunks:
-            st.info("无表格块")
-        else:
-            st.caption(f"共 {len(table_chunks)} 个表格块")
-            for c in table_chunks:
-                cid = c.get("chunk_id", "")
-                verdict = verdicts.get(cid, {})
-                passed = verdict.get("passed", True)
-                score = verdict.get("score", 0)
-                v_badge = "✅" if passed else "❌"
-                with st.expander(
-                    f"{v_badge} 表格 p{c.get('page', '?')} | score={score:.2f}",
-                    expanded=False,
-                ):
-                    st.markdown(c.get("raw_content", ""))
-                    fb = verdict.get("feedback", "")
-                    if fb:
-                        st.caption(f"**Judge 意见**: {fb}")
-
-    # ── 图片 ──
-    with sub_tabs[3]:
-        img_chunks = [c for c in chunks if c.get("content_type") == "image"]
-        if not img_chunks:
-            st.info("无图片块")
-        else:
-            st.caption(f"共 {len(img_chunks)} 个图片块")
-            for c in img_chunks:
-                cid = c.get("chunk_id", "")
-                verdict = verdicts.get(cid, {})
-                passed = verdict.get("passed", True)
-                score = verdict.get("score", 0)
-                v_badge = "✅" if passed else "❌"
-                with st.expander(
-                    f"{v_badge} 图片 p{c.get('page', '?')} | score={score:.2f}",
-                    expanded=False,
-                ):
-                    st.text(c.get("raw_content", "")[:1200])
-                    fb = verdict.get("feedback", "")
-                    if fb:
-                        st.caption(f"**Judge 意见**: {fb}")
-
-    # ── 质量详情 ──
-    with sub_tabs[4]:
-        classify_result = quality.get("classify_result", {})
-        verify_result = quality.get("verify_result", {})
-
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown("**分类结果 (Prompt 1)**")
-            st.json(classify_result)
-        with c2:
-            st.markdown("**验证结果 (Prompt 2)**")
-            st.json(verify_result)
-
-        if quality.get("classify_reason"):
-            st.divider()
-            st.markdown("**判断依据**")
-            st.info(quality["classify_reason"])
-
-
-

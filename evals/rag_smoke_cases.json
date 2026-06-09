@@ -1,0 +1,98 @@
+[
+  {
+    "id": "y103-01-pichia-review",
+    "topic": "Y103-01",
+    "query": "Pichia pastoris Komagataella expression system synthetic biology review",
+    "profile": "quick"
+  },
+  {
+    "id": "y103-02-milk-protein-review",
+    "topic": "Y103-02",
+    "query": "lactoferrin osteopontin bioactive milk protein review",
+    "profile": "quick"
+  },
+  {
+    "id": "y103-03-pichia-lactoferrin",
+    "topic": "Y103-03",
+    "query": "Pichia pastoris recombinant lactoferrin osteopontin expression yield",
+    "profile": "evidence"
+  },
+  {
+    "id": "y103-04-milk-protein-ptm",
+    "topic": "Y103-04",
+    "query": "lactoferrin osteopontin glycosylation phosphorylation post-translational modification",
+    "profile": "evidence"
+  },
+  {
+    "id": "y103-05-secretory-pathway",
+    "topic": "Y103-05",
+    "query": "Pichia pastoris secretion secretory pathway ER Golgi vesicle transport",
+    "profile": "evidence"
+  },
+  {
+    "id": "y103-06-er-stress",
+    "topic": "Y103-06",
+    "query": "Pichia pastoris oxidative stress redox UPR Hac1 Ire1 recombinant protein expression",
+    "profile": "evidence"
+  },
+  {
+    "id": "y103-07-cell-wall",
+    "topic": "Y103-07",
+    "query": "Pichia pastoris cell wall integrity mannan glucan protein secretion",
+    "profile": "evidence"
+  },
+  {
+    "id": "y103-08-carbon-source",
+    "topic": "Y103-08",
+    "query": "Pichia pastoris carbon source methanol glycerol glucose AOX metabolism protein production",
+    "profile": "evidence"
+  },
+  {
+    "id": "y103-09-expression-elements",
+    "topic": "Y103-09",
+    "query": "Pichia pastoris promoter terminator AOX1 GAP 5'UTR expression element",
+    "profile": "evidence"
+  },
+  {
+    "id": "y103-10-signal-peptide",
+    "topic": "Y103-10",
+    "query": "Pichia pastoris signal peptide alpha-factor secretion signal recombinant protein",
+    "profile": "evidence"
+  },
+  {
+    "id": "y103-11-codon-optimization",
+    "topic": "Y103-11",
+    "query": "Pichia pastoris codon optimization codon usage recombinant protein expression",
+    "profile": "evidence"
+  },
+  {
+    "id": "y103-12-transcription-factor",
+    "topic": "Y103-12",
+    "query": "Pichia pastoris transcription factor Mxr1 Mit1 Prm1 metabolic regulation",
+    "profile": "evidence"
+  },
+  {
+    "id": "y103-13-protein-expression",
+    "topic": "Y103-13",
+    "query": "Pichia pastoris recombinant protein expression antibody enzyme antimicrobial peptide",
+    "profile": "quick"
+  },
+  {
+    "id": "y103-14-amino-acid-biosynthesis",
+    "topic": "Y103-14",
+    "query": "Pichia pastoris amino acid biosynthesis translation material recombinant protein expression",
+    "profile": "evidence"
+  },
+  {
+    "id": "y103-15-purification",
+    "topic": "Y103-15",
+    "query": "lactoferrin osteopontin purification separation chromatography fermentation broth",
+    "profile": "evidence"
+  },
+  {
+    "id": "y103-16-indirect-assay",
+    "topic": "Y103-16",
+    "query": "Pichia pastoris indirect assay biomarker physiological state production capacity",
+    "profile": "evidence"
+  }
+]

@@ -18,10 +18,19 @@ import os
 import time
 from typing import Any
 
+from src.adapters.llm.deepseek import DeepSeekChatClient
+from src.application.evidence_citations import (
+    attach_source_summary,
+    build_source_summaries,
+    format_evidence_documents,
+    format_tool_result,
+)
+from src.application.evidence_context import EvidenceContextOptions, expand_evidence_context
+from src.application.retrieval_candidates import CandidateSearchRequest, retrieve_candidates
+from src.application.retrieval_profiles import get_retrieval_profile
+from src.ports.llm import ChatCompletionClient
 from src.runtime_env import load_project_env
 from src.retrieval.multi_query import multi_query_search
-from src.retrieval.query_rewrite import build_context_query
-from src.store.qdrant_store import QdrantStore
 
 load_project_env()
 
@@ -40,6 +49,18 @@ def dashscope_agent_api_key() -> str:
 
 def deepseek_api_key() -> str:
     return _env_value("DEEPSEEK_API_KEY")
+
+
+def QdrantStore():
+    from src.store.qdrant_store import QdrantStore as Store
+
+    return Store()
+
+
+def default_search_repository():
+    from src.adapters.store.qdrant import QdrantSearchRepository
+
+    return QdrantSearchRepository(QdrantStore())
 
 # ── Tool 定义 ──────────────────────────────────────────────────────────────
 
@@ -115,18 +136,43 @@ class LiteratureAgent:
         self,
         model: str = "qwen-plus",
         lexical_backfill: bool = True,
+        neighbor_backfill: bool = False,
+        rerank: bool = True,
+        selective_rerank: bool = False,
+        rerank_top_n: int | None = 5,
         expand_neighbor_context: bool = True,
         expand_paper_local_context: bool = True,
         use_query_rewrite: bool = False,
         multi_query_recall: bool = False,
+        retrieval_profile: str | None = None,
+        search_repository=None,
+        synthesis_client: ChatCompletionClient | None = None,
     ):
+        if retrieval_profile:
+            profile = get_retrieval_profile(retrieval_profile, default="agent")
+            lexical_backfill = profile.lexical_backfill
+            neighbor_backfill = profile.neighbor_backfill
+            rerank = profile.rerank
+            selective_rerank = profile.selective_rerank
+            rerank_top_n = profile.rerank_top_n
+            expand_neighbor_context = profile.expand_neighbor_context
+            expand_paper_local_context = profile.expand_paper_local_context
+            use_query_rewrite = profile.query_rewrite
+            multi_query_recall = profile.multi_query
+
         self.model = model
+        self.retrieval_profile = retrieval_profile
         self.lexical_backfill = lexical_backfill
+        self.neighbor_backfill = neighbor_backfill
+        self.rerank = rerank
+        self.selective_rerank = selective_rerank
+        self.rerank_top_n = rerank_top_n
         self.expand_neighbor_context = expand_neighbor_context
         self.expand_paper_local_context = expand_paper_local_context
         self.use_query_rewrite = use_query_rewrite
         self.multi_query_recall = multi_query_recall
-        self.store = QdrantStore()
+        self.search_repository = search_repository or default_search_repository()
+        self.synthesis_client = synthesis_client
         self._search_history: list[dict[str, Any]] = []
         self._all_chunks: list[dict[str, Any]] = []
         self._last_search_meta: dict[str, Any] = {}
@@ -219,6 +265,7 @@ class LiteratureAgent:
             "answer": final_answer or "无法综合出有效回答，请尝试调整查询条件。",
             "search_history": self._search_history,
             "total_chunks": len(self._all_chunks),
+            "sources": build_source_summaries(self._all_chunks),
         }
 
     def _execute_tool(self, name: str, args: dict[str, Any]) -> list[dict[str, Any]]:
@@ -238,80 +285,52 @@ class LiteratureAgent:
             filter_kwargs["credibility_gte"] = args["credibility_gte"]
 
         started = time.monotonic()
-        search_meta: dict[str, Any] = {}
-        content_type_preference: str | None = None
-        if self.use_query_rewrite or self.multi_query_recall:
-            multi_result = multi_query_search(
-                self.store,
-                query,
-                limit=5,
-                filter_kwargs=filter_kwargs if filter_kwargs else None,
-                rerank=True,
-                lexical_backfill=self.lexical_backfill,
-                use_query_rewrite=self.use_query_rewrite or self.multi_query_recall,
-                route_limit=4 if self.multi_query_recall else 2,
-            )
-            results = multi_result.results
-            search_meta = multi_result.metadata()
-            rewrite = getattr(multi_result, "rewrite", None)
-            context_query = build_context_query(rewrite, fallback_query=query)
-            rewrite_preference = str(getattr(rewrite, "evidence_preference", "") or "").strip().lower()
-            if rewrite_preference in {"text", "table"}:
-                content_type_preference = rewrite_preference
-        else:
-            results = self.store.search(
+        candidate_result = retrieve_candidates(
+            self.search_repository,
+            CandidateSearchRequest(
                 query=query,
                 limit=5,
                 filter_kwargs=filter_kwargs if filter_kwargs else None,
-                rerank=True,
+                rerank=self.rerank,
+                selective_rerank=self.selective_rerank and not self.rerank,
+                rerank_top_n=self.rerank_top_n,
                 lexical_backfill=self.lexical_backfill,
-            )
-            context_query = query
+                neighbor_backfill=self.neighbor_backfill,
+                query_rewrite=self.use_query_rewrite,
+                multi_query=self.multi_query_recall,
+            ),
+            multi_query_runner=multi_query_search,
+        )
+        results = candidate_result.results
+        search_meta: dict[str, Any] = dict(candidate_result.search_meta)
+        context_query = candidate_result.context_query or query
         elapsed_ms = (time.monotonic() - started) * 1000
-        context_results: list[dict[str, Any]] = []
-        if self.expand_paper_local_context and hasattr(self.store, "expand_paper_local_context"):
-            context_results.extend(
-                self.store.expand_paper_local_context(
-                    context_query,
-                    results,
-                    filter_kwargs=filter_kwargs if filter_kwargs else None,
-                    paper_limit=5,
-                    per_paper_limit=3,
-                    total_limit=5,
-                    content_type_preference=content_type_preference,
-                )
-            )
-        if self.expand_neighbor_context:
-            existing_context_keys = {
-                (
-                    str((item.get("payload") or {}).get("paper_id") or ""),
-                    str((item.get("payload") or {}).get("chunk_id") or item.get("id") or ""),
-                )
-                for item in context_results
-            }
-            neighbor_limit = max(0, 5 - len(context_results))
-            neighbor_results = self.store.expand_neighbor_context(
-                results + context_results,
-                filter_kwargs=filter_kwargs if filter_kwargs else None,
-                per_result_limit=2,
-                total_limit=neighbor_limit,
-            )
-            for item in neighbor_results:
-                payload = item.get("payload") or {}
-                key = (
-                    str(payload.get("paper_id") or ""),
-                    str(payload.get("chunk_id") or item.get("id") or ""),
-                )
-                if key not in existing_context_keys:
-                    context_results.append(item)
+        context_results = expand_evidence_context(
+            self.search_repository,
+            context_query,
+            results,
+            filter_kwargs=filter_kwargs if filter_kwargs else None,
+            content_type_preference=candidate_result.content_type_preference,
+            options=EvidenceContextOptions(
+                expand_neighbor_context=self.expand_neighbor_context,
+                expand_paper_local_context=self.expand_paper_local_context,
+                paper_limit=5,
+                per_paper_limit=3,
+                total_limit=5,
+                neighbor_per_result_limit=2,
+            ),
+        )
         search_meta.update({
             "search_hits": len(results),
             "context_hits": len(context_results),
             "context_query": context_query,
         })
         logger.info(
-            "Agent literature search | lexical_backfill=%s query_rewrite=%s multi_query=%s expand_neighbor_context=%s expand_paper_local_context=%s filters=%s hits=%s context_hits=%s elapsed_ms=%.1f",
+            "Agent literature search | rerank=%s selective_rerank=%s lexical_backfill=%s neighbor_backfill=%s query_rewrite=%s multi_query=%s expand_neighbor_context=%s expand_paper_local_context=%s filters=%s hits=%s context_hits=%s elapsed_ms=%.1f",
+            self.rerank,
+            self.selective_rerank,
             self.lexical_backfill,
+            self.neighbor_backfill,
             self.use_query_rewrite,
             self.multi_query_recall,
             self.expand_neighbor_context,
@@ -323,16 +342,9 @@ class LiteratureAgent:
         )
 
         formatted = []
-        for r in results:
+        for index, r in enumerate(results):
             p = r.get("payload", {})
-            formatted.append({
-                "score": round(r.get("score", 0), 4),
-                "content": p.get("content", ""),
-                "paper_title": p.get("paper_title", ""),
-                "page": p.get("page", "?"),
-                "content_type": p.get("content_type", "text"),
-                "matched_routes": r.get("matched_routes", []),
-            })
+            formatted.append(format_tool_result(r, index=index))
             self._all_chunks.append(p)
         self._last_search_meta = search_meta
         for r in context_results:
@@ -347,30 +359,27 @@ class LiteratureAgent:
 
     def _synthesize(self, query: str, chunks: list[dict[str, Any]]) -> str:
         """强制综合：当 Agent 循环结束但未生成回答时调用。使用 DeepSeek。"""
-        from openai import OpenAI
-
-        docs_text = "\n---\n".join(
+        docs_text = format_evidence_documents(chunks, limit=10) or "\n---\n".join(
             f"[来源: {c.get('paper_title', '?')}, p{c.get('page', '?')}]\n{c.get('content', '')}"
             for c in chunks[:10]
         )
         prompt = SYNTHESIS_PROMPT.format(query=query, documents=docs_text)
+        prompt += "\n\nWhen using evidence, cite the source IDs such as [S1] or [S2]."
 
         try:
             api_key = deepseek_api_key()
-            if not api_key:
+            if not api_key and self.synthesis_client is None:
                 return f"检索到 {len(chunks)} 个相关 chunk，但 DEEPSEEK_API_KEY 未设置，无法生成综合回答。"
-            client = OpenAI(
-                api_key=api_key,
-                base_url="https://api.deepseek.com/v1",
-                timeout=60.0,
-            )
-            response = client.chat.completions.create(
+            client = self.synthesis_client or DeepSeekChatClient(api_key=api_key, timeout=60.0)
+            answer = client.complete(
+                system_prompt="",
+                user_prompt=prompt,
                 model=_env_value("SORTPAPER_AGENT_SYNTHESIS_MODEL", DEFAULT_DEEPSEEK_SYNTHESIS_MODEL),
-                messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
                 max_tokens=2048,
+                label="deepseek-agent-synthesis",
             )
-            return response.choices[0].message.content or ""
+            return attach_source_summary(answer, chunks)
         except Exception as e:
             logger.error("synthesize via DeepSeek failed: %s", e)
             return f"检索到 {len(chunks)} 个相关 chunk，但综合生成失败：{e}"

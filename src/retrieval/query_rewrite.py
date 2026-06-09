@@ -7,7 +7,8 @@ import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from src.judge.llm_runtime import run_llm_call
+from src.adapters.llm.deepseek import DEEPSEEK_BASE_URL, DeepSeekChatClient
+from src.ports.llm import ChatCompletionClient
 from src.runtime_env import load_project_env
 
 load_project_env()
@@ -15,7 +16,6 @@ load_project_env()
 logger = logging.getLogger(__name__)
 
 
-DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
 DEFAULT_QUERY_REWRITE_MODEL = "deepseek-v4-flash"
 
 ALIAS_GROUPS = (
@@ -53,6 +53,7 @@ def rewrite_query(
     *,
     model: str | None = None,
     use_llm: bool = True,
+    llm_client: ChatCompletionClient | None = None,
 ) -> QueryRewrite:
     """Rewrite a user question into a stable retrieval query object."""
     raw_query = str(query or "").strip()
@@ -61,10 +62,14 @@ def rewrite_query(
     if not use_llm:
         return normalize_rewrite_payload({"raw_query": raw_query}, raw_query=raw_query)
 
-    payload = _rewrite_with_deepseek(raw_query, model=model or _env_value(
-        "SORTPAPER_QUERY_REWRITE_MODEL",
-        DEFAULT_QUERY_REWRITE_MODEL,
-    ))
+    payload = _rewrite_with_deepseek(
+        raw_query,
+        model=model or _env_value(
+            "SORTPAPER_QUERY_REWRITE_MODEL",
+            DEFAULT_QUERY_REWRITE_MODEL,
+        ),
+        llm_client=llm_client,
+    )
     return normalize_rewrite_payload(payload, raw_query=raw_query)
 
 
@@ -138,28 +143,26 @@ def _clip_context_query(value: str, *, max_chars: int) -> str:
     return clipped or text[:max_chars].strip()
 
 
-def _rewrite_with_deepseek(query: str, *, model: str) -> dict[str, Any]:
-    from openai import OpenAI
-
+def _rewrite_with_deepseek(
+    query: str,
+    *,
+    model: str,
+    llm_client: ChatCompletionClient | None = None,
+) -> dict[str, Any]:
     api_key = deepseek_api_key()
     if not api_key:
         raise ValueError("DEEPSEEK_API_KEY 未设置，无法使用查询改写")
 
-    client = OpenAI(api_key=api_key, base_url=DEEPSEEK_BASE_URL, timeout=30.0)
-    response = run_llm_call(
-        lambda: client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": _compact_rewrite_system_prompt()},
-                {"role": "user", "content": query},
-            ],
-            temperature=0.1,
-            max_tokens=2000,
-            response_format={"type": "json_object"},
-        ),
+    client = llm_client or DeepSeekChatClient(api_key=api_key, base_url=DEEPSEEK_BASE_URL, timeout=30.0)
+    content = client.complete(
+        system_prompt=_compact_rewrite_system_prompt(),
+        user_prompt=query,
+        model=model,
+        temperature=0.1,
+        max_tokens=2000,
+        response_format={"type": "json_object"},
         label="deepseek-query-rewrite",
     )
-    content = response.choices[0].message.content or ""
     return _parse_json_object(content)
 
 

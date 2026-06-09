@@ -128,6 +128,10 @@ def test_evaluate_and_enrich_from_qdrant_uses_raw_content_and_updates_payload(mo
     assert paper_payload_updates[0]["paper_title"] == "Evaluated title"
     assert chunk_payload_updates[0]["payload"]["content"] == "context\n\noriginal chunk"
     assert chunk_payload_updates[0]["payload"]["raw_content"] == "original chunk"
+    assert "search_text" in chunk_payload_updates[0]["payload"]
+    assert "summary" in chunk_payload_updates[0]["payload"]["search_text"]
+    assert "lacto-N-tetraose" in chunk_payload_updates[0]["payload"]["search_text"]
+    assert "Escherichia coli" in chunk_payload_updates[0]["payload"]["search_text"]
 
 
 def test_scroll_by_paper_id_reads_all_pages() -> None:
@@ -154,6 +158,7 @@ def test_scroll_by_paper_id_reads_all_pages() -> None:
 
 def test_run_preview_skips_text_llm_judge(monkeypatch) -> None:
     import app_pipeline
+    import src.legacy.parsing as legacy_parsing
     import src.judge.llm_judge as llm_judge
     import src.parsers.pymupdf_parser as pymupdf_parser
     import src.parsers.table_parser as table_parser
@@ -207,7 +212,7 @@ def test_run_preview_skips_text_llm_judge(monkeypatch) -> None:
     monkeypatch.setattr(pymupdf_parser, "PyMuPDFParser", FakeTextParser)
     monkeypatch.setattr(table_parser, "TableParser", FakeTableParser)
     monkeypatch.setattr(llm_judge, "LLMJudge", FakeJudge)
-    monkeypatch.setattr(app_pipeline, "_extract_image_placeholders", lambda _path: ([], []))
+    monkeypatch.setattr(legacy_parsing, "_extract_image_placeholders", lambda _path: ([], []))
 
     result = app_pipeline.run_preview(b"%PDF fake")
 

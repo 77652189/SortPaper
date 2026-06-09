@@ -1,4 +1,5 @@
 from src.parsers.layout_chunk import ContentType, LayoutChunk, LayoutDeduplicator, LayoutMerger, infer_column
+from src.parsers.mineru_adapter import MinerUZipParser
 
 __all__ = [
     "LayoutChunk",
@@ -6,6 +7,7 @@ __all__ = [
     "LayoutMerger",
     "ContentType",
     "infer_column",
+    "MinerUZipParser",
     "PyMuPDFParser",
     "TableParser",
     "VisionParser",

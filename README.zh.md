@@ -88,6 +88,7 @@ pip install -r requirements.txt
 ```bash
 DASHSCOPE_API_KEY=your_dashscope_key
 DEEPSEEK_API_KEY=your_deepseek_key
+MINERU_API_KEY=your_mineru_key
 ```
 
 可选配置：
@@ -96,6 +97,8 @@ DEEPSEEK_API_KEY=your_deepseek_key
 SORTPAPER_EMBEDDING_PROVIDER=dashscope
 OPENAI_API_KEY=your_openai_key
 OPENAI_EMBEDDING_BASE_URL=https://api.openai.com/v1
+MINERU_API_BASE_URL=https://mineru.net
+MINERU_MODEL_VERSION=vlm
 ```
 
 说明：
@@ -103,6 +106,7 @@ OPENAI_EMBEDDING_BASE_URL=https://api.openai.com/v1
 - 默认 embedding provider 是 `dashscope`，使用 DashScope embedding，并在 Qdrant 中保留 dense + sparse hybrid search。
 - `qwen3-rerank`、`qwen3-vl-plus`、`qwen-plus` 也依赖 `DASHSCOPE_API_KEY`。
 - Judge 和论文质量评估依赖 `DEEPSEEK_API_KEY`。
+- MinerU 外部解析 smoke test 依赖 `MINERU_API_KEY`；`MINERU_MODEL_VERSION` 默认使用 `vlm`。
 - 不要把真实 `.env` 或 API key 提交到仓库。
 
 **3. 启动 Qdrant**
@@ -123,12 +127,17 @@ streamlit run app.py
 
 1. 在侧边栏上传 PDF，或选择已有样本文献。
 2. 选择运行模式：
-   - 快速预览：解析文本和表格，适合调试解析效果。
-   - 完整流水线：运行解析和 Judge，后续质量评估与入库可手动触发。
-   - 一键入库：解析、Judge、质量评估、Qdrant 入库一次完成。
+   - MinerU 快速预览（推荐）：使用 MinerU VLM 解析 PDF，生成统一 `LayoutChunk`，保留页码、bbox、表格和 Figure group，不调用图片转文字。
+   - MinerU 完整解析（推荐）：在快速预览基础上按 Figure group 调用 VL，把图片转成可检索文字。
+   - MinerU 一键入库（推荐）：执行完整解析并立即写入 Qdrant，作为新的推荐入库主路径。
+   - 历史快速预览（展示）：运行旧文本/表格预览链路，用于对照解析效果。
+   - 历史完整流水线（展示）：运行旧 parser + Judge + VisionParser，用于回归排查。
+   - 历史一键入库（兼容）：保留旧入库链路，直到 MinerU 入库路径验证完成。
 3. 在结果页查看文本块、图片、表格、PDF 重建和语义检索。
-4. 在向量库管理区检查已入库论文，必要时按论文删除后重新导入。
+4. 需要入库时直接选择 `MinerU 一键入库（推荐）`；历史一键入库仍保留为兼容路径。
 5. 检索结果会展示质量分类、可信度、发酵相关性、产物和菌株等 metadata。
+
+解析后端的保留、隐藏和封存规则见 [`docs/PARSER_BACKENDS.md`](docs/PARSER_BACKENDS.md)。
 
 ## 检索质量注意事项
 

@@ -5,8 +5,9 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from src.judge.llm_runtime import run_llm_call
+from src.adapters.llm.deepseek import DeepSeekChatClient
 from src.judge.prompts import IMAGE_JUDGE_PROMPT, SUMMARY_PROMPT, TABLE_JUDGE_PROMPT, TEXT_JUDGE_PROMPT
+from src.ports.llm import ChatCompletionClient
 
 logger = logging.getLogger(__name__)
 
@@ -40,31 +41,23 @@ class LLMJudge:
         self,
         deepseek_model: str = "deepseek-chat",
         threshold: float = 0.7,
+        llm_client: ChatCompletionClient | None = None,
     ) -> None:
         self.deepseek_model = deepseek_model
         self.threshold = threshold
+        self.llm_client = llm_client
 
     def _call_deepseek(self, prompt: str) -> str:
-        """调用 DeepSeek V4 Pro（OpenAI 兼容接口）。"""
-        import os
-
-        from openai import OpenAI
-
-        api_key = os.environ.get("DEEPSEEK_API_KEY", "")
-        if not api_key:
-            raise ValueError("DEEPSEEK_API_KEY 未设置")
-
-        client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com/v1", timeout=60.0)
-        response = run_llm_call(
-            lambda: client.chat.completions.create(
-                model=self.deepseek_model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.2,
-                max_tokens=2048,
-            ),
+        """Call DeepSeek through the LLM port while preserving the legacy method."""
+        client = self.llm_client or DeepSeekChatClient(timeout=60.0)
+        return client.complete(
+            system_prompt="",
+            user_prompt=prompt,
+            model=self.deepseek_model,
+            temperature=0.2,
+            max_tokens=2048,
             label="deepseek-judge",
         )
-        return response.choices[0].message.content or ""
 
     def judge(self, worker_type: str, content: str, pdf_path: str) -> JudgeVerdict:
         """对所有类型（text/table/image）统一使用 DeepSeek V4 Pro 评判。"""

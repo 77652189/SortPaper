@@ -88,6 +88,7 @@ Create `.env` in the project directory:
 ```bash
 DASHSCOPE_API_KEY=your_dashscope_key
 DEEPSEEK_API_KEY=your_deepseek_key
+MINERU_API_KEY=your_mineru_key
 ```
 
 Optional:
@@ -96,6 +97,8 @@ Optional:
 SORTPAPER_EMBEDDING_PROVIDER=dashscope
 OPENAI_API_KEY=your_openai_key
 OPENAI_EMBEDDING_BASE_URL=https://api.openai.com/v1
+MINERU_API_BASE_URL=https://mineru.net
+MINERU_MODEL_VERSION=vlm
 ```
 
 Notes:
@@ -103,6 +106,7 @@ Notes:
 - The default embedding provider is `dashscope`, which keeps dense + sparse hybrid search in Qdrant.
 - `qwen3-rerank`, `qwen3-vl-plus`, and `qwen-plus` also require `DASHSCOPE_API_KEY`.
 - Judge and paper quality enrichment require `DEEPSEEK_API_KEY`.
+- MinerU external extraction smoke tests require `MINERU_API_KEY`; `MINERU_MODEL_VERSION` defaults to `vlm`.
 - Do not commit real `.env` files or API keys.
 
 **3. Start Qdrant**
@@ -118,6 +122,19 @@ streamlit run app.py
 ```
 
 Open `http://localhost:8501`.
+
+## Parser Backends
+
+The recommended parsing path is now `MinerU extraction (recommended)`: MinerU VLM parses the PDF into unified `LayoutChunk` records with page, bbox, table, and Figure group metadata. The historical self-built paths remain available as display and compatibility routes:
+
+- MinerU one-click ingest: recommended path for PDF → MinerU → LayoutChunk → Qdrant.
+- Legacy quick preview: old text/table preview path for comparison.
+- Legacy full pipeline: old parser + Judge + VisionParser path for regression checks.
+- Legacy one-click ingest: old Qdrant ingest path, kept until MinerU chunk storage is fully validated.
+
+MinerU preview results can be stored manually with `入库 MinerU chunks`. MinerU chunks receive default storage verdicts, while figure/image embedding text prefers group-level VL descriptions, figure captions, and MinerU visual text.
+
+Retention, hiding, and sealing rules are documented in [`docs/PARSER_BACKENDS.md`](docs/PARSER_BACKENDS.md).
 
 ## Retrieval Quality Notes
 

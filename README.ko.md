@@ -82,6 +82,7 @@ pip install -r requirements.txt
 ```bash
 DASHSCOPE_API_KEY=your_dashscope_key
 DEEPSEEK_API_KEY=your_deepseek_key
+MINERU_API_KEY=your_mineru_key
 ```
 
 선택 설정:
@@ -90,7 +91,11 @@ DEEPSEEK_API_KEY=your_deepseek_key
 SORTPAPER_EMBEDDING_PROVIDER=dashscope
 OPENAI_API_KEY=your_openai_key
 OPENAI_EMBEDDING_BASE_URL=https://api.openai.com/v1
+MINERU_API_BASE_URL=https://mineru.net
+MINERU_MODEL_VERSION=vlm
 ```
+
+MinerU external extraction smoke test는 `MINERU_API_KEY`를 사용합니다. `MINERU_MODEL_VERSION` 기본값은 `vlm`입니다.
 
 Qdrant를 실행합니다.
 
@@ -186,3 +191,13 @@ python evals/agent_context_eval.py --max-cases 60 --ks 1 3 5 10 --lexical-backfi
 ```
 
 자세한 내용은 `evals/QUERY_REWRITE.md`를 참고하세요.
+
+
+## Parser Backends
+
+Recommended path: `MinerU extraction (recommended)`. MinerU VLM parses PDFs into `LayoutChunk` records with page, bbox, table, and Figure group metadata. Legacy parser paths remain available for display, comparison, regression checks, and compatibility ingest until MinerU storage is fully validated. See [`docs/PARSER_BACKENDS.md`](docs/PARSER_BACKENDS.md).
+
+
+MinerU preview results can now be stored manually with `?? MinerU chunks`; legacy one-click ingest remains a compatibility path.
+
+MinerU one-click ingest is now the recommended path for PDF -> MinerU -> LayoutChunk -> Qdrant.

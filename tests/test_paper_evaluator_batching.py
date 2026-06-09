@@ -36,3 +36,24 @@ def test_map_chunk_batch_restores_result_per_chunk() -> None:
 
     assert [idx for idx, _result in results] == [0, 1]
     assert [result["key_points"] for _idx, result in results] == [["a"], ["b"]]
+
+
+def test_paper_quality_evaluator_uses_injected_chat_client() -> None:
+    captured: dict[str, object] = {}
+
+    class FakeClient:
+        def complete(self, **kwargs):
+            captured.update(kwargs)
+            return '{"summary":"ok"}'
+
+    evaluator = PaperQualityEvaluator(model="deepseek-chat", llm_client=FakeClient())
+
+    result = evaluator._call_deepseek("summarize", model="deepseek-v4-pro")
+
+    assert result == '{"summary":"ok"}'
+    assert captured["system_prompt"] == ""
+    assert captured["user_prompt"] == "summarize"
+    assert captured["model"] == "deepseek-v4-pro"
+    assert captured["temperature"] == 0.2
+    assert captured["max_tokens"] == 4096
+    assert captured["label"] == "deepseek-evaluator"

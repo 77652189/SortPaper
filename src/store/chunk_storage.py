@@ -195,7 +195,7 @@ def apply_table_storage_decision(chunk: StoredChunkInput) -> StoreMetadata:
     if chunk.get("content_type") != "table":
         return metadata
     try:
-        from src.judge.table_judge import build_storage_decision
+        from src.domain.table_storage_policy import build_storage_decision
 
         storage_decision = build_storage_decision(
             content_type="table",
@@ -223,10 +223,14 @@ def build_store_metadata(
     paper_title: str,
     quality_label: str = "clean",
 ) -> tuple[StoreMetadata, str]:
+    from src.store.seo import build_chunk_seo_metadata
+
     raw_content = chunk.get("raw_content", "")
     chunk_metadata = dict(chunk.get("metadata", {}) or {})
+    seo_metadata = build_chunk_seo_metadata(chunk, paper_title)
     return {
         **chunk_metadata,
+        **seo_metadata,
         "page": chunk.get("page"),
         "bbox": chunk.get("bbox"),
         "column": chunk.get("column"),
@@ -281,6 +285,8 @@ class _StorageStats:
 
 
 def _embedding_api_key_configured(env_name: str) -> bool:
+    if not env_name:
+        return True
     return bool((os.getenv(env_name) or os.getenv(f"\ufeff{env_name}") or "").strip())
 
 

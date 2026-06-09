@@ -12,8 +12,10 @@ from src.judge.table_judge import (
     build_bbox_candidates,
     build_text_context,
     classify_table_result,
-    compare_table_candidate_scores,
     judge_table_failure_with_llm,
+)
+from src.domain.table_candidate_policy import (
+    compare_table_candidate_scores,
     score_bbox_candidate,
     score_table_candidate,
 )

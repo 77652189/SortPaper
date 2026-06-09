@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from src.judge.table_judge import (
-    build_auto_decision,
-    build_storage_decision,
-    score_table_candidate,
-)
+from src.domain.table_candidate_policy import score_table_candidate
+from src.domain.table_storage_policy import build_storage_decision
+from src.judge.table_judge import build_auto_decision
 from src.parsers.layout_chunk import LayoutChunk
 from src.parsers.table import region_chunks
 from src.parsers.table.models import TableRegion

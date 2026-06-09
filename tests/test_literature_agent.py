@@ -111,12 +111,54 @@ def test_agent_search_passes_lexical_backfill_to_store(monkeypatch) -> None:
 
     assert captured["query"] == "lacto-N-triose II lgtA"
     assert captured["rerank"] is True
+    assert captured["selective_rerank"] is False
+    assert captured["rerank_top_n"] == 5
     assert captured["lexical_backfill"] is True
+    assert captured["neighbor_backfill"] is False
     assert captured["filter_kwargs"] == {
         "category": "fermentation_experiment",
         "credibility_gte": 0.7,
     }
-    assert result[0]["paper_title"] == "LNT II paper"
+
+
+def test_agent_search_accepts_injected_search_repository(monkeypatch) -> None:
+    import src.agent.literature_agent as literature_agent
+
+    captured: dict[str, object] = {}
+
+    class CapturingRepository:
+        def search(self, **kwargs):
+            captured.update(kwargs)
+            return [
+                {
+                    "score": 0.8,
+                    "payload": {
+                        "content": "Fed-batch lactose feeding reduced acetate.",
+                        "paper_title": "Fed batch paper",
+                        "page": 2,
+                        "content_type": "text",
+                    },
+                }
+            ]
+
+        def expand_neighbor_context(self, *_args, **_kwargs):
+            return []
+
+    monkeypatch.setattr(
+        literature_agent.LiteratureAgent,
+        "_synthesize",
+        lambda self, query, chunks: "answer",
+    )
+
+    agent = literature_agent.LiteratureAgent(
+        lexical_backfill=False,
+        search_repository=CapturingRepository(),
+    )
+    result = agent._execute_tool("search_literature", {"query": "lactose feeding acetate"})
+
+    assert captured["query"] == "lactose feeding acetate"
+    assert captured["lexical_backfill"] is False
+    assert result[0]["paper_title"] == "Fed batch paper"
 
 
 def test_agent_search_enables_lexical_backfill_by_default(monkeypatch) -> None:
@@ -138,6 +180,64 @@ def test_agent_search_enables_lexical_backfill_by_default(monkeypatch) -> None:
     agent._execute_tool("search_literature", {"query": "lacto-N-triose II"})
 
     assert captured["lexical_backfill"] is True
+    assert captured["neighbor_backfill"] is False
+    assert captured["rerank"] is True
+    assert captured["selective_rerank"] is False
+
+
+def test_agent_search_can_use_selective_rerank(monkeypatch) -> None:
+    import src.agent.literature_agent as literature_agent
+
+    captured: dict[str, object] = {}
+
+    class CapturingStore:
+        def search(self, **kwargs):
+            captured.update(kwargs)
+            return [
+                {
+                    "score": 0.9,
+                    "selective_rerank_reason": "evidence_query",
+                    "payload": {
+                        "content": "The table reports 3.42 g/L LNT II.",
+                        "paper_title": "LNT II paper",
+                        "page": 4,
+                        "content_type": "text",
+                    },
+                }
+            ]
+
+        def expand_neighbor_context(self, *_args, **_kwargs):
+            return []
+
+    monkeypatch.setattr(literature_agent, "QdrantStore", lambda: CapturingStore())
+
+    agent = literature_agent.LiteratureAgent(rerank=False, selective_rerank=True)
+    result = agent._execute_tool("search_literature", {"query": "Which passage reports 3.42 g/L?"})
+
+    assert captured["rerank"] is False
+    assert captured["selective_rerank"] is True
+    assert result[0]["selective_rerank_reason"] == "evidence_query"
+
+
+def test_agent_search_can_enable_neighbor_backfill(monkeypatch) -> None:
+    import src.agent.literature_agent as literature_agent
+
+    captured: dict[str, object] = {}
+
+    class CapturingStore:
+        def search(self, **kwargs):
+            captured.update(kwargs)
+            return []
+
+        def expand_neighbor_context(self, *_args, **_kwargs):
+            return []
+
+    monkeypatch.setattr(literature_agent, "QdrantStore", lambda: CapturingStore())
+
+    agent = literature_agent.LiteratureAgent(neighbor_backfill=True)
+    agent._execute_tool("search_literature", {"query": "lacto-N-triose II"})
+
+    assert captured["neighbor_backfill"] is True
 
 
 def test_agent_search_can_disable_lexical_backfill(monkeypatch) -> None:
@@ -198,6 +298,7 @@ def test_agent_search_can_use_query_rewrite_multi_query(monkeypatch) -> None:
 
     agent = literature_agent.LiteratureAgent(
         lexical_backfill=True,
+        neighbor_backfill=True,
         use_query_rewrite=True,
         multi_query_recall=True,
     )
@@ -205,9 +306,12 @@ def test_agent_search_can_use_query_rewrite_multi_query(monkeypatch) -> None:
 
     assert captured["query"] == "LNT II accumulation"
     assert captured["rerank"] is True
+    assert captured["selective_rerank"] is False
     assert captured["lexical_backfill"] is True
+    assert captured["neighbor_backfill"] is True
     assert captured["use_query_rewrite"] is True
     assert captured["route_limit"] == 4
+    assert captured["adaptive_route_limit"] is True
     assert result[0]["matched_routes"] == ["raw", "normalized"]
 
 
@@ -426,3 +530,52 @@ def test_agent_can_disable_neighbor_context_expansion(monkeypatch) -> None:
     agent._execute_tool("search_literature", {"query": "lacto-N-triose II"})
 
     assert len(agent._all_chunks) == 1
+
+
+def test_agent_synthesize_uses_injected_llm_client(monkeypatch) -> None:
+    import src.agent.literature_agent as literature_agent
+
+    captured: dict[str, object] = {}
+
+    class FakeClient:
+        def complete(self, **kwargs):
+            captured.update(kwargs)
+            return "synthesized answer"
+
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+
+    agent = literature_agent.LiteratureAgent(
+        search_repository=FakeStore(),
+        synthesis_client=FakeClient(),
+    )
+    answer = agent._synthesize(
+        "How to improve LNT?",
+        [{
+            "paper_title": "Paper A",
+            "page": 3,
+            "content": "RBS optimization improved yield.",
+        }],
+    )
+
+    assert answer.startswith("synthesized answer")
+    assert "### Sources" in answer
+    assert "Paper A" in answer
+    assert captured["system_prompt"] == ""
+    assert captured["model"] == literature_agent.DEFAULT_DEEPSEEK_SYNTHESIS_MODEL
+    assert captured["temperature"] == 0.3
+    assert captured["max_tokens"] == 2048
+    assert captured["label"] == "deepseek-agent-synthesis"
+    assert "How to improve LNT?" in str(captured["user_prompt"])
+    assert "RBS optimization improved yield." in str(captured["user_prompt"])
+
+
+def test_agent_synthesize_missing_deepseek_key_returns_compat_message(monkeypatch) -> None:
+    import src.agent.literature_agent as literature_agent
+
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.delenv("\ufeffDEEPSEEK_API_KEY", raising=False)
+
+    agent = literature_agent.LiteratureAgent(search_repository=FakeStore())
+    answer = agent._synthesize("query", [{"content": "chunk"}])
+
+    assert "DEEPSEEK_API_KEY" in answer

@@ -32,11 +32,14 @@ from typing import Any, Literal, TypedDict, Annotated
 
 from langgraph.graph import END, START, StateGraph
 
+from src.adapters.llm.deepseek import DeepSeekChatClient
 from src.judge.llm_judge import JudgeVerdict, LLMJudge
 from src.judge.paper_evaluator import PaperQualityEvaluator
-from src.parsers import LayoutChunk, LayoutMerger, PyMuPDFParser, TableParser, VisionParser
+from src.domain.table_embedding_text import build_table_embedding_text
+from src.domain.table_storage_policy import build_storage_decision
+from src.legacy.vision_parser import VisionParser
+from src.parsers import LayoutChunk, LayoutMerger, PyMuPDFParser, TableParser
 from src.store.qdrant_store import QdrantStore
-from src.judge.table_judge import build_storage_decision, build_table_embedding_text
 
 logger = logging.getLogger(__name__)
 
@@ -317,9 +320,6 @@ def image_worker_node(state: PipelineState) -> dict:
 
 def _rewrite_image_desc(original: str, feedback: str) -> str:
     """用 DeepSeek 根据 Judge 反馈改写图片描述（不重新读图）。"""
-    import os
-    from openai import OpenAI
-
     prompt = (
         "以下是一张学术论文图片的解析描述，以及质检员的反馈意见。"
         "请根据反馈修改描述，只描述图片中实际可见的视觉内容。"
@@ -330,23 +330,15 @@ def _rewrite_image_desc(original: str, feedback: str) -> str:
     )
 
     try:
-        client = OpenAI(
-            api_key=os.getenv("DEEPSEEK_API_KEY", ""),
-            base_url="https://api.deepseek.com/v1",
-            timeout=30.0,
-        )
-        from src.judge.llm_runtime import run_llm_call
-
-        resp = run_llm_call(
-            lambda: client.chat.completions.create(
-                model="deepseek-chat",
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=2048,
-                temperature=0.2,
-            ),
+        client = DeepSeekChatClient(timeout=30.0)
+        return client.complete(
+            system_prompt="",
+            user_prompt=prompt,
+            model="deepseek-chat",
+            max_tokens=2048,
+            temperature=0.2,
             label="deepseek-image-rewrite",
         )
-        return resp.choices[0].message.content or ""
     except Exception as e:
         logger.warning("改写图片描述失败: %s", e)
         return ""

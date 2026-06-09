@@ -52,7 +52,10 @@ python evals/retrieval_eval.py --query-rewrite --query-rewrite-model deepseek-v4
 
 - 原始 query
 - `normalized_query`
-- 最多 2 条有效 `variants`
+- 结构化实体 query：products / organisms / genes / enzymes
+- 表格证据 query：metrics + products / organisms / genes
+- 别名 query：aliases
+- 有剩余 route 配额时再使用有效 `variants`
 
 多路结果会用加权 RRF 合并，但不会让改写 query 完全重排原始结果。当前有三层护栏：
 
@@ -79,3 +82,38 @@ python evals/retrieval_eval.py --query-rewrite --query-rewrite-model deepseek-v4
 判断：当前多路召回已经从“会伤害 baseline”修到“基本不伤害 baseline”，并且 raw tail priority 微调后 chunk MRR 回到 baseline 水平；但它还没有证明能稳定提升召回率，而且延迟明显更高。因此它已接入 UI 和 Agent，但默认关闭，继续作为实验开关。
 
 下一步应优先优化选择性触发和 paper-local evidence 定位：只有当原始 query 置信度不足、或已命中正确论文但证据 chunk 排名靠后时，再启用改写/多路召回或论文内重排。
+
+## 2026-06-02：结构化 recall route
+
+已把改写结果中的实体字段变成可解释的 recall route：
+
+- `entity`: `products + organisms + genes + enzymes`
+- `table_evidence`: `metrics + products + organisms + genes`
+- `alias`: `aliases`
+
+这一步补齐了 RAGFlow 对“关键词/同义词/字段化检索”的启发，也更接近 LightRAG/图式检索中先抽实体再扩展候选的做法。`retrieval_eval.py` 现在会把 `search_meta.routes` 写入每个 case 的报告，便于复盘具体是 raw、normalized、entity、table evidence 还是 variant 命中的候选。
+
+小样本 hard smoke：
+
+```bash
+python evals/retrieval_eval.py --case-profile hard --max-cases 4 --ks 1 3 5 10 30 50 100 --strategy standard --lexical-backfill --multi-query --selective-rerank --rerank-top-n 10 --out reports/retrieval_eval_qwen3_5paper_hard_multi_structured_smoke4.json
+```
+
+当前结果：`chunk_hit@5 = 1.0`、`chunk_hit@10 = 1.0`，但 `chunk_hit@1 = 0.25`。这次 smoke 中 DashScope rerank 返回 `Arrearage`，实际退回原始排序，因此不能作为 rerank 效果证明；它主要证明结构化 route 可生成、可记录、不会导致 top10 丢失。route 统计显示 4 个 case 中 `raw/normalized/variant` 各 4 次，`entity/table_evidence` 各 2 次。
+
+## 2026-06-02：adaptive route limit
+
+已给 `multi_query_search()` 增加 `adaptive_route_limit`，默认开启：
+
+- 泛查询 / 标题式查询：压缩为 `raw + normalized`，减少不必要 variants。
+- 证据型查询、表格/数值查询、实体字段充分的查询：保留完整 route limit。
+- `retrieval_eval.py` 支持 `--no-adaptive-multi-query`，用于和固定 route limit 做对照。
+
+小样本 hard smoke：
+
+```bash
+python evals/retrieval_eval.py --case-profile hard --max-cases 4 --ks 1 3 5 10 30 50 100 --strategy standard --lexical-backfill --multi-query --out reports/retrieval_eval_qwen3_5paper_hard_multi_adaptive_smoke4.json
+python evals/retrieval_eval.py --case-profile hard --max-cases 4 --ks 1 3 5 10 30 50 100 --strategy standard --lexical-backfill --multi-query --no-adaptive-multi-query --out reports/retrieval_eval_qwen3_5paper_hard_multi_full_smoke4.json
+```
+
+这 4 个 hard case 都被判定为 `evidence_or_structured_query`，因此 adaptive 没有压缩 route 数；两组都保持 `chunk_hit@5 = 1.0`、`chunk_hit@10 = 1.0`。泛查询压缩由单元测试覆盖，后续应在混合 title / metadata / hard profile 上评测 p50/p95，而不是只看 hard evidence。

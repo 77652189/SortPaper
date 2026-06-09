@@ -55,6 +55,7 @@ STOPWORDS = {
     "effect",
     "fermentation_experiment",
     "figure",
+    "for",
     "from",
     "has",
     "have",
@@ -119,6 +120,9 @@ class CaseResult:
     elapsed_ms: float = 0.0
     query_used: str = ""
     query_rewrite: dict[str, Any] | None = None
+    search_meta: dict[str, Any] | None = None
+    selective_rerank_triggered: bool = False
+    selective_rerank_reasons: list[str] = field(default_factory=list)
 
 
 def normalize_list(value: Any) -> list[str]:
@@ -190,6 +194,7 @@ def build_cases(
     seed: int,
     min_content_chars: int = 180,
     content_types: set[str] | None = None,
+    case_profile: str = "default",
 ) -> list[RetrievalCase]:
     rng = random.Random(seed)
     by_paper: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -219,7 +224,8 @@ def build_cases(
         if metadata_case:
             cases.append(metadata_case)
 
-        chunk_cases = chunk_cases_for_paper(
+        chunk_builder = hard_chunk_cases_for_paper if case_profile == "hard" else chunk_cases_for_paper
+        chunk_cases = chunk_builder(
             paper_id,
             chunks,
             title=title,
@@ -318,6 +324,122 @@ def chunk_cases_for_paper(
     return cases
 
 
+METRIC_PATTERN = re.compile(
+    r"\b\d+(?:\.\d+)?\s*(?:g\s*/\s*l|mg\s*/\s*l|g/l|mg/l|h|hr|hours?|%|fold|mmol|mol|od600|rpm)\b",
+    flags=re.IGNORECASE,
+)
+
+
+def hard_chunk_cases_for_paper(
+    paper_id: str,
+    chunks: list[dict[str, Any]],
+    *,
+    title: str,
+    min_content_chars: int,
+    content_types: set[str] | None,
+    rng: random.Random,
+) -> list[RetrievalCase]:
+    candidates: list[tuple[int, dict[str, Any], str]] = []
+    for payload in chunks:
+        content_type = str(payload.get("content_type") or "")
+        if content_types and content_type not in content_types:
+            continue
+        text = content_text(payload)
+        if len(text) < min_content_chars:
+            continue
+        query = hard_query_for_payload(payload, title=title)
+        if not query:
+            continue
+        priority = hard_case_priority(payload, query)
+        candidates.append((priority, payload, query))
+    rng.shuffle(candidates)
+    candidates.sort(key=lambda item: item[0], reverse=True)
+
+    cases: list[RetrievalCase] = []
+    for _priority, payload, query in candidates[:3]:
+        chunk_id = str(payload.get("chunk_id"))
+        cases.append(RetrievalCase(
+            id=f"hard_chunk:{paper_id}:{chunk_id}",
+            case_type="hard_chunk",
+            query=query,
+            expected_paper_ids=[paper_id],
+            expected_chunk_ids=[chunk_id],
+            expected_category=payload.get("category"),
+            source_title=title,
+            expected_locations=[location_from_payload(payload)],
+        ))
+    return cases
+
+
+def hard_query_for_payload(payload: dict[str, Any], *, title: str) -> str:
+    text = content_text(payload)
+    content_type = str(payload.get("content_type") or "")
+    metrics = extract_metric_terms(text)
+    keywords = evidence_keywords(payload, limit=8)
+    if len(keywords) < 3 and not metrics:
+        return ""
+
+    subject = " ".join(keywords[:4]) if keywords else clean_title(title)[:80]
+    if metrics:
+        return f"Which evidence passage reports {metrics[0]} for {subject}?"
+    if content_type == "table":
+        return f"Which table summarizes experimental evidence for {subject}?"
+    if content_type == "image":
+        return f"Which figure or image describes experimental evidence for {subject}?"
+    if any(term in text.lower() for term in ("yield", "titer", "productivity", "concentration", "activity")):
+        return f"Find the result evidence about yield, titer, or activity for {subject}."
+    return f"Find the evidence passage about {subject}."
+
+
+def hard_case_priority(payload: dict[str, Any], query: str) -> int:
+    text = content_text(payload)
+    content_type = str(payload.get("content_type") or "")
+    score = 0
+    if extract_metric_terms(text):
+        score += 5
+    if content_type == "table":
+        score += 4
+    if content_type == "image":
+        score += 2
+    if any(term in query.lower() for term in ("yield", "titer", "activity", "concentration")):
+        score += 2
+    return score
+
+
+def extract_metric_terms(text: str, *, limit: int = 3) -> list[str]:
+    terms = []
+    seen = set()
+    for match in METRIC_PATTERN.finditer(text):
+        term = re.sub(r"\s+", " ", match.group(0).strip())
+        key = term.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        terms.append(term)
+        if len(terms) >= limit:
+            break
+    return terms
+
+
+def evidence_keywords(payload: dict[str, Any], *, limit: int = 8) -> list[str]:
+    values: list[str] = []
+    values.extend(normalize_list(payload.get("seo_terms")))
+    values.append(str(payload.get("seo_anchor_text") or ""))
+    values.append(content_text(payload))
+    keywords = extract_keywords(" ".join(values), limit=limit * 2)
+    cleaned: list[str] = []
+    for keyword in keywords:
+        lowered = keyword.lower()
+        if lowered.endswith(".pdf") or lowered in {"evidence", "text", "table", "image"}:
+            continue
+        if re.fullmatch(r"\d+(?:\.\d+)?", lowered):
+            continue
+        cleaned.append(keyword)
+        if len(cleaned) >= limit:
+            break
+    return unique_keep_order(cleaned)
+
+
 def location_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "paper_id": str(payload.get("paper_id") or ""),
@@ -383,7 +505,11 @@ def is_nearby_payload(
         return abs(actual_global - expected_global) <= global_order_window
 
     if expected.get("page") is None or payload.get("page") is None:
-        return False
+        return QdrantStore._chunk_id_neighbor_distance(
+            expected,
+            payload,
+            window=global_order_window,
+        ) is not None
     if str(payload.get("page")) != str(expected.get("page")):
         return False
 
@@ -398,7 +524,13 @@ def is_nearby_payload(
         if str(expected_column) != str(actual_column):
             return False
 
-    return bbox_centers_are_close(payload, expected, center_ratio=bbox_center_ratio)
+    if bbox_centers_are_close(payload, expected, center_ratio=bbox_center_ratio):
+        return True
+    return QdrantStore._chunk_id_neighbor_distance(
+        expected,
+        payload,
+        window=global_order_window,
+    ) is not None
 
 
 def as_int(value: Any) -> int | None:
@@ -466,37 +598,48 @@ def evaluate_case(
     *,
     top_k: int,
     rerank: bool,
+    selective_rerank: bool = False,
+    rerank_top_n: int | None = None,
     lexical_backfill: bool = False,
     neighbor_backfill: bool = False,
     strategy: str = "standard",
+    fielded_lexical_weight: float = 0.0,
     paper_limit: int = 8,
     per_paper_limit: int = 4,
     lead_paper_limit: int = 12,
     rewritten_query: QueryRewrite | None = None,
     multi_query: bool = False,
+    adaptive_multi_query: bool = True,
 ) -> CaseResult:
     query = rewritten_query.normalized_query if rewritten_query and rewritten_query.normalized_query else case.query
     started = time.perf_counter()
+    search_meta: dict[str, Any] | None = None
     if multi_query:
         multi_result = multi_query_search(
             store,
             case.query,
             limit=top_k,
             rerank=rerank,
+            selective_rerank=selective_rerank,
+            rerank_top_n=rerank_top_n,
             lexical_backfill=lexical_backfill,
             neighbor_backfill=neighbor_backfill,
             rewritten_query=rewritten_query,
             route_limit=4,
+            adaptive_route_limit=adaptive_multi_query,
         )
         results = multi_result.results
         query = " | ".join(route.query for route in multi_result.routes)
+        search_meta = multi_result.metadata()
     elif strategy == "two-stage":
         results = store.search_evidence(
             query,
             limit=top_k,
             rerank=rerank,
+            selective_rerank=selective_rerank,
             lexical_backfill=lexical_backfill,
             neighbor_backfill=neighbor_backfill,
+            fielded_lexical_weight=fielded_lexical_weight,
         )
     elif strategy == "paper-local":
         results = store.search_paper_local_evidence(
@@ -505,6 +648,7 @@ def evaluate_case(
             rerank=rerank,
             lexical_backfill=lexical_backfill,
             neighbor_backfill=neighbor_backfill,
+            fielded_lexical_weight=fielded_lexical_weight,
             paper_limit=paper_limit,
             per_paper_limit=per_paper_limit,
             lead_paper_limit=lead_paper_limit,
@@ -514,8 +658,11 @@ def evaluate_case(
             query,
             limit=top_k,
             rerank=rerank,
+            selective_rerank=selective_rerank,
+            rerank_top_n=rerank_top_n,
             lexical_backfill=lexical_backfill,
             neighbor_backfill=neighbor_backfill,
+            fielded_lexical_weight=fielded_lexical_weight,
         )
     elapsed_ms = (time.perf_counter() - started) * 1000
     top_papers = [str((item.get("payload") or {}).get("paper_id", "")) for item in results]
@@ -523,6 +670,11 @@ def evaluate_case(
     top_payloads = [item.get("payload") or {} for item in results]
     top_titles = [str((item.get("payload") or {}).get("paper_title", "")) for item in results]
     top_scores = [float(item.get("score") or 0.0) for item in results]
+    selective_reasons = sorted({
+        str(item.get("selective_rerank_reason") or "")
+        for item in results
+        if item.get("selective_rerank_reason")
+    })
 
     paper_rank = first_rank(top_papers, set(case.expected_paper_ids))
     chunk_rank = (
@@ -547,6 +699,9 @@ def evaluate_case(
         elapsed_ms=elapsed_ms,
         query_used=query,
         query_rewrite=rewritten_query.to_dict() if rewritten_query else None,
+        search_meta=search_meta,
+        selective_rerank_triggered=bool(selective_reasons),
+        selective_rerank_reasons=selective_reasons,
     )
 
 
@@ -575,6 +730,32 @@ def summarize(
     summary["elapsed_ms_avg"] = mean(elapsed_values)
     summary["elapsed_ms_p50"] = percentile(elapsed_values, 0.50)
     summary["elapsed_ms_p95"] = percentile(elapsed_values, 0.95)
+    if any(result.selective_rerank_reasons for result in results):
+        summary["selective_rerank_trigger_rate"] = mean(
+            1.0 if result.selective_rerank_triggered else 0.0
+            for result in results
+        )
+    route_counts = [
+        len(((result.search_meta or {}).get("routes") or []))
+        for result in results
+        if result.search_meta
+    ]
+    if route_counts:
+        summary["route_count_avg"] = mean(route_counts)
+        route_policy_counts: Counter[str] = Counter()
+        route_source_counts: Counter[str] = Counter()
+        for result in results:
+            search_meta = result.search_meta or {}
+            route_policy = search_meta.get("route_policy") or {}
+            reason = str(route_policy.get("reason") or "").strip()
+            if reason:
+                route_policy_counts[reason] += 1
+            for route in search_meta.get("routes") or []:
+                source = str(route.get("source") or "").strip()
+                if source:
+                    route_source_counts[source] += 1
+        summary["route_policy_counts"] = dict(sorted(route_policy_counts.items()))
+        summary["route_source_counts"] = dict(sorted(route_source_counts.items()))
     chunk_results = [result for result in results if result.case.expected_chunk_ids]
     if chunk_results:
         summary["chunk_cases"] = len(chunk_results)
@@ -632,6 +813,7 @@ def run_eval(args: argparse.Namespace) -> dict[str, Any]:
         seed=args.seed,
         min_content_chars=args.min_content_chars,
         content_types=set(args.content_types) if args.content_types else None,
+        case_profile=args.case_profile,
     )
     if not cases:
         raise SystemExit("No retrieval eval cases could be generated from Qdrant payloads.")
@@ -651,26 +833,34 @@ def run_eval(args: argparse.Namespace) -> dict[str, Any]:
             case,
             top_k=top_k,
             rerank=args.rerank,
+            selective_rerank=args.selective_rerank,
+            rerank_top_n=args.rerank_top_n,
             lexical_backfill=args.lexical_backfill,
             neighbor_backfill=args.neighbor_backfill,
+            fielded_lexical_weight=args.fielded_lexical_weight,
             strategy=args.strategy,
             paper_limit=args.paper_limit,
             per_paper_limit=args.per_paper_limit,
             lead_paper_limit=args.lead_paper_limit,
             rewritten_query=rewrites.get(case.id),
             multi_query=args.multi_query,
+            adaptive_multi_query=args.adaptive_multi_query,
         )
         for case in cases
     ]
     report = {
         "config": {
             "content_types": args.content_types,
+            "case_profile": args.case_profile,
             "max_cases": args.max_cases,
             "max_points": args.max_points,
             "min_content_chars": args.min_content_chars,
             "lexical_backfill": args.lexical_backfill,
             "neighbor_backfill": args.neighbor_backfill,
+            "fielded_lexical_weight": args.fielded_lexical_weight,
             "rerank": args.rerank,
+            "selective_rerank": args.selective_rerank,
+            "rerank_top_n": args.rerank_top_n,
             "seed": args.seed,
             "strategy": args.strategy,
             "paper_limit": args.paper_limit,
@@ -679,6 +869,7 @@ def run_eval(args: argparse.Namespace) -> dict[str, Any]:
             "query_rewrite": args.query_rewrite,
             "query_rewrite_model": args.query_rewrite_model,
             "multi_query": args.multi_query,
+            "adaptive_multi_query": args.adaptive_multi_query,
             "top_k": top_k,
         },
         "summary": round_floats(summarize(results, ks=args.ks)),
@@ -696,9 +887,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--max-points", type=int, default=None)
     parser.add_argument("--min-content-chars", type=int, default=180)
     parser.add_argument("--content-types", nargs="+", default=["text", "table"])
+    parser.add_argument("--case-profile", choices=["default", "hard"], default="default")
     parser.add_argument("--rerank", action="store_true")
+    parser.add_argument("--selective-rerank", action="store_true")
+    parser.add_argument("--rerank-top-n", type=int, default=None)
     parser.add_argument("--lexical-backfill", action="store_true")
     parser.add_argument("--neighbor-backfill", action="store_true")
+    parser.add_argument("--fielded-lexical-weight", type=float, default=0.0)
     parser.add_argument("--seed", type=int, default=13)
     parser.add_argument("--strategy", choices=["standard", "two-stage", "paper-local"], default="standard")
     parser.add_argument("--paper-limit", type=int, default=8)
@@ -707,6 +902,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--query-rewrite", action="store_true")
     parser.add_argument("--query-rewrite-model", default=None)
     parser.add_argument("--multi-query", action="store_true")
+    parser.add_argument("--no-adaptive-multi-query", dest="adaptive_multi_query", action="store_false")
+    parser.set_defaults(adaptive_multi_query=True)
     parser.add_argument("--ks", type=int, nargs="+", default=list(DEFAULT_KS))
     parser.add_argument("--out", type=Path, default=None)
     return parser.parse_args(argv)

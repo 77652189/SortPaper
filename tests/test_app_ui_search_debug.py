@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app_ui import result_route_debug_bits, search_meta_debug_lines
+from app_ui import _strip_markdown_source_summary, result_route_debug_bits, search_meta_debug_lines
 
 
 def test_search_meta_debug_lines_describe_rewrite_routes() -> None:
@@ -43,6 +43,21 @@ def test_search_meta_debug_lines_ignores_empty_meta() -> None:
     assert search_meta_debug_lines(None) == []
 
 
+def test_search_meta_debug_lines_describe_route_policy() -> None:
+    lines = search_meta_debug_lines(
+        {
+            "routes": [{"source": "raw", "query": "paper title"}],
+            "route_policy": {
+                "reason": "compact_generic_query",
+                "requested_limit": 4,
+                "effective_limit": 2,
+            },
+        }
+    )
+
+    assert "route policy: compact_generic_query (2/4)" in lines
+
+
 def test_result_route_debug_bits_clip_queries() -> None:
     bits = result_route_debug_bits(
         {
@@ -58,3 +73,9 @@ def test_result_route_debug_bits_clip_queries() -> None:
     assert bits[1].startswith("命中 query: lacto-N-triose II")
     assert "..." in bits[1]
     assert "LNT II lgtA RBS" in bits[1]
+
+
+def test_strip_markdown_source_summary_removes_compat_sources_block() -> None:
+    answer = "正文回答\n\n### Sources\n- [S1] Paper A | p1 | text"
+
+    assert _strip_markdown_source_summary(answer) == "正文回答"

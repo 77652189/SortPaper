@@ -25,11 +25,13 @@ class MultiQuerySearchResult:
     rewrite: QueryRewrite | None = None
     routes: list[SearchRoute] = field(default_factory=list)
     elapsed_ms: float = 0.0
+    route_policy: dict[str, Any] = field(default_factory=dict)
 
     def metadata(self) -> dict[str, Any]:
         return {
             "rewrite": self.rewrite.to_dict() if self.rewrite else None,
             "routes": [asdict(route) for route in self.routes],
+            "route_policy": self.route_policy,
             "elapsed_ms": self.elapsed_ms,
         }
 
@@ -52,6 +54,7 @@ def build_search_routes(
     if rewrite:
         if rewrite.normalized_query:
             candidates.append(SearchRoute(rewrite.normalized_query, "normalized", 0.95))
+        candidates.extend(_structured_rewrite_routes(rewrite))
         for variant in rewrite.variants:
             candidates.append(SearchRoute(variant, "variant", 0.45))
 
@@ -68,6 +71,61 @@ def build_search_routes(
     return routes, rewrite
 
 
+def _structured_rewrite_routes(rewrite: QueryRewrite) -> list[SearchRoute]:
+    """Build RAGFlow-style keyword routes from structured rewrite fields."""
+    routes: list[SearchRoute] = []
+    entity_query = _join_route_terms(
+        rewrite.products[:3]
+        + rewrite.organisms[:2]
+        + rewrite.genes[:4]
+        + rewrite.enzymes[:3]
+    )
+    if entity_query:
+        routes.append(SearchRoute(entity_query, "entity", 0.7))
+
+    table_query = _table_evidence_query(rewrite)
+    if table_query:
+        routes.append(SearchRoute(table_query, "table_evidence", 0.65))
+
+    alias_query = _join_route_terms(rewrite.aliases[:6])
+    if alias_query:
+        routes.append(SearchRoute(alias_query, "alias", 0.55))
+    return routes
+
+
+def _table_evidence_query(rewrite: QueryRewrite) -> str:
+    if not rewrite.metrics and rewrite.evidence_preference != "table":
+        return ""
+    terms = (
+        rewrite.metrics[:4]
+        + rewrite.products[:3]
+        + rewrite.organisms[:1]
+        + rewrite.genes[:2]
+    )
+    query = _join_route_terms(terms)
+    if not query:
+        return ""
+    if rewrite.evidence_preference == "table":
+        query = f"{query} table"
+    return query
+
+
+def _join_route_terms(values: list[str], *, max_chars: int = 240) -> str:
+    selected: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = " ".join(str(value or "").split()).strip()
+        key = text.lower()
+        if not text or key in seen:
+            continue
+        candidate = " ".join(selected + [text]).strip()
+        if len(candidate) > max_chars:
+            break
+        seen.add(key)
+        selected.append(text)
+    return " ".join(selected)
+
+
 def multi_query_search(
     store: Any,
     query: str,
@@ -75,25 +133,50 @@ def multi_query_search(
     limit: int,
     filter_kwargs: dict[str, Any] | None = None,
     rerank: bool = False,
+    selective_rerank: bool = False,
+    rerank_top_n: int | None = None,
     lexical_backfill: bool = False,
     neighbor_backfill: bool = False,
     use_query_rewrite: bool = False,
     query_rewrite_model: str | None = None,
     rewritten_query: QueryRewrite | None = None,
     route_limit: int = 4,
+    adaptive_route_limit: bool = True,
     route_fetch_multiplier: int = 3,
 ) -> MultiQuerySearchResult:
     """Run several query routes and merge results with weighted reciprocal rank."""
     started = time.perf_counter()
+    rewrite = rewritten_query
+    raw_query = str(query or "").strip()
+    if use_query_rewrite and rewrite is None and raw_query:
+        rewrite = rewrite_query(raw_query, model=query_rewrite_model, use_llm=True)
+    requested_route_limit = max(1, route_limit)
+    effective_route_limit, route_reason = _effective_route_limit(
+        query,
+        rewrite,
+        requested_limit=requested_route_limit,
+        adaptive=adaptive_route_limit,
+    )
     routes, rewrite = build_search_routes(
         query,
-        rewritten_query=rewritten_query,
-        use_query_rewrite=use_query_rewrite,
+        rewritten_query=rewrite,
+        use_query_rewrite=False,
         query_rewrite_model=query_rewrite_model,
-        max_routes=route_limit,
+        max_routes=effective_route_limit,
     )
     if not routes:
-        return MultiQuerySearchResult(results=[], rewrite=rewrite, routes=[], elapsed_ms=0.0)
+        return MultiQuerySearchResult(
+            results=[],
+            rewrite=rewrite,
+            routes=[],
+            elapsed_ms=0.0,
+            route_policy={
+                "adaptive": adaptive_route_limit,
+                "requested_limit": requested_route_limit,
+                "effective_limit": effective_route_limit,
+                "reason": route_reason,
+            },
+        )
 
     merged: dict[str, dict[str, Any]] = {}
     raw_order: list[str] = []
@@ -105,6 +188,8 @@ def multi_query_search(
             limit=current_limit,
             filter_kwargs=filter_kwargs,
             rerank=rerank,
+            selective_rerank=selective_rerank,
+            rerank_top_n=rerank_top_n,
             lexical_backfill=lexical_backfill,
             neighbor_backfill=neighbor_backfill,
         )
@@ -161,8 +246,9 @@ def multi_query_search(
     results = (protected_results + ranked_remaining)[:limit]
     elapsed_ms = (time.perf_counter() - started) * 1000
     logger.info(
-        "Multi-query search | routes=%s hits=%s elapsed_ms=%.1f",
+        "Multi-query search | routes=%s route_policy=%s hits=%s elapsed_ms=%.1f",
         [route.source for route in routes],
+        route_reason,
         len(results),
         elapsed_ms,
     )
@@ -171,7 +257,61 @@ def multi_query_search(
         rewrite=rewrite,
         routes=routes,
         elapsed_ms=elapsed_ms,
+        route_policy={
+            "adaptive": adaptive_route_limit,
+            "requested_limit": requested_route_limit,
+            "effective_limit": effective_route_limit,
+            "reason": route_reason,
+        },
     )
+
+
+def _effective_route_limit(
+    query: str,
+    rewrite: QueryRewrite | None,
+    *,
+    requested_limit: int,
+    adaptive: bool,
+) -> tuple[int, str]:
+    if not adaptive:
+        return requested_limit, "fixed"
+    if requested_limit <= 2:
+        return requested_limit, "already_compact"
+    if _should_expand_routes(query, rewrite):
+        return requested_limit, "evidence_or_structured_query"
+    return min(requested_limit, 2), "compact_generic_query"
+
+
+def _should_expand_routes(query: str, rewrite: QueryRewrite | None) -> bool:
+    lowered = str(query or "").lower()
+    evidence_terms = (
+        "which",
+        "evidence",
+        "passage",
+        "report",
+        "reports",
+        "table",
+        "figure",
+        "g/l",
+        "mg/l",
+        "yield",
+        "titer",
+    )
+    if any(term in lowered for term in evidence_terms):
+        return True
+    if rewrite is None:
+        return False
+    if rewrite.evidence_preference == "table" or rewrite.metrics:
+        return True
+    if rewrite.aliases:
+        return True
+    entity_count = (
+        len(rewrite.products)
+        + len(rewrite.organisms)
+        + len(rewrite.genes)
+        + len(rewrite.enzymes)
+    )
+    return entity_count >= 3
 
 
 def _result_key(item: dict[str, Any], payload: dict[str, Any]) -> str:

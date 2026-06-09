@@ -35,3 +35,24 @@ def test_build_search_text_uses_table_caption_and_cells() -> None:
     assert "Strain" in text
     assert "Titer" in text
     assert "2-fucosyllactose" in text
+
+
+def test_build_search_text_uses_figure_vision_and_seo_fields() -> None:
+    payload = {
+        "content_type": "image",
+        "content": "[Vision reparse needed]",
+        "figure_caption": "Figure 2. UDP-Gal pathway for LNT biosynthesis",
+        "vision_group_description": "The chart shows lgtA and wbgO supporting LNT production.",
+        "seo_terms": ["figure chart evidence", "2.13 g/L"],
+        "seo_anchor_text": "Results | Figure 2 | figure chart evidence",
+        "aliases": ["HMO"],
+    }
+
+    text = build_search_text(payload).lower()
+
+    assert "udp-galactose" in text
+    assert "lacto-n-tetraose" in text
+    assert "lgta" in text
+    assert "wbgo" in text
+    assert "human milk oligosaccharide" in text
+    assert "2.13 g/l" in text

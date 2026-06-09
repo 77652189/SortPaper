@@ -19,8 +19,15 @@ build/
 .ipynb_checkpoints/
 
 # generated retrieval evaluation outputs
+logs/
+reports/**/*.json
+reports/**/*.zip
+reports/*.json
+reports/*.zip
 reports/retrieval_eval_*.json
 reports/agent_context_eval_*.json
+reports/mineru_*.json
+reports/mineru_*.zip
 
 # OS
 .DS_Store

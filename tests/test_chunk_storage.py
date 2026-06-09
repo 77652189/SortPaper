@@ -45,6 +45,12 @@ def _store(result: dict) -> dict:
     )
 
 
+def test_local_embedding_provider_does_not_require_api_key() -> None:
+    from src.store.chunk_storage import _embedding_api_key_configured
+
+    assert _embedding_api_key_configured("") is True
+
+
 def test_chunk_storage_stores_clean_chunk(monkeypatch) -> None:
     fake_store = _patch_store(monkeypatch)
     monkeypatch.setenv("TEST_EMBEDDING_KEY", "test-key")
@@ -71,6 +77,42 @@ def test_chunk_storage_stores_clean_chunk(monkeypatch) -> None:
     assert fake_store.added[0]["embed_content"] == "embed::text body"
     assert fake_store.added[0]["metadata"]["paper_title"] == "demo.pdf"
     assert fake_store.added[0]["metadata"]["enrichment_status"] == "pending"
+    assert fake_store.added[0]["metadata"]["seo_evidence_type"] == "text evidence"
+    assert fake_store.added[0]["metadata"]["seo_weight"] >= 1.0
+
+
+def test_chunk_storage_adds_seo_metadata_for_mineru_visual(monkeypatch) -> None:
+    fake_store = _patch_store(monkeypatch)
+    monkeypatch.setenv("TEST_EMBEDDING_KEY", "test-key")
+
+    result = {
+        "paper_id": "paper-1",
+        "filename": "demo.pdf",
+        "verdicts": {"image-1": {"passed": True, "score": 1.0}},
+        "merged_chunks": [{
+            "chunk_id": "image-1",
+            "content_type": "image",
+            "raw_content": "[Vision reparse needed]",
+            "page": 2,
+            "bbox": [0, 0, 1, 1],
+            "metadata": {
+                "parser": "mineru_vlm",
+                "mineru_type": "chart",
+                "figure_label": "Figure 2",
+                "figure_caption": "Figure 2. LNT titer reached 2.13 g/L.",
+                "vision_group_description": "Chart for E. coli LNT production.",
+            },
+        }],
+    }
+
+    stored = _store(result)
+
+    metadata = fake_store.added[0]["metadata"]
+    assert stored["stored"] == 1
+    assert metadata["seo_evidence_type"] == "figure chart evidence"
+    assert "2.13 g/L" in metadata["seo_metric_terms"]
+    assert "Figure 2" in metadata["seo_anchor_text"]
+    assert metadata["seo_weight"] > 1.0
 
 
 def test_chunk_storage_result_and_metadata_contract(monkeypatch) -> None:

@@ -7,7 +7,7 @@ import time
 from collections.abc import Callable
 from typing import TypeVar
 
-from app_config import (
+from src.application.settings import (
     LLM_MAX_CONCURRENT_REQUESTS,
     LLM_RATE_LIMIT_BACKOFF_SECONDS,
     LLM_RATE_LIMIT_RETRY_MAX,

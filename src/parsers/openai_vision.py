@@ -16,9 +16,29 @@ def call_openai_vision(
     max_output_tokens: int = 2048,
 ) -> str:
     """Analyze one image with an OpenAI-compatible vision model."""
+    return call_openai_vision_images(
+        images=[{"image_b64": image_b64, "mime_type": mime_type}],
+        prompt=prompt,
+        model=model,
+        timeout=timeout,
+        max_output_tokens=max_output_tokens,
+    )
+
+
+def call_openai_vision_images(
+    images: list[dict[str, str]],
+    prompt: str,
+    *,
+    model: str | None = None,
+    timeout: float = 60.0,
+    max_output_tokens: int = 2048,
+) -> str:
+    """Analyze one or more images with an OpenAI-compatible vision model."""
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if not api_key:
         logger.error("OPENAI_API_KEY is not set")
+        return ""
+    if not images:
         return ""
 
     from openai import OpenAI
@@ -30,7 +50,15 @@ def call_openai_vision(
 
     client = OpenAI(**client_kwargs)
     model_name = model or os.getenv("OPENAI_VISION_MODEL", "gpt-5.5")
-    data_url = f"data:{mime_type};base64,{image_b64}"
+    image_inputs = [
+        {
+            "data_url": f"data:{item.get('mime_type', 'image/png')};base64,{item.get('image_b64', '')}",
+        }
+        for item in images
+        if item.get("image_b64")
+    ]
+    if not image_inputs:
+        return ""
     wire_api = os.getenv("OPENAI_VISION_WIRE_API", "responses").strip().lower()
 
     if wire_api != "chat":
@@ -42,9 +70,9 @@ def call_openai_vision(
                     model=model_name,
                     input=[{
                         "role": "user",
-                        "content": [
-                            {"type": "input_text", "text": prompt},
-                            {"type": "input_image", "image_url": data_url, "detail": "high"},
+                        "content": [{"type": "input_text", "text": prompt}] + [
+                            {"type": "input_image", "image_url": item["data_url"], "detail": "high"}
+                            for item in image_inputs
                         ],
                     }],
                     max_output_tokens=max_output_tokens,
@@ -66,9 +94,9 @@ def call_openai_vision(
                 model=model_name,
                 messages=[{
                     "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": data_url, "detail": "high"}},
+                    "content": [{"type": "text", "text": prompt}] + [
+                        {"type": "image_url", "image_url": {"url": item["data_url"], "detail": "high"}}
+                        for item in image_inputs
                     ],
                 }],
                 max_tokens=max_output_tokens,

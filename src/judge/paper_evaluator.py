@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
+from src.adapters.llm.deepseek import DeepSeekChatClient
 from src.judge.prompts import (
     CLASSIFY_PROMPT,
     VERIFY_PROMPT,
@@ -20,7 +20,7 @@ from src.judge.prompts import (
     MAP_CHUNK_PROMPT_LITE,
     REDUCE_PROMPT,
 )
-from src.judge.llm_runtime import run_llm_call
+from src.ports.llm import ChatCompletionClient
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +42,14 @@ MAX_MAP_BATCH_CHARS = 9000
 class PaperQualityEvaluator:
     """论文质量评估器。"""
 
-    def __init__(self, model: str = DEEPSEEK_MODEL) -> None:
+    def __init__(
+        self,
+        model: str = DEEPSEEK_MODEL,
+        *,
+        llm_client: ChatCompletionClient | None = None,
+    ) -> None:
         self.model = model
+        self.llm_client = llm_client
 
     def evaluate(self, merged_chunks: list, title: str = "") -> dict[str, Any]:
         """完整四步评估入口。"""
@@ -471,20 +477,12 @@ class PaperQualityEvaluator:
     # ── LLM 调用 ──────────────────────────────────────────────────────
 
     def _call_deepseek(self, prompt: str, model: str | None = None) -> str:
-        from openai import OpenAI
-
-        api_key = os.environ.get("DEEPSEEK_API_KEY", "")
-        if not api_key:
-            raise ValueError("DEEPSEEK_API_KEY 未设置")
-
-        client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com/v1", timeout=60.0)
-        response = run_llm_call(
-            lambda: client.chat.completions.create(
-                model=model or self.model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.2,
-                max_tokens=4096,
-            ),
+        client = self.llm_client or DeepSeekChatClient(timeout=60.0)
+        return client.complete(
+            system_prompt="",
+            user_prompt=prompt,
+            model=model or self.model,
+            temperature=0.2,
+            max_tokens=4096,
             label="deepseek-evaluator",
         )
-        return response.choices[0].message.content or ""

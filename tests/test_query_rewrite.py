@@ -172,6 +172,30 @@ def test_rewrite_query_uses_deepseek_v4_flash_by_default(monkeypatch) -> None:
     assert "lacto-N-triose II" in rewrite.products
 
 
+def test_rewrite_query_accepts_injected_llm_client(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeClient:
+        def complete(self, **kwargs):
+            captured.update(kwargs)
+            return (
+                '{"normalized_query":"lacto-N-tetraose yield",'
+                '"products":["LNT"],"organisms":[],"genes":[],'
+                '"enzymes":[],"metrics":["yield"],"intents":[],'
+                '"evidence_preference":"table","aliases":[],"variants":[]}'
+            )
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "deepseek-key")
+
+    rewrite = rewrite_query("LNT yield?", llm_client=FakeClient())
+
+    assert captured["model"] == DEFAULT_QUERY_REWRITE_MODEL
+    assert captured["response_format"] == {"type": "json_object"}
+    assert captured["label"] == "deepseek-query-rewrite"
+    assert rewrite.normalized_query == "lacto-N-tetraose yield"
+    assert rewrite.evidence_preference == "table"
+
+
 def test_rewrite_query_missing_deepseek_key_fails_early(monkeypatch) -> None:
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     monkeypatch.delenv("\ufeffDEEPSEEK_API_KEY", raising=False)
