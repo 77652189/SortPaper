@@ -7,11 +7,19 @@ from pathlib import Path
 from typing import Any, Callable
 
 from src.application.settings import (
+    DAILY_BRIEF_TRANSLATION_BATCH_SIZE,
+    DAILY_BRIEF_TRANSLATION_MAX_CHARS,
+    DAILY_BRIEF_TRANSLATION_MAX_WORKERS,
+    DAILY_BRIEF_TRANSLATION_MODEL,
     EXTERNAL_CONTACT_EMAIL,
     EXTERNAL_HTTP_TIMEOUT_SECONDS,
     EXTERNAL_IMPORTS_DIR,
 )
 from src.application import external_filters
+from src.application.external_brief_translations import (
+    apply_cached_candidate_translations_to_brief,
+    translate_candidate_abstracts_for_repository,
+)
 from src.application.external_briefing import (
     BriefClassificationDecision,
     Y103_CATEGORIES,
@@ -90,6 +98,7 @@ def _monitor_service() -> ExternalMonitorService:
         refresh_candidates=refresh_candidates,
         default_source_names=DEFAULT_SOURCE_NAMES,
         latest_fetch_key=LATEST_PAPER_FETCH_KEY,
+        post_filter_candidates=_translate_monitor_candidates_after_filter,
     )
 
 
@@ -134,6 +143,34 @@ def _daily_brief_service() -> ExternalDailyBriefService:
         daily_brief_highlights=external_brief_items.daily_brief_highlights,
         daily_brief_id=_daily_brief_id,
     )
+
+
+def _daily_brief_translation_client() -> Any:
+    from src.adapters.llm.openai_chat import OpenAIChatClient
+
+    return OpenAIChatClient(timeout=60.0)
+
+
+def _translate_monitor_candidates_after_filter(repo: Any, summary: dict[str, Any]) -> dict[str, Any]:
+    return ensure_candidate_abstract_translations(
+        _candidate_ids_for_monitor_translation(summary),
+        repository=repo,
+    )
+
+
+def _candidate_ids_for_monitor_translation(summary: dict[str, Any]) -> list[str]:
+    filter_summary = summary.get("candidate_filter") if isinstance(summary.get("candidate_filter"), dict) else {}
+    if filter_summary and filter_summary.get("enabled"):
+        return [
+            str(candidate_id)
+            for candidate_id in filter_summary.get("kept_candidate_ids", [])
+            if str(candidate_id)
+        ]
+    return [
+        str(candidate_id)
+        for candidate_id in summary.get("candidate_ids", [])
+        if str(candidate_id)
+    ]
 
 
 def refresh_candidates(
@@ -187,20 +224,98 @@ def generate_daily_brief(
     use_llm: bool = False,
     small_llm_client: Any | None = None,
     judge_llm_client: Any | None = None,
+    translation_llm_client: Any | None = None,
+    translate_abstracts: bool = True,
     progress_callback: ExternalRefreshProgress | None = None,
 ) -> DailyBrief:
-    return _daily_brief_service().generate_daily_brief(
+    repo = repository or default_repository()
+    brief = _daily_brief_service().generate_daily_brief(
         brief_date=brief_date,
         lookback_days=lookback_days,
         max_items=max_items,
         source_names=source_names,
         query=query,
-        repository=repository,
+        repository=repo,
         use_llm=use_llm,
         small_llm_client=small_llm_client,
         judge_llm_client=judge_llm_client,
         progress_callback=progress_callback,
     )
+    if translate_abstracts:
+        brief = apply_cached_candidate_translations_to_brief(brief, repo)
+        if hasattr(repo, "save_daily_brief"):
+            repo.save_daily_brief(brief)
+    return brief
+
+
+def ensure_candidate_abstract_translations(
+    candidate_ids: list[str],
+    *,
+    repository: Any | None = None,
+    translation_llm_client: Any | None = None,
+) -> dict[str, Any]:
+    repo = repository or default_repository()
+    unique_ids = list(dict.fromkeys(str(candidate_id) for candidate_id in candidate_ids if str(candidate_id)))
+    candidates = [
+        candidate for candidate_id in unique_ids
+        if (candidate := repo.get_candidate(candidate_id)) is not None
+    ] if hasattr(repo, "get_candidate") else []
+    if not unique_ids:
+        return {
+            "requested_count": 0,
+            "found_count": 0,
+            "skipped_count": 0,
+            "translated_count": 0,
+            "failed_count": 0,
+            "model": DAILY_BRIEF_TRANSLATION_MODEL,
+            "candidate_ids": [],
+            "errors": [],
+        }
+    client = translation_llm_client or _daily_brief_translation_client()
+    config_error = _translation_client_configuration_error(client)
+    if config_error:
+        return {
+            "requested_count": len(unique_ids),
+            "found_count": len(candidates),
+            "skipped_count": len(candidates),
+            "translated_count": 0,
+            "failed_count": 0,
+            "model": DAILY_BRIEF_TRANSLATION_MODEL,
+            "candidate_ids": [],
+            "errors": [],
+            "configuration_error": config_error,
+        }
+    return translate_candidate_abstracts_for_repository(
+        repo,
+        unique_ids,
+        llm_client=client,
+        model=DAILY_BRIEF_TRANSLATION_MODEL,
+        max_abstract_chars=DAILY_BRIEF_TRANSLATION_MAX_CHARS,
+        max_workers=DAILY_BRIEF_TRANSLATION_MAX_WORKERS,
+        batch_size=DAILY_BRIEF_TRANSLATION_BATCH_SIZE,
+    )
+
+
+def abstract_translation_config_status() -> dict[str, Any]:
+    client = _daily_brief_translation_client()
+    error = _translation_client_configuration_error(client)
+    return {
+        "ready": not bool(error),
+        "error": error,
+        "model": DAILY_BRIEF_TRANSLATION_MODEL,
+        "max_workers": DAILY_BRIEF_TRANSLATION_MAX_WORKERS,
+        "batch_size": DAILY_BRIEF_TRANSLATION_BATCH_SIZE,
+    }
+
+
+def _translation_client_configuration_error(client: Any) -> str:
+    checker = getattr(client, "configuration_error", None)
+    if not callable(checker):
+        return ""
+    try:
+        return str(checker() or "")
+    except Exception as exc:
+        return f"{type(exc).__name__}: {str(exc)[:240]}"
 
 
 def list_daily_briefs(*, repository: Any | None = None) -> list[DailyBrief]:
@@ -267,10 +382,23 @@ def latest_paper_fetch_status(
     repository: Any | None = None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    latest_fetch_at = latest_paper_fetch_time(repository=repository)
+    repo = repository or default_repository()
+    current = now or _utc_now()
+    latest_fetch_at = latest_paper_fetch_time(repository=repo)
+    checked_today = _same_beijing_date(latest_fetch_at, current)
+    latest_monitor_run_at = _latest_monitor_run_time(repo)
+    candidate_activity = _latest_candidate_activity(repo)
+    latest_candidate_activity_at = str(candidate_activity.get("run_at") or "")
     return {
         "latest_fetch_at": latest_fetch_at,
-        "ran_today": _same_beijing_date(latest_fetch_at, now or _utc_now()),
+        "ran_today": checked_today,
+        "latest_check_at": latest_fetch_at,
+        "checked_today": checked_today,
+        "latest_monitor_run_at": latest_monitor_run_at,
+        "monitor_ran_today": _same_beijing_date(latest_monitor_run_at, current),
+        "latest_candidate_activity_at": latest_candidate_activity_at,
+        "candidate_activity_today": _same_beijing_date(latest_candidate_activity_at, current),
+        "latest_candidate_activity": candidate_activity,
     }
 
 
@@ -490,16 +618,94 @@ def _record_latest_paper_fetch(repo: Any, when: datetime) -> str:
     return _monitor_service().record_latest_paper_fetch(repo, when)
 
 
-def _same_beijing_date(value: str, now: datetime) -> bool:
+def _latest_monitor_run_time(repo: Any) -> str:
+    if not hasattr(repo, "list_monitors"):
+        return ""
+    latest: tuple[datetime, str] | None = None
+    for monitor in repo.list_monitors():
+        value = str(getattr(monitor, "last_run_at", "") or "")
+        parsed = _parse_datetime(value)
+        if parsed is None:
+            continue
+        if latest is None or parsed > latest[0]:
+            latest = (parsed, value)
+    return latest[1] if latest else ""
+
+
+def _latest_candidate_activity(repo: Any) -> dict[str, Any]:
+    if hasattr(repo, "list_run_summaries"):
+        runs = repo.list_run_summaries()
+    else:
+        runs = _monitor_runs_from_profiles(repo)
+    latest: tuple[datetime, dict[str, Any]] | None = None
+    for run in runs:
+        if not isinstance(run, dict) or not _run_has_candidate_activity(run):
+            continue
+        run_at = str(run.get("run_at") or "")
+        parsed = _parse_datetime(run_at)
+        if parsed is None:
+            continue
+        if latest is None or parsed > latest[0]:
+            latest = (parsed, run)
+    if latest is None:
+        return {}
+    run = latest[1]
+    return {
+        "run_at": str(run.get("run_at") or ""),
+        "kind": str(run.get("kind") or ""),
+        "monitor_id": str(run.get("monitor_id") or ""),
+        "fetched_count": _safe_int(run.get("fetched_count")),
+        "new_count": _safe_int(run.get("new_count")),
+        "updated_count": _safe_int(run.get("updated_count")),
+    }
+
+
+def _monitor_runs_from_profiles(repo: Any) -> list[dict[str, Any]]:
+    if not hasattr(repo, "list_monitors"):
+        return []
+    runs: list[dict[str, Any]] = []
+    for monitor in repo.list_monitors():
+        summary = dict(getattr(monitor, "last_summary", {}) or {})
+        run_at = str(getattr(monitor, "last_run_at", "") or "")
+        if run_at:
+            summary["run_at"] = run_at
+        summary.setdefault("kind", "monitor_run")
+        summary.setdefault("monitor_id", str(getattr(monitor, "monitor_id", "") or ""))
+        runs.append(summary)
+    return runs
+
+
+def _run_has_candidate_activity(run: dict[str, Any]) -> bool:
+    return any(
+        _safe_int(run.get(key)) > 0
+        for key in ("fetched_count", "new_count", "updated_count")
+    )
+
+
+def _safe_int(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _parse_datetime(value: str) -> datetime | None:
     text = str(value or "").strip()
     if not text:
-        return False
+        return None
     try:
         parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError:
-        return False
+        return None
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _same_beijing_date(value: str, now: datetime) -> bool:
+    parsed = _parse_datetime(value)
+    if parsed is None:
+        return False
     if now.tzinfo is None:
         now = now.replace(tzinfo=timezone.utc)
     beijing_tz = timezone(timedelta(hours=8))

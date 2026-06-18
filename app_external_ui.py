@@ -195,6 +195,7 @@ def _render_candidate_library() -> None:
 
     _render_pdf_check_result(candidates)
     st.caption(f"共 {len(candidates)} 条候选")
+    _render_candidate_translation_maintenance(candidates)
     rows = [_candidate_row(candidate) for candidate in candidates]
     st.dataframe(rows, width="stretch", hide_index=True)
     _render_candidate_link_details(candidates)
@@ -239,6 +240,77 @@ def _render_candidate_library() -> None:
         with st.expander("查看导入详情", expanded=bool(result["failed"])):
             st.json(result["results"])
         st.rerun()
+
+
+def _render_candidate_translation_maintenance(candidates: list) -> None:
+    candidate_ids = _candidate_translation_candidate_ids(candidates)
+    config_status = external_imports.abstract_translation_config_status()
+    _render_candidate_translation_result(config_status=config_status)
+    translated_count = sum(
+        1
+        for candidate in candidates
+        if str(getattr(candidate, "abstract_translation_zh", "") or "").strip()
+    )
+    pending_count = len(candidate_ids)
+    col_text, col_action = st.columns([3, 1])
+    with col_text:
+        st.markdown("**摘要翻译维护**")
+        st.caption(
+            f"当前列表已翻译 {translated_count} 条，待补翻译 {pending_count} 条。"
+            " 已翻译会自动跳过，失败会记录错误，不会重复消耗。"
+        )
+        if not config_status.get("ready"):
+            st.warning(str(config_status.get("error") or "摘要翻译配置未就绪。"))
+    with col_action:
+        if st.button(
+            f"补翻译当前候选摘要（{pending_count}）",
+            disabled=not candidate_ids or not bool(config_status.get("ready")),
+            type="primary",
+            key="external_candidate_translate_missing",
+        ):
+            with st.spinner("正在补翻译当前候选摘要..."):
+                result = external_imports.ensure_candidate_abstract_translations(candidate_ids)
+            st.session_state["external_candidate_translation_result"] = result
+            st.rerun()
+
+
+def _render_candidate_translation_result(config_status: dict | None = None) -> None:
+    result = st.session_state.get("external_candidate_translation_result")
+    if not result:
+        return
+    if config_status and not config_status.get("ready") and not result.get("configuration_error"):
+        return
+    config_error = str(result.get("configuration_error") or "")
+    if config_error:
+        st.warning(f"摘要补翻译未执行：{config_error}")
+        return
+    translated = int(result.get("translated_count") or 0)
+    skipped = int(result.get("skipped_count") or 0)
+    failed = int(result.get("failed_count") or 0)
+    message = f"摘要补翻译完成：新增 {translated}，已跳过 {skipped}，失败 {failed}"
+    if failed:
+        st.warning(message)
+    else:
+        st.success(message)
+    errors = result.get("errors") or []
+    if errors:
+        with st.expander("查看翻译错误", expanded=True):
+            st.json(errors)
+
+
+def _candidate_translation_candidate_ids(candidates: list) -> list[str]:
+    ids: list[str] = []
+    for candidate in candidates:
+        if getattr(candidate, "import_status", "") == "skipped":
+            continue
+        if not str(getattr(candidate, "abstract", "") or "").strip():
+            continue
+        if str(getattr(candidate, "abstract_translation_zh", "") or "").strip():
+            continue
+        candidate_id = str(getattr(candidate, "candidate_id", "") or "").strip()
+        if candidate_id:
+            ids.append(candidate_id)
+    return ids
 
 
 def _run_pdf_precheck(candidate_ids: list[str], *, label: str) -> None:
@@ -301,13 +373,9 @@ def _render_daily_brief() -> None:
     st.caption("基于候选库元数据进行初步加工，不依赖 PDF 下载成功，不写入 Qdrant。")
     today = date.today()
     fetch_status = external_imports.latest_paper_fetch_status()
-    latest_fetch_at = fetch_status.get("latest_fetch_at", "")
-    fetched_today = bool(fetch_status.get("ran_today"))
-    latest_fetch_label = _format_candidate_time(latest_fetch_at) if latest_fetch_at else "尚未获取"
-    st.info(
-        f"今日简报时间：{_format_candidate_time(datetime.now(timezone.utc).isoformat())} | "
-        f"最近一次获取最新论文：{latest_fetch_label}"
-    )
+    checked_today = bool(fetch_status.get("checked_today", fetch_status.get("ran_today")))
+    st.info(f"今日简报时间：{_format_candidate_time(datetime.now(timezone.utc).isoformat())}")
+    _render_daily_fetch_status(fetch_status)
     col_lookback, col_max = st.columns(2)
     with col_lookback:
         lookback_days = st.number_input("回看天数", min_value=1, max_value=3650, value=14, step=1, key="external_daily_brief_lookback")
@@ -355,8 +423,8 @@ def _render_daily_brief() -> None:
         if st.button(
             "自动获取最新论文",
             type="primary",
-            disabled=fetched_today,
-            help="今日已运行时不会重复触发慢速外部检索；需要强制重跑可到自动定时搜索中运行具体主题。",
+            disabled=checked_today,
+            help="今天已经检查过时不会重复触发较慢的外部检索；需要强制重跑可到自动定时搜索中运行具体主题。",
             key="external_daily_brief_run_due_monitors",
         ):
             with st.spinner("正在立即运行所有启用主题..."):
@@ -368,11 +436,13 @@ def _render_daily_brief() -> None:
             if summary["summaries"]:
                 st.json(summary["summaries"])
     with col_fetch_status:
-        if fetched_today:
-            st.success("✅ 今日已运行")
-            st.caption(f"最近：{latest_fetch_label}")
+        check_at = str(fetch_status.get("latest_check_at") or fetch_status.get("latest_fetch_at") or "")
+        check_label = _format_candidate_time(check_at) if check_at else "尚未检查"
+        if checked_today:
+            st.success("✅ 今天已检查")
+            st.caption(f"最近检查：{check_label}")
         else:
-            st.warning("⚠️ 今日未运行")
+            st.warning("⚠️ 今天未检查")
             st.caption("可点击左侧按钮获取最新论文")
 
     briefs = external_imports.list_daily_briefs()
@@ -389,6 +459,55 @@ def _render_daily_brief() -> None:
     )
     brief = next((item for item in briefs if item.brief_id == selected_id), briefs[0])
     _render_daily_brief_content(brief)
+
+
+def _render_daily_fetch_status(fetch_status: dict) -> None:
+    check_at = str(fetch_status.get("latest_check_at") or fetch_status.get("latest_fetch_at") or "")
+    monitor_run_at = str(fetch_status.get("latest_monitor_run_at") or "")
+    candidate_activity_at = str(fetch_status.get("latest_candidate_activity_at") or "")
+    candidate_activity = fetch_status.get("latest_candidate_activity") or {}
+
+    col_check, col_monitor, col_candidates = st.columns(3)
+    with col_check:
+        _render_status_line(
+            "后台任务检查",
+            check_at,
+            bool(fetch_status.get("checked_today", fetch_status.get("ran_today"))),
+            empty="尚未检查",
+        )
+    with col_monitor:
+        _render_status_line(
+            "主题实际运行",
+            monitor_run_at,
+            bool(fetch_status.get("monitor_ran_today")),
+            empty="尚未运行主题",
+        )
+    with col_candidates:
+        _render_status_line(
+            "候选获取/更新",
+            candidate_activity_at,
+            bool(fetch_status.get("candidate_activity_today")),
+            empty="尚无候选活动",
+        )
+        if candidate_activity:
+            st.caption(
+                "获取 {fetched} | 新增 {new} | 更新 {updated}".format(
+                    fetched=int(candidate_activity.get("fetched_count") or 0),
+                    new=int(candidate_activity.get("new_count") or 0),
+                    updated=int(candidate_activity.get("updated_count") or 0),
+                )
+            )
+
+
+def _render_status_line(title: str, value: str, is_today: bool, *, empty: str) -> None:
+    label = _format_candidate_time(value) if value else empty
+    if value and is_today:
+        st.success(f"✅ {title}")
+    elif value:
+        st.warning(f"⚠️ {title}")
+    else:
+        st.info(f"ℹ️ {title}")
+    st.caption(label)
 
 
 def _render_daily_brief_content(brief) -> None:
@@ -520,6 +639,7 @@ def _render_daily_brief_item_summary(
     col_info, col_button = st.columns([5, 1])
     with col_info:
         st.markdown(f"**{index}/{total} {_priority_badge(item.priority)} {item.title}**")
+        _render_daily_brief_abstract_translation(item)
         topic_text = f"展示主题：{display_topic} | " if display_topic else ""
         st.caption(
             f"{topic_text}主分类：{item.classification_name or '其他/不纳入Y103'} | "
@@ -554,6 +674,7 @@ def _render_daily_brief_item_detail(item, *, index: int, total: int, display_top
         f"置信度：{float(item.classification_confidence or 0.0):.2f} | "
         f"证据层级：{item.evidence_level}"
     )
+    _render_daily_brief_abstract_translation(item)
     st.markdown(item.brief)
     st.info(f"✅ 建议：{item.recommended_action}")
     reasons = [
@@ -575,6 +696,16 @@ def _render_daily_brief_item_detail(item, *, index: int, total: int, display_top
         link_parts.append(f"DOI：`{item.doi}`")
     if link_parts:
         st.markdown(" | ".join(link_parts))
+
+
+def _render_daily_brief_abstract_translation(item) -> None:
+    translation = str(getattr(item, "abstract_translation_zh", "") or "").strip()
+    if translation:
+        st.info(f"中文摘要：{translation}")
+        return
+    error = str(getattr(item, "abstract_translation_error", "") or "").strip()
+    if error and getattr(item, "abstract", ""):
+        st.caption(f"中文摘要暂未生成：{error}")
 
 
 def _render_daily_brief_attention(brief) -> None:
@@ -968,6 +1099,7 @@ def _candidate_row(candidate) -> dict:
         "状态": STATUS_LABELS.get(candidate.import_status, candidate.import_status),
         "Y103分类": getattr(candidate, "classification_name", "") or "",
         "分类依据": getattr(candidate, "classification_reason", "") or "",
+        "摘要翻译": _translation_status_label(candidate),
         "PDF状态": _pdf_status_label(candidate),
         "可直接导入": _importable_pdf_label(candidate),
         "OA": "是" if candidate.is_open_access else "否",
@@ -1109,6 +1241,16 @@ def _pdf_status_label(candidate) -> str:
         return "无PDF链接"
     status = getattr(candidate, "pdf_access_status", "unknown") or "unknown"
     return PDF_ACCESS_LABELS.get(status, status)
+
+
+def _translation_status_label(candidate) -> str:
+    if getattr(candidate, "abstract_translation_error", ""):
+        return "失败"
+    if getattr(candidate, "abstract_translation_zh", ""):
+        return "已翻译"
+    if getattr(candidate, "abstract", ""):
+        return "待翻译"
+    return "无摘要"
 
 
 def _importable_pdf_label(candidate) -> str:

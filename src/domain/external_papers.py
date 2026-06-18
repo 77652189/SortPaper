@@ -71,6 +71,11 @@ class ExternalPaperCandidate:
     classification_status: str = ""
     classification_reason: str = ""
     judge_reason: str = ""
+    abstract_translation_zh: str = ""
+    abstract_translation_model: str = ""
+    abstract_translation_error: str = ""
+    abstract_translation_source_hash: str = ""
+    abstract_translated_at: str = ""
     created_at: str = ""
     updated_at: str = ""
 
@@ -136,6 +141,10 @@ class DailyBriefItem:
     classification_status: str = ""
     classification_reason: str = ""
     judge_reason: str = ""
+    abstract: str = ""
+    abstract_translation_zh: str = ""
+    abstract_translation_model: str = ""
+    abstract_translation_error: str = ""
     brief: str = ""
     priority: BriefPriority = "medium"
     priority_reason: str = ""
@@ -330,6 +339,12 @@ def merge_candidate(
         nonlocal changed
         if getattr(target, field_name) != value:
             setattr(target, field_name, value)
+            if field_name == "abstract":
+                target.abstract_translation_zh = ""
+                target.abstract_translation_model = ""
+                target.abstract_translation_error = ""
+                target.abstract_translation_source_hash = ""
+                target.abstract_translated_at = ""
             changed = True
 
     for field_name in ("doi", "pmid", "pmcid", "openalex_id"):

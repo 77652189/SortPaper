@@ -10,6 +10,7 @@ from src.domain.external_papers import MonitorProfile, utc_now_iso
 
 RepositoryFactory = Callable[[], Any]
 RefreshCandidates = Callable[..., dict[str, Any]]
+PostFilterCandidates = Callable[[Any, dict[str, Any]], dict[str, Any]]
 
 
 def utc_now() -> datetime:
@@ -43,11 +44,13 @@ class ExternalMonitorService:
         refresh_candidates: RefreshCandidates,
         default_source_names: list[str],
         latest_fetch_key: str,
+        post_filter_candidates: PostFilterCandidates | None = None,
     ) -> None:
         self.repository_factory = repository_factory
         self.refresh_candidates = refresh_candidates
         self.default_source_names = default_source_names
         self.latest_fetch_key = latest_fetch_key
+        self.post_filter_candidates = post_filter_candidates
 
     def create_monitor(
         self,
@@ -186,6 +189,8 @@ class ExternalMonitorService:
             [str(candidate_id) for candidate_id in summary.get("candidate_ids", [])],
             monitor.filter_config,
         )
+        if self.post_filter_candidates is not None:
+            summary["abstract_translation"] = self.post_filter_candidates(repo, summary)
         monitor.last_run_at = current.isoformat()
         monitor.next_run_at = (current + timedelta(hours=max(monitor.interval_hours, 1))).isoformat()
         monitor.last_summary = summary

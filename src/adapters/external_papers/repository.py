@@ -123,6 +123,22 @@ class JsonExternalImportRepository:
         with self.runs_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(summary, ensure_ascii=False, sort_keys=True) + "\n")
 
+    def list_run_summaries(self) -> list[dict[str, Any]]:
+        if not self.runs_path.exists():
+            return []
+        summaries: list[dict[str, Any]] = []
+        for line in self.runs_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            text = line.strip()
+            if not text:
+                continue
+            try:
+                value = json.loads(text)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(value, dict):
+                summaries.append(value)
+        return summaries
+
     def get_metadata(self) -> dict[str, Any]:
         return self._read_json(self.metadata_path, default={})
 

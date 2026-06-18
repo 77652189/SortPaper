@@ -245,6 +245,128 @@ def test_candidate_library_imports_selected_pdf(monkeypatch) -> None:
     assert any(kind == "success" and "成功 1" in str(text) for kind, text in fake_st.messages)
 
 
+def test_candidate_library_can_backfill_current_candidate_translations(monkeypatch) -> None:
+    import app_external_ui
+
+    candidate = make_candidate(
+        source="pubmed",
+        title="Needs translation",
+        abstract="Pichia pastoris expresses recombinant lactoferrin.",
+        doi="10.1/needs-translation",
+    )
+    fake_st = FakeStreamlit()
+    fake_st.button_values["external_candidate_translate_missing"] = True
+    calls: dict[str, object] = {}
+
+    monkeypatch.setattr(app_external_ui, "st", fake_st)
+    monkeypatch.setattr(
+        app_external_ui.external_imports,
+        "list_candidates",
+        lambda **kwargs: [candidate],
+    )
+    monkeypatch.setattr(
+        app_external_ui.external_imports,
+        "abstract_translation_config_status",
+        lambda: {"ready": True, "error": "", "model": "fast-model"},
+    )
+    monkeypatch.setattr(
+        app_external_ui.external_imports,
+        "ensure_candidate_abstract_translations",
+        lambda selected: calls.update({"selected": selected}) or {
+            "translated_count": 1,
+            "skipped_count": 0,
+            "failed_count": 0,
+            "errors": [],
+        },
+    )
+
+    app_external_ui._render_candidate_library()
+
+    assert calls["selected"] == [candidate.candidate_id]
+    assert fake_st.session_state["external_candidate_translation_result"]["translated_count"] == 1
+    assert ("rerun", True) in fake_st.messages
+    assert any(item["label"] == "补翻译当前候选摘要（1）" for item in fake_st.button_inputs)
+
+
+def test_candidate_library_disables_translation_when_config_not_ready(monkeypatch) -> None:
+    import app_external_ui
+
+    candidate = make_candidate(
+        source="pubmed",
+        title="Needs translation",
+        abstract="Pichia pastoris expresses recombinant lactoferrin.",
+        doi="10.1/config-missing",
+    )
+    fake_st = FakeStreamlit()
+    fake_st.button_values["external_candidate_translate_missing"] = True
+    calls = {"ensure": 0}
+
+    monkeypatch.setattr(app_external_ui, "st", fake_st)
+    monkeypatch.setattr(
+        app_external_ui.external_imports,
+        "list_candidates",
+        lambda **kwargs: [candidate],
+    )
+    monkeypatch.setattr(
+        app_external_ui.external_imports,
+        "abstract_translation_config_status",
+        lambda: {"ready": False, "error": "OPENAI_API_KEY 未配置"},
+    )
+    monkeypatch.setattr(
+        app_external_ui.external_imports,
+        "ensure_candidate_abstract_translations",
+        lambda selected: calls.update({"ensure": calls["ensure"] + 1}) or {},
+    )
+
+    app_external_ui._render_candidate_library()
+
+    assert calls["ensure"] == 0
+    assert ("warning", "OPENAI_API_KEY 未配置") in fake_st.messages
+    assert any(
+        item["label"] == "补翻译当前候选摘要（1）" and item["kwargs"].get("disabled") is True
+        for item in fake_st.button_inputs
+    )
+
+
+def test_candidate_translation_backfill_only_targets_missing_non_skipped_abstracts() -> None:
+    import app_external_ui
+
+    needs = make_candidate(
+        source="pubmed",
+        title="Needs translation",
+        abstract="Pichia pastoris expresses recombinant lactoferrin.",
+        doi="10.1/needs",
+    )
+    translated = make_candidate(
+        source="pubmed",
+        title="Translated",
+        abstract="Pichia pastoris expresses recombinant lactoferrin.",
+        doi="10.1/translated-ui",
+    )
+    translated.abstract_translation_zh = "已有翻译。"
+    skipped = make_candidate(
+        source="pubmed",
+        title="Skipped",
+        abstract="Pichia pastoris expresses recombinant lactoferrin.",
+        doi="10.1/skipped",
+    )
+    skipped.import_status = "skipped"
+    no_abstract = make_candidate(
+        source="pubmed",
+        title="No abstract",
+        doi="10.1/no-abstract",
+    )
+
+    ids = app_external_ui._candidate_translation_candidate_ids([
+        needs,
+        translated,
+        skipped,
+        no_abstract,
+    ])
+
+    assert ids == [needs.candidate_id]
+
+
 def test_candidate_library_pdf_precheck_stores_result_before_rerun(monkeypatch) -> None:
     import app_external_ui
 
@@ -464,10 +586,8 @@ def test_daily_brief_shows_latest_paper_fetch_time(monkeypatch) -> None:
 
     app_external_ui._render_daily_brief()
 
-    assert any(
-        kind == "info" and "2026-06-05 08:00:00" in str(text) and "|" in str(text)
-        for kind, text in fake_st.messages
-    )
+    assert ("success", "✅ 后台任务检查") in fake_st.messages
+    assert ("caption", "2026-06-05 08:00:00 北京时间") in fake_st.messages
 
 
 def test_daily_brief_can_auto_fetch_latest_papers(monkeypatch) -> None:
@@ -521,7 +641,7 @@ def test_daily_brief_fetch_button_shows_today_status_and_avoids_repeat(monkeypat
     app_external_ui._render_daily_brief()
 
     assert calls["run_enabled_monitors_now"] == 0
-    assert ("success", "✅ 今日已运行") in fake_st.messages
+    assert ("success", "✅ 今天已检查") in fake_st.messages
     assert any(
         item["label"] == "自动获取最新论文" and item["kwargs"].get("disabled") is True
         for item in fake_st.button_inputs
@@ -642,6 +762,8 @@ def test_daily_brief_content_lists_items_with_visible_detail_buttons(monkeypatch
         classification_reason="自动定时搜索已分类",
         priority="high",
         brief="候选摘要。",
+        abstract="Pichia pastoris was engineered for recombinant lactoferrin expression.",
+        abstract_translation_zh="毕赤酵母被工程化用于重组乳铁蛋白表达。",
         recommended_action="优先导入 PDF",
     )
     brief = DailyBrief(
@@ -680,6 +802,7 @@ def test_daily_brief_content_lists_items_with_visible_detail_buttons(monkeypatch
     ]
     assert reason_tables
     assert reason_tables[0][0]["内容"] == "候选摘要。"
+    assert ("info", "中文摘要：毕赤酵母被工程化用于重组乳铁蛋白表达。") in fake_st.messages
     assert any(kind == "success" and "📌 今日需看 1 条" in str(text) for kind, text in fake_st.messages)
 
 

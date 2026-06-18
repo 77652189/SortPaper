@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -268,6 +269,49 @@ def test_latest_paper_fetch_status_uses_beijing_day(tmp_path: Path) -> None:
     assert status["ran_today"] is True
 
 
+def test_latest_paper_fetch_status_separates_check_run_and_candidate_activity(tmp_path: Path) -> None:
+    repo = JsonExternalImportRepository(tmp_path)
+    repo.update_metadata({"latest_paper_fetch_at": "2026-01-04T01:00:00+00:00"})
+    monitor = external_imports.create_monitor(
+        name="LNT",
+        query="LNT",
+        sources=["pubmed"],
+        repository=repo,
+    )
+    monitor.last_run_at = "2026-01-04T04:00:00+00:00"
+    external_imports.update_monitor(monitor, repository=repo)
+    repo.append_run_summary({
+        "kind": "monitor_run",
+        "run_at": "2026-01-04T04:00:00+00:00",
+        "monitor_id": monitor.monitor_id,
+        "fetched_count": 0,
+        "new_count": 0,
+        "updated_count": 0,
+    })
+    repo.append_run_summary({
+        "kind": "manual_refresh",
+        "run_at": "2026-01-04T06:00:00+00:00",
+        "fetched_count": 2,
+        "new_count": 1,
+        "updated_count": 1,
+    })
+
+    status = external_imports.latest_paper_fetch_status(
+        repository=repo,
+        now=datetime(2026, 1, 4, 7, 0, tzinfo=timezone.utc),
+    )
+
+    assert status["latest_check_at"] == "2026-01-04T01:00:00+00:00"
+    assert status["checked_today"] is True
+    assert status["latest_monitor_run_at"] == "2026-01-04T04:00:00+00:00"
+    assert status["monitor_ran_today"] is True
+    assert status["latest_candidate_activity_at"] == "2026-01-04T06:00:00+00:00"
+    assert status["candidate_activity_today"] is True
+    assert status["latest_candidate_activity"]["fetched_count"] == 2
+    assert status["latest_candidate_activity"]["new_count"] == 1
+    assert status["latest_candidate_activity"]["updated_count"] == 1
+
+
 def test_run_enabled_monitors_now_ignores_next_run_time(tmp_path: Path) -> None:
     repo = JsonExternalImportRepository(tmp_path)
     monitor = external_imports.create_monitor(
@@ -326,6 +370,7 @@ def test_generate_daily_brief_processes_candidate_metadata(tmp_path: Path) -> No
         lookback_days=14,
         max_items=10,
         repository=repo,
+        translate_abstracts=False,
     )
 
     assert brief.title == "2026-06-05 每日简报"
@@ -338,6 +383,174 @@ def test_generate_daily_brief_processes_candidate_metadata(tmp_path: Path) -> No
     assert brief.items[0].classification_status == "rule_only"
     assert brief.items[0].recommended_action == "优先导入 PDF"
     assert repo.list_daily_briefs()[0].brief_id == brief.brief_id
+
+
+def test_generate_daily_brief_reuses_stored_candidate_translation_without_llm(tmp_path: Path) -> None:
+    repo = JsonExternalImportRepository(tmp_path)
+    candidate = make_candidate(
+        source="pubmed",
+        title="Recombinant lactoferrin expression in Pichia pastoris",
+        abstract="Pichia pastoris was engineered for heterologous recombinant lactoferrin expression.",
+        doi="10.1/translated",
+        published_date="2026-06-01",
+    )
+    candidate.abstract_translation_zh = "毕赤酵母被工程化用于异源重组乳铁蛋白表达。"
+    candidate.abstract_translation_model = "stored-fast-model"
+    repo.upsert_candidates([candidate])
+
+    class FakeTranslationClient:
+        def complete(self, **kwargs):
+            raise AssertionError("daily brief should only reuse stored translations")
+
+    brief = external_imports.generate_daily_brief(
+        brief_date=date(2026, 6, 5),
+        lookback_days=14,
+        max_items=10,
+        repository=repo,
+        translation_llm_client=FakeTranslationClient(),
+    )
+
+    item = brief.items[0]
+    assert item.abstract == candidate.abstract
+    assert item.abstract_translation_zh == "毕赤酵母被工程化用于异源重组乳铁蛋白表达。"
+    assert item.abstract_translation_model == "stored-fast-model"
+    assert repo.list_daily_briefs()[0].items[0].abstract_translation_zh == item.abstract_translation_zh
+
+
+def test_monitor_run_translates_kept_candidates_after_filter(tmp_path: Path, monkeypatch) -> None:
+    repo = JsonExternalImportRepository(tmp_path)
+    monitor = external_imports.create_monitor(
+        name="Y103",
+        query="Pichia lactoferrin",
+        sources=["pubmed"],
+        repository=repo,
+    )
+    relevant = make_candidate(
+        source="pubmed",
+        title="Recombinant lactoferrin expression in Pichia pastoris",
+        abstract="Pichia pastoris secretes recombinant lactoferrin.",
+        doi="10.1/translate-kept",
+        published_date="2026-01-01",
+    )
+    irrelevant = make_candidate(
+        source="pubmed",
+        title="Human development disparities",
+        abstract="Persistent inequality constrains human development.",
+        doi="10.1/translate-skipped",
+        published_date="2026-01-01",
+    )
+    calls = []
+
+    class LocalSource:
+        name = "pubmed"
+
+        def search(self, query: ExternalSearchQuery):
+            return [relevant, irrelevant]
+
+    class SourceFactory:
+        def __call__(self, source_names=None):
+            return [LocalSource()]
+
+    class FakeTranslationClient:
+        def complete(self, **kwargs):
+            calls.append(kwargs)
+            return "毕赤酵母分泌重组乳铁蛋白。"
+
+    monkeypatch.setattr(external_imports, "default_sources", SourceFactory())
+    monkeypatch.setattr(external_imports, "_daily_brief_translation_client", lambda: FakeTranslationClient())
+
+    summary = external_imports.run_monitor(
+        monitor.monitor_id,
+        repository=repo,
+        now=datetime(2026, 1, 3, 8, 30, tzinfo=timezone.utc),
+    )
+
+    stored_relevant = repo.get_candidate(relevant.candidate_id)
+    stored_irrelevant = repo.get_candidate(irrelevant.candidate_id)
+    assert summary["candidate_filter"]["kept_count"] == 1
+    assert summary["abstract_translation"]["translated_count"] == 1
+    assert stored_relevant.abstract_translation_zh == "毕赤酵母分泌重组乳铁蛋白。"
+    assert stored_relevant.abstract_translation_model == external_imports.DAILY_BRIEF_TRANSLATION_MODEL
+    assert stored_irrelevant.abstract_translation_zh == ""
+    assert calls[0]["label"] == "external-candidate-abstract-translation"
+
+
+def test_candidate_translation_batches_pending_items_and_skips_cached(tmp_path: Path) -> None:
+    repo = JsonExternalImportRepository(tmp_path)
+    first = make_candidate(
+        source="pubmed",
+        title="Pichia lactoferrin expression one",
+        abstract="Pichia pastoris expresses recombinant lactoferrin one.",
+        doi="10.1/batch-one",
+    )
+    second = make_candidate(
+        source="pubmed",
+        title="Pichia lactoferrin expression two",
+        abstract="Pichia pastoris expresses recombinant lactoferrin two.",
+        doi="10.1/batch-two",
+    )
+    cached = make_candidate(
+        source="pubmed",
+        title="Already translated",
+        abstract="Pichia pastoris expresses recombinant lactoferrin three.",
+        doi="10.1/batch-cached",
+    )
+    cached.abstract_translation_zh = "已有翻译。"
+    repo.upsert_candidates([first, second, cached])
+    calls = []
+
+    class FakeTranslationClient:
+        def complete(self, **kwargs):
+            calls.append(kwargs)
+            return json.dumps({
+                "translations": [
+                    {"candidate_id": first.candidate_id, "translation_zh": "第一条翻译。"},
+                    {"candidate_id": second.candidate_id, "translation_zh": "第二条翻译。"},
+                ]
+            }, ensure_ascii=False)
+
+    summary = external_imports.ensure_candidate_abstract_translations(
+        [first.candidate_id, second.candidate_id, cached.candidate_id],
+        repository=repo,
+        translation_llm_client=FakeTranslationClient(),
+    )
+
+    assert summary["translated_count"] == 2
+    assert summary["skipped_count"] == 1
+    assert len(calls) == 1
+    assert calls[0]["label"] == "external-candidate-abstract-translation-batch"
+    assert repo.get_candidate(first.candidate_id).abstract_translation_zh == "第一条翻译。"
+    assert repo.get_candidate(second.candidate_id).abstract_translation_zh == "第二条翻译。"
+    assert repo.get_candidate(cached.candidate_id).abstract_translation_zh == "已有翻译。"
+
+
+def test_candidate_translation_stops_before_api_when_config_invalid(tmp_path: Path) -> None:
+    repo = JsonExternalImportRepository(tmp_path)
+    candidate = make_candidate(
+        source="pubmed",
+        title="Needs translation",
+        abstract="Pichia pastoris expresses recombinant lactoferrin.",
+        doi="10.1/bad-config",
+    )
+    repo.upsert_candidates([candidate])
+
+    class BadConfigClient:
+        def configuration_error(self):
+            return "OPENAI_API_KEY 未配置"
+
+        def complete(self, **kwargs):
+            raise AssertionError("translation API should not be called")
+
+    summary = external_imports.ensure_candidate_abstract_translations(
+        [candidate.candidate_id],
+        repository=repo,
+        translation_llm_client=BadConfigClient(),
+    )
+
+    assert summary["translated_count"] == 0
+    assert summary["failed_count"] == 0
+    assert summary["configuration_error"] == "OPENAI_API_KEY 未配置"
+    assert repo.get_candidate(candidate.candidate_id).abstract_translation_zh == ""
 
 
 def test_generate_daily_brief_reuses_stored_classification_without_llm(tmp_path: Path) -> None:
@@ -368,6 +581,7 @@ def test_generate_daily_brief_reuses_stored_classification_without_llm(tmp_path:
         use_llm=True,
         small_llm_client=FailingClient(),
         judge_llm_client=FailingClient(),
+        translate_abstracts=False,
     )
 
     item = brief.items[0]
@@ -404,6 +618,7 @@ def test_generate_daily_brief_uses_small_model_and_judge(tmp_path: Path) -> None
         use_llm=True,
         small_llm_client=FakeClient(),
         judge_llm_client=FakeClient(),
+        translate_abstracts=False,
     )
 
     item = brief.items[0]
@@ -428,10 +643,12 @@ def test_list_daily_briefs_returns_latest_first(tmp_path: Path) -> None:
     first = external_imports.generate_daily_brief(
         brief_date=date(2026, 6, 4),
         repository=repo,
+        translate_abstracts=False,
     )
     second = external_imports.generate_daily_brief(
         brief_date=date(2026, 6, 5),
         repository=repo,
+        translate_abstracts=False,
     )
 
     briefs = external_imports.list_daily_briefs(repository=repo)
